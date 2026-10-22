@@ -30,7 +30,7 @@ class Material(Base):
 
 class Treatment(Base):
     __tablename__ = "treatments"
-    code: Mapped[str] = mapped_column(String(80), primary_key=True)
+    code: Mapped[str] = mapped_column(String(200), primary_key=True)
 
 
 class Room(Base):
@@ -58,6 +58,10 @@ class PrepDraft(Base):
     rows: Mapped[list] = mapped_column(JSONB)
     committed: Mapped[bool] = mapped_column(Boolean, default=False)
     stack_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    source: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    warnings: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    sheets: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    review_data: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -68,6 +72,7 @@ class Stack(Base):
     material_id: Mapped[str] = mapped_column(ForeignKey("materials.id"), index=True)
     test_code: Mapped[str] = mapped_column(String(120), index=True)
     preconditioning_code: Mapped[str] = mapped_column(ForeignKey("treatments.code"), index=True)
+    source_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     version: Mapped[int] = mapped_column(Integer, default=0)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -93,6 +98,7 @@ class ConditioningSession(Base):
     __table_args__ = (
         CheckConstraint("exited_at IS NULL OR exited_at >= entered_at", name="valid_session_chronology"),
         Index("one_open_session_per_specimen", "specimen_id", unique=True, postgresql_where=text("exited_at IS NULL AND voided = false")),
+        Index("one_conditioning_period_per_specimen", "specimen_id", unique=True, postgresql_where=text("voided = false")),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     specimen_id: Mapped[str] = mapped_column(ForeignKey("specimens.id"), index=True)
@@ -128,3 +134,17 @@ class AuditEvent(Base):
     specimen_ids: Mapped[list] = mapped_column(JSONB)
     payload: Mapped[dict] = mapped_column(JSONB)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class PrintJob(Base):
+    __tablename__ = "print_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), default="prepared")
+    printer_queue: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    cups_job_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    stack_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    options: Mapped[dict] = mapped_column(JSONB, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

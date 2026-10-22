@@ -1,3 +1,5 @@
+let serverOffsetMs = 0
+export const serverNow = () => Date.now() + serverOffsetMs
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) { super(message); this.status = status }
@@ -9,6 +11,8 @@ export async function api<T>(path: string, options: RequestInit = {}, timeout = 
   try {
     const response = await fetch(`/api${path}`, { credentials: 'include', ...options, headers: { ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, signal: controller.signal })
     const body = await response.json().catch(() => ({}))
+    const serverTime = body.server_time || body.items?.[0]?.server_time
+    if (serverTime && Number.isFinite(Date.parse(serverTime))) serverOffsetMs = Date.parse(serverTime) - Date.now()
     if (!response.ok) {
       const detail = body.detail
       throw new ApiError(response.status, typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((item: { msg: string; loc?: string[] }) => `${item.loc?.join('.') || 'Input'}: ${item.msg}`).join('; ') : detail?.message || body.message || `Request failed (${response.status})`)
@@ -20,10 +24,16 @@ export const post = <T,>(path: string, body: unknown) => api<T>(path, { method: 
 export const formatTime = (value?: string | null) => value ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(value)) : '—'
 export const elapsed = (value?: string | null, end?: string | null) => {
   if (!value) return '—'
-  const minutes = Math.max(0, Math.floor(((end ? Date.parse(end) : Date.now()) - Date.parse(value)) / 60000))
+  const minutes = Math.max(0, Math.floor(((end ? Date.parse(end) : serverNow()) - Date.parse(value)) / 60000))
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
-export function codeFor(id: string, stack = false) { return `UL1:${stack ? 'S' : 'P'}:${id}` }
+export function codeFor(id: string, _stack = false) { try { return BigInt(`0x${id.replaceAll('-', '')}`).toString(10).padStart(39, '0') } catch { return id } }
+export const entryOf = (s: import('./types').Specimen) => s.ENTRY ?? s.entry_at ?? s.sessions?.[0]?.entered_at ?? s.entered_at
+export const exitOf = (s: import('./types').Specimen) => s.EXIT ?? s.exit_at ?? s.sessions?.[0]?.exited_at ?? null
+export const specimenStatus = (s: import('./types').Specimen) => exitOf(s) ? 'Finished' : entryOf(s) ? 'Conditioning' : 'Awaiting entry'
+export const isReady = (s: import('./types').Specimen, now = serverNow()) => typeof s.ready === 'boolean' ? s.ready : s.state === 'IN' && !!s.due_at && Date.parse(s.due_at) <= now
+export const localTimeInput = (value: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value)).replace(' ', 'T')
+export function easternToUTC(value: string) { const target = Date.parse(`${value}Z`); let guess = target; for (let i = 0; i < 4; i++) { const represented = Date.parse(`${localTimeInput(new Date(guess).toISOString())}Z`); guess += target - represented } if (localTimeInput(new Date(guess).toISOString()).slice(0, value.length) !== value) throw new Error('This Eastern Time does not exist. Check the daylight-saving change.'); return new Date(guess).toISOString() }
 export function requestId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   const bytes = crypto.getRandomValues(new Uint8Array(16)); bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, text
 
 from .models import AuditEvent, ConditioningSession, MovementRequest, Specimen, Stack, Station, utcnow, uuid_str
-from .services import current_session, iso, resolve_code, snapshot
+from .services import current_session, conditioning_period, iso, resolve_code, snapshot
 
 
 def process_movement(db, body):
@@ -44,6 +44,7 @@ def process_movement(db, body):
     now = utcnow()
     by_id = {p.id: p for p in specimens}
     active = {p.id: current_session(db, p.id) for p in specimens}
+    periods = {p.id: conditioning_period(db, p.id) for p in specimens}
     if body.expected_version is not None and body.expected_version != stack.version:
         return finish("rejected", "The stack changed. Scan again and review the current selection.", stack)
     if body.scope == "selection":
@@ -58,18 +59,13 @@ def process_movement(db, body):
             return finish("rejected", "Scan a specimen label for individual mode.", stack)
         selected = [by_id[scanned.id]]
     else:
-        locations = {(s.room_id if s else None) for s in active.values()}
-        if len(locations) > 1:
-            return finish("selection_required", "This stack has mixed locations. Select specimens explicitly.", stack,
-                          specimens=[{"id": p.id, "number": p.number, "state": "IN" if active[p.id] else "OUT",
-                                      "room_id": active[p.id].room_id if active[p.id] else None} for p in sorted(specimens, key=lambda p: p.number)])
         selected = specimens
-    if any(active[p.id] and active[p.id].room_id != station.room_id for p in selected):
-        return finish("rejected", "A selected specimen is in another room. Check it out at that room first.", stack)
-    changed = [p for p in selected if (active[p.id] is None) == (body.direction == "IN")]
+    changed = [p for p in selected if (periods[p.id] is None if body.direction == "IN" else active[p.id] is not None)]
     if not changed:
-        return finish("already_recorded", f"Already recorded {body.direction}; original timestamps preserved.", stack)
-    if len(changed) != len(selected):
+        return finish("already_recorded", f"Already recorded {body.direction}; original timestamps preserved. Each specimen conditions once.", stack)
+    if body.direction == "OUT" and any(active[p.id].room_id != station.room_id for p in changed):
+        return finish("rejected", "A selected specimen is in another room. Check it out at that room first.", stack)
+    if body.scope != "stack" and len(changed) != len(selected):
         return finish("rejected", "Some selected specimens are already in the requested state. Select only specimens to move.", stack)
     early = [p for p in changed if body.direction == "OUT" and
              now < active[p.id].entered_at + timedelta(hours=station.room.required_hours)]
@@ -93,6 +89,7 @@ def process_movement(db, body):
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="movement", direction=body.direction,
                        actor=station.id, recorded_at=now, specimen_ids=[p.id for p in changed],
                        payload={"request_id": request_id, "station_id": station.id, "room_id": station.room_id,
+                                "occurred_at": iso(now),
                                 "scope": body.scope, "early_exit_acknowledged": bool(early),
                                 "before": before, "after": snapshot(db, changed)})
     db.add(event)

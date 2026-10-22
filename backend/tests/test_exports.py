@@ -3,6 +3,10 @@ import io
 from uuid import uuid4
 
 from pypdf import PdfReader
+from PIL import Image
+import zxingcpp
+
+from app.barcodes import id_payload, payload_id
 
 
 def register(client, **overrides):
@@ -34,20 +38,27 @@ def test_labels_registered_identifiers_and_reprints(client):
     stack = register(client)
     url = f'/api/stacks/{stack["id"]}/labels'
     exported = rows(client.get(url + ".csv"))
-    assert exported[0]["qr_payload"] == f'UL1:S:{stack["id"]}'
-    assert [row["qr_payload"] for row in exported[1:]] == [f'UL1:P:{p["id"]}' for p in stack["specimens"]]
+    assert [row["barcode_payload"] for row in exported] == [id_payload(p["id"]) for p in stack["specimens"]]
+    assert all(row["barcode_format"] == "DataMatrix" for row in exported)
     assert all(row["project_number"] == "000012ABC123" for row in exported)
     assert rows(client.get(url + ".csv")) == exported
-    assert len(rows(client.get(url + ".csv?include_header=false"))) == 2
+    with_header = rows(client.get(url + ".csv?include_header=true"))
+    assert len(with_header) == 3
+    header_lookup = client.post("/api/lookup", json={"code": with_header[0]["barcode_payload"]})
+    assert header_lookup.is_success and header_lookup.json()["id"] == stack["id"]
+    assert header_lookup.json()["scanned_specimen_id"] is None
     pdf_response = client.get(url + ".pdf")
     assert pdf_response.is_success
     pdf = PdfReader(io.BytesIO(pdf_response.content))
-    assert len(pdf.pages) == 3
-    for page in pdf.pages:
-        assert abs(float(page.mediabox.width) - 54 * 72 / 25.4) < .01
-        assert abs(float(page.mediabox.height) - 25 * 72 / 25.4) < .01
+    assert len(pdf.pages) == 2
+    for page, specimen in zip(pdf.pages, stack["specimens"]):
+        assert abs(float(page.mediabox.width) - 50.8 * 72 / 25.4) < .01
+        assert abs(float(page.mediabox.height) - 25.4 * 72 / 25.4) < .01
         assert "000012ABC123" in page.extract_text()
         assert len(list(page.images)) == 1
+        decoded = zxingcpp.read_barcode(Image.open(io.BytesIO(list(page.images)[0].data)))
+        assert decoded.format == zxingcpp.BarcodeFormat.DataMatrix
+        assert payload_id(decoded.text) == specimen["id"]
     assert client.get(url + ".pdf?width_mm=1").status_code == 422
     assert client.get(f"/api/stacks/{uuid4()}/labels.pdf").status_code == 404
 

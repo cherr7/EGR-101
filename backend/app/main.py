@@ -1,44 +1,80 @@
 import csv
+import asyncio
 import io
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from urllib.parse import urlencode
 from pydantic import ValidationError
 from sqlalchemy import select, text
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import current_user, require_supervisor, valid_credentials
-from .corrections import process_correction
-from .db import SessionLocal, get_db
+from .corrections import edit_transaction, process_correction, record_missed_movement, undo_transaction
+from .db import SessionLocal, get_db, engine
+from .backups import TrafficGate, daily_scheduler, router as backups_router
 from .exports import router as exports_router
-from .models import AuditEvent, MovementRequest, PrepDraft, Room, Stack, Station, Treatment
+from .workbooks import router as workbooks_router
+from .printing import router as printing_router
+from .models import AuditEvent, MovementRequest, PrepDraft, Room, Specimen, Stack, Station, Treatment, utcnow
 from .movements import process_movement
-from .schemas import CorrectionBody, LoginBody, LookupBody, MovementBody, PrepBody
-from .services import commit_draft, draft_dict, event_dict, query_stacks, resolve_code, seed_config, stack_detail
+from .schemas import CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, TransactionEditBody, TransactionUndoBody
+from .services import commit_draft, draft_dict, event_dict, iso, query_stacks, resolve_code, seed_config, specimen_time_log, stack_detail
 
 
 @asynccontextmanager
 async def lifespan(app):
+    app.state.traffic_gate = TrafficGate()
     with SessionLocal.begin() as db:
         seed_config(db)
-    yield
+    scheduler = None
+    if not (engine.url.database or "").endswith("_test"):
+        scheduler = asyncio.create_task(daily_scheduler())
+    try:
+        yield
+    finally:
+        if scheduler:
+            scheduler.cancel()
+            try:
+                await scheduler
+            except asyncio.CancelledError:
+                pass
 
 
-app = FastAPI(title="Fabric Conditioning Tracker", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Fabric Conditioning Tracker", version="2.0.0", lifespan=lifespan)
 app.add_middleware(SessionMiddleware,
                    secret_key=os.getenv("SESSION_SECRET", "classroom-demo-change-this-session-secret"),
                    same_site="strict", https_only=os.getenv("COOKIE_SECURE", "false").lower() == "true",
                    max_age=8 * 60 * 60)
 app.include_router(exports_router)
+app.include_router(workbooks_router)
+app.include_router(printing_router)
+app.include_router(backups_router)
+
+
+@app.middleware("http")
+async def restore_maintenance_gate(request: Request, call_next):
+    gate = getattr(request.app.state, "traffic_gate", None)
+    restore = request.method == "POST" and request.url.path.startswith("/api/backups/imports/") and request.url.path.endswith("/restore")
+    if not gate or not request.url.path.startswith("/api/") or restore:
+        return await call_next(request)
+    if not await gate.enter():
+        return JSONResponse(status_code=503, content={"detail": "Database restore in progress; retry after maintenance."}, headers={"Retry-After": "5"})
+    try:
+        return await call_next(request)
+    finally:
+        await gate.leave()
 
 
 @app.get("/api/health")
 def health(db=Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "connected"}
+        return {"status": "ok", "database": "connected", "server_time": iso(utcnow())}
     except Exception:
         return JSONResponse(status_code=503, content={"status": "unavailable", "database": "unreachable"})
 
@@ -52,7 +88,9 @@ def config(db=Depends(get_db)):
     stations = [{"id": s.id, "name": s.name, "room_id": s.room_id}
                 for s in db.scalars(select(Station).order_by(Station.name))]
     return {"rooms": rooms, "stations": stations, "treatments": list(db.scalars(select(Treatment.code).order_by(Treatment.code))),
-            "display_timezone": "America/New_York"}
+            "display_timezone": "America/New_York", "server_time": iso(utcnow()),
+            "identity": {"bits": 128, "label_encoding": "decimal", "label_digits": 39, "symbology": "Data Matrix"},
+            "conditioning_periods_per_specimen": 1}
 
 
 @app.post("/api/prep-drafts")
@@ -125,7 +163,7 @@ def list_stacks(q: str | None = None, project_number: str | None = None, materia
                 room_id: str | None = None, status: str | None = None, db=Depends(get_db)):
     items = query_stacks(db, q=q, project_number=project_number, material_ref=material_ref,
                          test_code=test_code, preconditioning_code=preconditioning_code, room_id=room_id, status=status)
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": len(items), "server_time": iso(utcnow())}
 
 
 @app.get("/api/stacks/{stack_id}")
@@ -134,6 +172,19 @@ def get_stack(stack_id: str, db=Depends(get_db)):
     if not stack:
         raise HTTPException(404, "Stack not found.")
     return stack_detail(db, stack)
+
+
+@app.get("/api/specimens/{specimen_id}")
+def get_specimen(specimen_id: str, db=Depends(get_db)):
+    stack, specimen = resolve_code(db, specimen_id)
+    if specimen is None:
+        raise HTTPException(404, "Specimen not found.")
+    detail = stack_detail(db, stack, specimen.id, include_events=False)
+    item = next(p for p in detail["specimens"] if p["id"] == specimen.id)
+    return {**item, "stack_id": stack.id, "project_number": detail["project_number"],
+            "material_ref": detail["material_ref"], "test_code": detail["test_code"],
+            "preconditioning_code": detail["preconditioning_code"], "metadata": detail["metadata"],
+            "raw_json_time": specimen_time_log(db, specimen.id), "server_time": iso(utcnow())}
 
 
 @app.post("/api/lookup")
@@ -177,6 +228,7 @@ def logout(request: Request):
     return {"authenticated": False, "username": None}
 
 
+@app.get("/api/transactions")
 @app.get("/api/events")
 def events(stack_id: str | None = None, db=Depends(get_db)):
     query = select(AuditEvent).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id)
@@ -186,6 +238,45 @@ def events(stack_id: str | None = None, db=Depends(get_db)):
 
 
 @app.post("/api/corrections")
-def correct(body: CorrectionBody, username=Depends(require_supervisor), db=Depends(get_db)):
+def correct(body: CorrectionBody, db=Depends(get_db)):
     with db.begin():
-        return process_correction(db, body, username)
+        return process_correction(db, body, "project-staff")
+
+
+@app.post("/api/transactions/missed")
+def missed_transaction(body: MissedMovementBody, db=Depends(get_db)):
+    with db.begin():
+        return record_missed_movement(db, body)
+
+
+@app.patch("/api/transactions/{event_id}")
+def update_transaction(event_id: str, body: TransactionEditBody, db=Depends(get_db)):
+    with db.begin():
+        return edit_transaction(db, event_id, body)
+
+
+@app.post("/api/transactions/{event_id}/undo")
+def undo_movement(event_id: str, body: TransactionUndoBody, db=Depends(get_db)):
+    with db.begin():
+        return undo_transaction(db, event_id, body)
+
+
+frontend_dir = Path(os.getenv("FRONTEND_DIST", str(Path(__file__).resolve().parents[2] / "frontend/dist")))
+if (frontend_dir / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=frontend_dir / "assets"), name="assets")
+
+
+@app.get("/", include_in_schema=False)
+def web_app():
+    index = frontend_dir / "index.html"
+    if not index.is_file():
+        return JSONResponse(status_code=503, content={"detail": "Build the staff frontend first: cd frontend && npm run build"})
+    return FileResponse(index, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/kiosk", include_in_schema=False)
+@app.get("/station.html", include_in_schema=False)
+def kiosk_app(station: str | None = None):
+    query = "?" + urlencode({"station": station}) if station else ""
+    return RedirectResponse("/" + query + "#kiosk", status_code=307,
+                            headers={"Cache-Control": "no-store"})

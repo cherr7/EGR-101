@@ -2,7 +2,7 @@
 set -eu
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/fabric-scanner"
 mkdir -p "$state_dir"
-export KIOSK_URL="${KIOSK_URL:-http://127.0.0.1:8080/station.html}"
+export KIOSK_URL="${KIOSK_URL:-http://127.0.0.1:8080/station.html?station=shared-door#kiosk}"
 # Wait only for the local UI, never for the central API or the internet.
 python3 - <<'PY'
 import os

@@ -9,8 +9,9 @@ class PrepRow(BaseModel):
     project_number: str = Field(min_length=1, max_length=120)
     material_ref: str = Field(min_length=1, max_length=200)
     test_code: str = Field(min_length=1, max_length=120)
-    preconditioning_code: str = Field(min_length=1, max_length=80)
+    preconditioning_code: str = Field(min_length=1, max_length=200)
     specimen_count: int = Field(ge=1, le=500)
+    metadata: dict = Field(default_factory=dict)
 
     @field_validator("project_number", "material_ref", "test_code", "preconditioning_code")
     @classmethod
@@ -21,8 +22,17 @@ class PrepRow(BaseModel):
         return value
 
 
+class PrepDraftRow(BaseModel):
+    project_number: str | None = Field(default=None, max_length=120)
+    material_ref: str | None = Field(default=None, max_length=200)
+    test_code: str | None = Field(default=None, max_length=120)
+    preconditioning_code: str | None = Field(default=None, max_length=200)
+    specimen_count: int | None = Field(default=None, ge=1, le=500)
+    metadata: dict = Field(default_factory=dict)
+
+
 class PrepBody(BaseModel):
-    rows: list[PrepRow] = Field(min_length=1, max_length=100)
+    rows: list[PrepDraftRow] = Field(min_length=1, max_length=1000)
 
 
 class LookupBody(BaseModel):
@@ -47,7 +57,7 @@ class LoginBody(BaseModel):
 
 class CorrectionBody(BaseModel):
     kind: Literal["edit_session", "missed_session", "undo"]
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=2000)
     session_id: UUID | None = None
     specimen_ids: list[UUID] | None = None
     room_id: str | None = None
@@ -58,13 +68,48 @@ class CorrectionBody(BaseModel):
     @field_validator("reason")
     @classmethod
     def reason_nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("A reason is required")
         return value.strip()
 
     @field_validator("entered_at", "exited_at")
     @classmethod
     def timezone_required(cls, value):
         if value is not None and value.tzinfo is None:
+            raise ValueError("Timestamps must include a timezone")
+        return value
+
+
+class TransactionEditBody(BaseModel):
+    specimen_ids: list[UUID] | None = None
+    occurred_at: datetime | None = None
+    room_id: str | None = None
+    note: str = Field(default="", max_length=2000)
+    expected_version: int | None = Field(default=None, ge=0)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def timezone_required(cls, value):
+        if value is not None and value.tzinfo is None:
+            raise ValueError("Timestamps must include a timezone")
+        return value
+
+
+class TransactionUndoBody(BaseModel):
+    note: str = Field(default="", max_length=2000)
+    expected_version: int | None = Field(default=None, ge=0)
+
+
+class MissedMovementBody(BaseModel):
+    stack_id: UUID
+    specimen_ids: list[UUID] = Field(min_length=1, max_length=500)
+    direction: Literal["IN", "OUT"]
+    occurred_at: datetime
+    room_id: str
+    note: str = Field(default="", max_length=2000)
+    expected_version: int | None = Field(default=None, ge=0)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def timezone_required(cls, value):
+        if value.tzinfo is None:
             raise ValueError("Timestamps must include a timezone")
         return value

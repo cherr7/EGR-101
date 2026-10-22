@@ -28,6 +28,8 @@ test('station layout has no horizontal page overflow on touch and mobile display
     await page.goto('/#kiosk')
     await expect(page.getByText('Database connected')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
-    await expect(page.getByRole('textbox', { name: 'Scan code' })).toBeEnabled()
+    await expect(page.locator('.kiosk-dock')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Scan code' })).toHaveCount(0)
+    expect(await page.locator('.kiosk-shell').evaluate(el => el.scrollHeight <= window.innerHeight)).toBeTruthy()
   }
 })

@@ -7,7 +7,7 @@
       body:JSON.stringify({
         focused:document.hasFocus(),
         visible:document.visibilityState==='visible',
-        capture_ready:window.fabricScannerCaptureReady===true
+        capture_ready:window.location.hash==='#kiosk'&&window.fabricScannerCaptureReady===true
       }),signal:controller.signal
     }).catch(()=>{}).finally(()=>clearTimeout(timer));
   }

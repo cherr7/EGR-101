@@ -25,9 +25,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-conditioning}:${POSTGRES_PASSWORD:-conditioning}@db:5432/${POSTGRES_DB:-conditioning}
+      FABRIC_STATE_DIR: /var/lib/fabric-conditioning
       SUPERVISOR_USERNAME: ${SUPERVISOR_USERNAME:-supervisor}
       SUPERVISOR_PASSWORD: ${SUPERVISOR_PASSWORD:-classroom-demo}
       SESSION_SECRET: ${SESSION_SECRET:-classroom-demo-change-this-session-secret}
+    volumes:
+      - tracker_state:/var/lib/fabric-conditioning
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -53,3 +56,4 @@ services:
 
 volumes:
   postgres_data:
+  tracker_state:

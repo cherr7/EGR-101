@@ -1,182 +1,106 @@
 import { test, expect } from '@playwright/test'
 import type { APIRequestContext, Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
-async function createStack(request: APIRequestContext, count = 20) {
-  const project = `00E2E-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`
-  const response = await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: `Browser-${project}`, test_code: 'TENSILE', preconditioning_code: 'AR', specimen_count: count }] } })
-  expect(response.ok(), await response.text()).toBeTruthy()
-  const draft = await response.json()
-  const registration = await request.post(`/api/prep-drafts/${draft.id}/commit`, { data: {} })
-  expect(registration.ok()).toBeTruthy()
-  const { stack_ids } = await registration.json()
-  return (await request.get(`/api/stacks/${stack_ids[0]}`)).json()
+async function createStack(request: APIRequestContext, count = 10) {
+  const project = `00-DEMO-E2E-${randomUUID().slice(0, 8)}`
+  const response = await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: `DEMO fabric ${project}`, test_code: 'D5034', preconditioning_code: 'AR → 5L', specimen_count: count }] } }); expect(response.ok(), await response.text()).toBeTruthy(); const draft = await response.json()
+  const registered = await request.post(`/api/prep-drafts/${draft.id}/commit`, { data: {} }); expect(registered.ok(), await registered.text()).toBeTruthy(); const value = await registered.json(); return (await request.get(`/api/stacks/${value.stack_ids[0]}`)).json()
 }
-async function openKiosk(page: Page) {
-  await page.goto('/#kiosk')
-  await expect(page.getByText('Database connected')).toBeVisible()
-  await expect(page.getByRole('textbox', { name: 'Scan code' })).toBeFocused()
-}
-async function scan(page: Page, code: string) {
-  await page.getByRole('textbox', { name: 'Scan code' }).fill(code)
-  await page.getByRole('textbox', { name: 'Scan code' }).press('Enter')
-}
+function code(id: string) { return BigInt(`0x${id.replaceAll('-', '')}`).toString(10).padStart(39, '0') }
+async function openKiosk(page: Page) { await page.goto('/#kiosk'); await expect(page.getByText('Database connected')).toBeVisible(); await expect.poll(() => page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true) }
+async function scan(page: Page, value: string) { await page.keyboard.type(value); await page.keyboard.press('Enter') }
+async function current(request: APIRequestContext, id: string) { return (await request.get(`/api/stacks/${id}`)).json() }
+function eastern(value: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(value).replace(' ', 'T') }
 
-test('prep registers a leading-zero project, labels keep identities across reload', async ({ page, request }) => {
-  await page.goto('/#prep')
-  await expect(page.getByText('Database connected')).toBeVisible()
-  const project = `0007-BROWSER-${Date.now()}`
-  await page.getByLabel('project_number row 1').fill(project)
-  await page.getByLabel('material_ref row 1').fill('Canvas review batch')
-  await page.getByLabel('test_code row 1').fill('TENSILE')
-  await page.getByRole('button', { name: 'Register specimens →' }).click()
-  await expect(page.getByText('Registered 1 stack successfully.')).toBeVisible()
-  const before = await page.getByRole('link', { name: 'PDF ↗', exact: true }).getAttribute('href')
-  await page.reload()
-  await expect(page.getByText('Registered 1 stack successfully.')).toBeVisible()
-  expect(await page.getByRole('link', { name: 'PDF ↗', exact: true }).getAttribute('href')).toBe(before)
-  const items = (await (await request.get(`/api/stacks?project_number=${encodeURIComponent(project)}`)).json()).items
-  expect(items).toHaveLength(1)
-  expect(items[0].project_number).toBe(project)
-  expect(items[0].specimens).toHaveLength(20)
+test('Excel review preserves source cells, conditioning extras, unresolved material and permanent reprints', async ({ page, request }) => {
+  await page.goto('/#prep'); await expect(page.getByText('Database connected')).toBeVisible()
+  await page.getByLabel('Import prep workbook').setInputFiles({ name: 'DEMO-prep.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.concat([await readFile(fileURLToPath(new URL('./fixtures/DEMO-prep.xlsx', import.meta.url))), Buffer.from(randomUUID())]) })
+  await expect(page.getByLabel('specimen_count row 1')).toHaveValue('12'); await expect(page.getByLabel('specimen_count row 2')).toHaveValue('8')
+  await expect(page.getByLabel('material_ref row 1')).toHaveValue(''); await expect(page.getByRole('button', { name: 'Register & preview labels →' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Source row 1' }).click(); const source = page.getByRole('dialog', { name: 'Workbook source · Stack 1' }); await expect(source).toContainText('D5'); await expect(source).toContainText('6 Warp, 6 Fill'); await source.getByRole('button', { name: 'Back to review' }).click()
+  const project = `0007-DEMO-XLSX-${randomUUID().slice(0, 6)}`
+  for (const i of [1, 2]) { await page.getByLabel(`project_number row ${i}`).fill(project); await page.getByLabel(`material_ref row ${i}`).fill('DEMO reviewed material') }
+  await page.getByRole('button', { name: 'Register & preview labels →' }).click(); await expect(page.getByRole('dialog', { name: 'Preview & print labels' })).toBeVisible()
+  const labels = page.locator('iframe[title="Actual label PDF preview"]'); const before = await labels.getAttribute('src'); expect(before).toContain('width_mm=50.8'); expect(before).toContain('height_mm=25.4')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click(); await page.reload(); await expect(page.getByRole('button', { name: 'Preview labels →' })).toBeVisible(); await page.getByRole('button', { name: 'Preview labels →' }).click(); expect(await labels.getAttribute('src')).toBe(before)
+  const stacks = (await (await request.get(`/api/stacks?project_number=${project}`)).json()).items; expect(stacks).toHaveLength(2); expect(stacks.reduce((n: number, s: { specimen_count: number }) => n + s.specimen_count, 0)).toBe(20)
 })
 
-test('CSV import supports editable review before registration', async ({ page, request }) => {
-  const project = `00CSV-${Date.now()}`
-  await page.goto('/#prep')
-  await expect(page.getByText('Database connected')).toBeVisible()
-  await page.getByLabel('Import CSV').setInputFiles({ name: 'review.csv', mimeType: 'text/csv', buffer: Buffer.from(`project_number,material_ref,test_code,preconditioning_code,specimen_count\n${project},Canvas A,TENSILE,AR,2\n${project},Canvas B,TENSILE,3L,3\n`) })
-  await expect(page.getByLabel('material_ref row 2')).toHaveValue('Canvas B')
-  await page.getByLabel('material_ref row 1').fill('Canvas A reviewed')
-  await page.getByRole('button', { name: 'Register specimens →' }).click()
-  await expect(page.getByText('Registered 2 stacks successfully.')).toBeVisible()
-  const items = (await (await request.get(`/api/stacks?project_number=${encodeURIComponent(project)}`)).json()).items
-  expect(items).toHaveLength(2)
-  expect(items.map((item: { material_ref: string }) => item.material_ref).sort()).toEqual(['Canvas A reviewed', 'Canvas B'])
-  expect(new Set(items.flatMap((item: { specimens: { id: string }[] }) => item.specimens.map(s => s.id))).size).toBe(5)
+test('automatic decimal HID scanning works after touching controls, repeats preserve time, Undo is entire last transaction', async ({ page, request }, info) => {
+  const stack = await createStack(request, 20); await openKiosk(page); await expect(page.locator('input')).toHaveCount(0)
+  await page.getByRole('button', { name: 'IN', exact: true }).click(); await page.keyboard.type(code(stack.specimens[0].id)); const start = performance.now(); await page.keyboard.press('Enter'); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible(); await expect(page.locator('.readiness-description')).toContainText('20 specimens')
+  const milliseconds = Math.round(performance.now() - start); await info.attach('confirmed-scan-latency', { body: JSON.stringify({ milliseconds, target_ms: 1000, specimens: 20 }), contentType: 'application/json' }); console.info(`Confirmed 20-specimen scan, Enter to green: ${milliseconds} ms`); expect(milliseconds).toBeLessThan(1000)
+  const entered = await current(request, stack.id); await scan(page, code(stack.specimens[7].id)); await expect(page.getByRole('heading', { name: 'Already recorded' })).toBeVisible(); const repeated = await current(request, stack.id); expect(repeated.specimens.map((s: { ENTRY: string }) => s.ENTRY)).toEqual(entered.specimens.map((s: { ENTRY: string }) => s.ENTRY)); expect(repeated.specimens.every((s: { sessions: unknown[] }) => s.sessions.length === 1)).toBeTruthy()
+  await page.getByRole('button', { name: 'Undo last' }).click(); const undo = page.getByRole('dialog', { name: 'Undo the last transaction?' }); await expect(undo).toContainText('20 specimens'); await page.keyboard.press('Enter'); await expect(undo).toBeVisible(); expect((await current(request, stack.id)).inside_count).toBe(20)
+  await undo.getByRole('button', { name: 'Undo transaction', exact: true }).click(); await expect(undo).toBeHidden(); await expect(page.getByRole('heading', { name: 'Transaction undone', exact: true })).toBeVisible(); const undone = await current(request, stack.id); expect(undone.inside_count).toBe(0); expect(undone.specimens.every((s: { ENTRY: string | null }) => s.ENTRY === null)).toBeTruthy(); expect(undone.events.some((e: { kind: string }) => e.kind === 'undo')).toBeTruthy()
 })
 
-test('lost registration response recovers the committed draft and original labels on reload', async ({ page, request }) => {
-  const project = `00COMMIT-${Date.now()}`
-  await page.route('**/api/prep-drafts/*/commit', async route => {
-    const response = await route.fetch()
-    expect(response.ok()).toBeTruthy()
-    await route.abort('failed')
-  })
-  await page.goto('/#prep')
-  await expect(page.getByText('Database connected')).toBeVisible()
-  await page.getByLabel('project_number row 1').fill(project)
-  await page.getByLabel('material_ref row 1').fill('Response lost batch')
-  await page.getByLabel('test_code row 1').fill('TENSILE')
-  await page.getByRole('button', { name: 'Register specimens →' }).click()
-  await expect(page.getByRole('alert')).toBeVisible()
-  const draftId = await page.evaluate(() => JSON.parse(localStorage.getItem('fabric-tracker.prep-draft.v1')!).id)
-  const draft = await (await request.get(`/api/prep-drafts/${draftId}`)).json()
-  expect(draft.committed).toBe(true)
-  await page.reload()
-  await expect(page.getByText('Registered 1 stack successfully.')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'PDF ↗', exact: true })).toHaveAttribute('href', new RegExp(draft.stack_ids[0]))
-  const items = (await (await request.get(`/api/stacks?project_number=${encodeURIComponent(project)}`)).json()).items
-  expect(items).toHaveLength(1)
+test('numbered partial checkout, popup scan rejection, automatic remaining-stack checkout and one conditioning period', async ({ page, request }) => {
+  const stack = await createStack(request); await openKiosk(page); await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible(); await page.getByRole('button', { name: 'OUT', exact: true }).click(); await page.getByRole('button', { name: 'Individual specimens' }).click(); await scan(page, code(stack.specimens[0].id))
+  const select = page.getByRole('dialog', { name: 'Choose the specimens moving' }); await expect(select).toBeVisible(); await expect(select.getByRole('checkbox', { name: /^01/ })).toBeChecked(); await select.getByRole('checkbox', { name: /^03/ }).check(); await select.getByRole('checkbox', { name: /^05/ }).check(); await scan(page, code(stack.specimens[0].id)); expect((await current(request, stack.id)).inside_count).toBe(10)
+  await select.getByRole('button', { name: 'Confirm partial OUT' }).click(); const early = page.getByRole('dialog', { name: 'Early checkout' }); await expect(early).toBeVisible(); await page.keyboard.press('Enter'); expect((await current(request, stack.id)).inside_count).toBe(10); await early.getByRole('button', { name: 'Override & record OUT' }).click(); await expect(page.getByRole('heading', { name: 'OUT confirmed', exact: true })).toBeVisible(); await expect(page.locator('.readiness-description')).toContainText('3 specimens'); const partial = await current(request, stack.id); expect(partial.specimens.filter((s: { EXIT: string | null }) => !!s.EXIT).map((s: { number: number }) => s.number)).toEqual([1, 3, 5]); await expect(page.getByRole('button', { name: 'Whole stack' })).toHaveAttribute('aria-pressed', 'true')
+  await scan(page, code(stack.specimens[0].id)); await expect(early).toBeVisible(); await expect(page.getByRole('dialog', { name: 'Choose the specimens moving' })).toHaveCount(0); await early.getByRole('button', { name: 'Override & record OUT' }).click(); await expect(page.locator('.readiness-description')).toContainText('7 specimens'); expect((await current(request, stack.id)).finished_count).toBe(10)
+  await page.getByRole('button', { name: 'IN', exact: true }).click(); await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'Already recorded' })).toBeVisible(); expect((await current(request, stack.id)).specimens.every((s: { sessions: unknown[] }) => s.sessions.length === 1)).toBeTruthy()
 })
 
-test('whole-stack scans, no-op repeats, early partial checkout, mixed selection and scope reset', async ({ page, request }) => {
-  const stack = await createStack(request)
-  const code = `UL1:P:${stack.specimens[2].id}`
-  await openKiosk(page)
-  const scanStarted = performance.now()
-  await scan(page, code)
-  await expect(page.getByText('IN confirmed · 20 specimens')).toBeVisible()
-  const confirmedLatencyMs = performance.now() - scanStarted
-  await test.info().attach('confirmed-scan-latency', {
-    body: JSON.stringify({ specimen_count: 20, confirmed_latency_ms: Math.round(confirmedLatencyMs), target_ms: 1000 }),
-    contentType: 'application/json',
-  })
-  expect(confirmedLatencyMs, 'Scan submission to visible database confirmation').toBeLessThan(1000)
-  const entered = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(entered.specimens.every((s: { state: string }) => s.state === 'IN')).toBeTruthy()
-  await scan(page, code)
-  await expect(page.getByText('Already recorded', { exact: true })).toBeVisible()
-  const repeated = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(repeated.specimens.map((s: { entered_at: string }) => s.entered_at)).toEqual(entered.specimens.map((s: { entered_at: string }) => s.entered_at))
-  expect(repeated.specimens.every((s: { sessions: unknown[] }) => s.sessions.length === 1)).toBeTruthy()
-  await page.getByRole('button', { name: 'OUT', exact: true }).click()
-  await expect(page.getByRole('textbox', { name: 'Scan code' })).toBeFocused()
-  await page.getByRole('button', { name: 'Choose specimens', exact: true }).click()
-  const selection = page.getByRole('dialog', { name: 'Select the specimens moving' })
-  await selection.getByRole('checkbox', { name: /^02/ }).check()
-  await selection.getByRole('checkbox', { name: /^05/ }).check()
-  await selection.getByRole('button', { name: 'Confirm OUT' }).click()
-  const early = page.getByRole('dialog', { name: 'Conditioning is not complete' })
-  await expect(early).toBeVisible()
-  const unchanged = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(unchanged.specimens.every((s: { state: string }) => s.state === 'IN')).toBeTruthy()
-  await early.getByRole('button', { name: 'Acknowledge & record OUT' }).click()
-  await expect(page.getByText('OUT confirmed · 2 specimens')).toBeVisible()
-  const partial = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(partial.specimens.filter((s: { state: string }) => s.state === 'OUT').map((s: { number: number }) => s.number)).toEqual([2, 5])
-  await expect(page.getByRole('button', { name: /Whole stack/ })).toHaveAttribute('aria-pressed', 'true')
-  await scan(page, code)
-  await expect(page.getByRole('dialog', { name: 'Select the specimens moving' })).toBeVisible()
-  await page.getByRole('button', { name: 'Close dialog' }).click()
-  await page.getByRole('button', { name: /Individual specimens/ }).click()
-  await scan(page, code)
-  await page.getByRole('dialog').getByRole('button', { name: 'Acknowledge & record OUT' }).click()
-  await expect(page.getByText('OUT confirmed · 1 specimens')).toBeVisible()
-  await expect(page.getByRole('button', { name: /Whole stack/ })).toHaveAttribute('aria-pressed', 'true')
+test('lost committed response survives reload and reconciles the unchanged request exactly once', async ({ page, request }) => {
+  const stack = await createStack(request, 3); let lost = false; await page.route('**/api/movements', async route => { if (lost) return route.continue(); lost = true; const response = await route.fetch(); expect(response.ok()).toBeTruthy(); await route.abort('failed') })
+  await openKiosk(page); await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'Confirming transaction…' })).toBeVisible(); const saved = await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-movement.v2')); expect(saved).not.toBeNull(); await page.reload(); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible(); const result = await current(request, stack.id); expect(result.events.filter((e: { kind: string }) => e.kind === 'movement')).toHaveLength(1); expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-movement.v2'))).toBeNull()
 })
 
-test('lost committed response reconciles the same request, including after reload', async ({ page, request }) => {
-  const stack = await createStack(request, 3)
-  let lost = false
-  await page.route('**/api/movements', async route => {
-    if (lost) { await route.continue(); return }
-    lost = true
-    const response = await route.fetch()
-    expect(response.ok()).toBeTruthy()
-    await route.abort('failed')
-  })
-  await openKiosk(page)
-  await scan(page, `UL1:P:${stack.specimens[0].id}`)
-  await expect(page.getByText('Awaiting database confirmation.')).toBeVisible()
-  await page.reload()
-  await expect(page.getByText('IN confirmed · 3 specimens')).toBeVisible()
-  const detail = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(detail.specimens.every((s: { sessions: unknown[] }) => s.sessions.length === 1)).toBeTruthy()
-  expect(detail.events.filter((e: { kind: string }) => e.kind === 'movement')).toHaveLength(1)
-  expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-movement.v1'))).toBeNull()
+test('lost Undo response stays pending across reload and reconciles the same original transaction once', async ({ page, request }) => {
+  const stack = await createStack(request, 6), other = await createStack(request, 2)
+  await openKiosk(page); await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
+  let undoPosts = 0, holdReconciliation = false
+  await page.route('**/api/transactions/*/undo', async route => { undoPosts++; const response = await route.fetch(); expect(response.ok()).toBeTruthy(); holdReconciliation = true; await route.abort('failed') })
+  await page.route('**/api/transactions?stack_id=*', async route => { if (holdReconciliation) await route.abort('failed'); else await route.continue() })
+  await page.getByRole('button', { name: 'Undo last' }).click(); await page.getByRole('dialog').getByRole('button', { name: 'Undo transaction', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Confirming undo…' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Undo confirmation is pending' })).toBeVisible(); const intent = await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-undo.v1')); expect(intent).not.toBeNull(); await scan(page, code(other.specimens[0].id)); expect((await current(request, other.id)).inside_count).toBe(0)
+  holdReconciliation = false; await page.reload(); await expect(page.getByRole('heading', { name: 'Transaction undone', exact: true })).toBeVisible(); expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-undo.v1'))).toBeNull()
+  const final = await current(request, stack.id); expect(final.inside_count).toBe(0); expect(final.events.filter((e: { kind: string }) => e.kind === 'undo')).toHaveLength(1); expect(undoPosts).toBe(1); await expect(page.locator('.kiosk-message[role="alert"]')).toHaveCount(0)
 })
 
-test('server unavailable disables scanning and shows no success', async ({ page, request }) => {
-  const stack = await createStack(request, 2)
-  await openKiosk(page)
-  await page.route('**/api/health', route => route.abort('failed'))
-  await expect(page.getByRole('alert').filter({ hasText: 'NOT AVAILABLE' })).toBeVisible()
-  await expect(page.getByRole('textbox', { name: 'Scan code' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Simulate specimen scan →' })).toBeDisabled()
-  await expect(page.locator('.scan-result.success')).toHaveCount(0)
-  const unchanged = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(unchanged.specimens.every((s: { sessions: unknown[] }) => s.sessions.length === 0)).toBeTruthy()
+test('scanner rejects incomplete and malformed frames and Enter or Space cannot activate an override', async ({ page, request }) => {
+  const stack = await createStack(request, 2); await openKiosk(page)
+  await page.keyboard.type(code(stack.specimens[0].id).slice(0, 15)); await page.waitForTimeout(410); await page.keyboard.type(code(stack.specimens[0].id).slice(15)); await page.keyboard.press('Enter'); expect((await current(request, stack.id)).inside_count).toBe(0)
+  await scan(page, `!${code(stack.specimens[0].id)}`); expect((await current(request, stack.id)).inside_count).toBe(0)
+  await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible(); await page.getByRole('button', { name: 'OUT', exact: true }).click(); await scan(page, code(stack.specimens[0].id)); const early = page.getByRole('dialog', { name: 'Early checkout' }); await expect(early).toBeVisible(); await early.getByRole('button', { name: 'Override & record OUT' }).focus(); await page.keyboard.press('Enter'); await page.keyboard.press('Space'); await expect(early).toBeVisible(); expect((await current(request, stack.id)).inside_count).toBe(2)
 })
 
-test('supervisor records a missed entry with a reason and visible audit provenance', async ({ page, request }) => {
-  const stack = await createStack(request, 2)
-  await page.goto('/#supervisor')
-  await expect(page.getByText('Database connected')).toBeVisible()
-  await page.getByLabel('Supervisor password').fill(process.env.SUPERVISOR_PASSWORD || 'classroom-demo')
-  await page.getByRole('button', { name: 'Sign in →' }).click()
-  await expect(page.getByText('Document a correction')).toBeVisible()
-  await page.getByLabel('Correction stack').selectOption(stack.id)
-  await page.getByRole('button', { name: 'Record missed entry' }).click()
-  await page.locator('.correction-card').getByRole('checkbox', { name: /^01/ }).check()
-  const earlier = new Date(Date.now() - 26 * 3600000)
-  const input = `${earlier.getFullYear()}-${String(earlier.getMonth() + 1).padStart(2, '0')}-${String(earlier.getDate()).padStart(2, '0')}T${String(earlier.getHours()).padStart(2, '0')}:${String(earlier.getMinutes()).padStart(2, '0')}`
-  await page.getByLabel('Effective entry time', { exact: true }).fill(input)
-  await page.getByLabel('Correction reason').fill('Operator forgot to scan entry; verified from room log.')
-  await page.getByRole('button', { name: 'Save correction →' }).click()
-  await expect(page.getByText('Correction saved. The original observation remains in the audit history.')).toBeVisible()
-  await expect(page.getByText('Operator forgot to scan entry; verified from room log.')).toBeVisible()
-  const detail = await (await request.get(`/api/stacks/${stack.id}`)).json()
-  expect(detail.specimens[0].state).toBe('IN')
-  expect(detail.specimens[1].state).toBe('OUT')
-  expect(Date.parse(detail.specimens[0].sessions[0].recorded_at)).toBeGreaterThan(Date.parse(detail.specimens[0].sessions[0].entered_at))
+test('1280 by 720 scanner keeps readiness and dock fixed while only recent activity scrolls', async ({ page, request }, info) => {
+  await page.setViewportSize({ width: 1280, height: 720 }); const stack = await createStack(request, 20); await openKiosk(page)
+  const before = { dock: await page.locator('.kiosk-dock').boundingBox(), ready: await page.locator('.readiness-area').boundingBox() }; await page.locator('.recent-scroll').evaluate(el => { el.scrollTop = el.scrollHeight }); expect(await page.locator('.kiosk-dock').boundingBox()).toEqual(before.dock); expect(await page.locator('.readiness-area').boundingBox()).toEqual(before.ready); expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBeTruthy()
+  await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible(); await page.screenshot({ animations: 'disabled', path: info.outputPath('scanner-confirmed-1280x720.png') }); await page.getByRole('button', { name: 'OUT', exact: true }).click(); await page.getByRole('button', { name: 'Individual specimens' }).click(); await scan(page, code(stack.specimens[0].id)); const popup = page.getByRole('dialog', { name: 'Choose the specimens moving' }); await expect(popup).toBeVisible(); const actions = await popup.locator('.modal-actions').boundingBox(); expect(actions!.y + actions!.height).toBeLessThanOrEqual(720); expect(await popup.evaluate(el => el.scrollHeight <= el.clientHeight)).toBeTruthy(); await page.screenshot({ animations: 'disabled', path: info.outputPath('scanner-partial-1280x720.png') })
+})
+
+test('offline state is red, submits nothing, then recovers with page-wide capture', async ({ page, request }) => {
+  const stack = await createStack(request, 2); await openKiosk(page); await page.route('**/api/health', route => route.abort('failed')); await expect(page.getByRole('heading', { name: 'NOT AVAILABLE', exact: true })).toBeVisible(); await expect(page.locator('.readiness-area')).toHaveClass(/unavailable/); await scan(page, code(stack.specimens[0].id)); expect((await current(request, stack.id)).inside_count).toBe(0); await expect(page.locator('.readiness-area.confirmed')).toHaveCount(0); await page.unroute('**/api/health'); await expect(page.getByText('Database connected')).toBeVisible(); await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
+})
+
+test('popup transaction editor reduces an OUT from ten to three and preserves originals without permissions', async ({ page, request }) => {
+  const stack = await createStack(request); const base = { station_id: 'shared-door', code: code(stack.specimens[0].id), scope: 'stack' }; const entered = await (await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'IN' } })).json(); const out = await (await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'OUT', acknowledge_early: true, expected_version: entered.version } })).json()
+  await page.goto('/#transactions'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByLabel('Search transactions').fill(stack.project_number); await page.getByRole('button', { name: `Edit transaction ${out.event_id}` }).click(); const editor = page.getByRole('dialog', { name: 'Edit OUT transaction' }); await expect(editor).toBeVisible(); for (let n = 4; n <= 10; n++) await editor.getByRole('checkbox', { name: new RegExp(`^${String(n).padStart(2, '0')}`) }).uncheck(); await editor.getByRole('button', { name: 'Save change', exact: true }).click(); await expect(editor).toBeHidden(); await expect(page.getByText('Change saved. The original observation remains in the transaction history.')).toBeVisible(); const changed = await current(request, stack.id); expect(changed.inside_count).toBe(7); expect(changed.finished_count).toBe(3); const original = changed.events.find((e: { id: string }) => e.id === out.event_id); expect(original.affected_count).toBe(10); expect(original.effective_count).toBe(3); expect(original.modified).toBe(true); expect(changed.events.some((e: { kind: string }) => e.kind === 'modification')).toBeTruthy()
+  await page.getByRole('button', { name: `Edit transaction ${out.event_id}` }).click(); await editor.getByRole('button', { name: 'Undo entire transaction' }).click(); const undo = page.getByRole('dialog', { name: 'Undo the entire transaction?' }); await undo.getByRole('button', { name: 'Undo transaction', exact: true }).click(); await expect(undo).toBeHidden(); expect((await current(request, stack.id)).inside_count).toBe(10)
+})
+
+test('missed-entry time is distinct from recording time and overview surfaces the ready specimens', async ({ page, request }) => {
+  const stack = await createStack(request, 4); await page.goto('/#transactions'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByRole('button', { name: 'Record missed scan' }).click(); const dialog = page.getByRole('dialog', { name: 'Record a missed scan' }); await dialog.getByLabel('Missed stack').selectOption(stack.id); await dialog.getByLabel('Missed movement time').fill(eastern(new Date(Date.now() - 26 * 3600000))); await dialog.getByRole('checkbox', { name: /^01/ }).check(); await dialog.getByRole('checkbox', { name: /^02/ }).check(); await dialog.getByRole('button', { name: 'Record missed IN' }).click(); await expect(dialog).toBeHidden(); const result = await current(request, stack.id); expect(result.ready_count).toBe(2); expect(Date.parse(result.specimens[0].sessions[0].recorded_at)).toBeGreaterThan(Date.parse(result.specimens[0].ENTRY)); await page.getByRole('button', { name: 'Stack overview', exact: false }).click(); await page.getByLabel('Search stacks').fill(stack.project_number); await expect(page.getByText('2 ready', { exact: true })).toBeVisible(); await expect(page.getByText('26h 0m', { exact: true })).toBeVisible(); await page.getByRole('button', { name: `View ${stack.material_ref}` }).click(); await expect(page.getByRole('dialog', { name: 'Stack & specimen details' })).toContainText('Ready')
+})
+
+test('server readiness and elapsed time remain correct when a staff computer clock is two days ahead', async ({ page, request }) => {
+  const stack = await createStack(request, 2); const entered = await request.post('/api/movements', { data: { request_id: randomUUID(), station_id: 'shared-door', code: code(stack.specimens[0].id), direction: 'IN', scope: 'stack' } }); expect(entered.ok()).toBeTruthy()
+  await page.addInitScript(() => { const realNow = Date.now.bind(Date); Date.now = () => realNow() + 48 * 3600000 })
+  await page.goto('/#overview'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByLabel('Search stacks').fill(stack.project_number); await expect(page.locator('.overview-table').getByText('Conditioning', { exact: true })).toBeVisible(); await expect(page.locator('.overview-table').getByText('2 ready', { exact: true })).toHaveCount(0); await expect(page.locator('.overview-table').getByText('0h 0m', { exact: true })).toBeVisible()
+})
+
+test('a locally packaged Pi names its fixed room even when the Mac is unreachable after cold start', async ({ page }) => {
+  await page.addInitScript(() => { (window as unknown as { fabricStationConfig: unknown }).fabricStationConfig = { stationId: 'shared-door', stationName: 'Shared conditioning room door', roomName: 'Shared conditioning room', fixed: true } })
+  await page.route('**/api/health', route => route.abort('failed')); await page.goto('/#kiosk'); await expect(page.getByRole('heading', { name: 'Shared conditioning room', exact: true })).toBeVisible(); await expect(page.getByRole('heading', { name: 'NOT AVAILABLE', exact: true })).toBeVisible(); await expect(page.getByLabel('Station', { exact: true })).toBeDisabled(); await expect(page.getByLabel('Station', { exact: true })).toContainText('Shared conditioning room door'); expect(await page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true)
+})
+
+test('portable backup is created, downloaded and validated before restore becomes available', async ({ page, request }) => {
+  await createStack(request, 2); await page.goto('/#backups'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByRole('button', { name: 'Create backup now' }).click(); await expect(page.getByText('Database backup created. Download a copy or check the configured destination folder.')).toBeVisible(); const all = await (await request.get('/api/backups')).json(); expect(all.items.length).toBeGreaterThan(0); const backup = all.items[0]; const download = await request.get(`/api/backups/${backup.id}/download`); expect(download.ok()).toBeTruthy(); await page.getByLabel('Import backup archive').setInputFiles({ name: backup.filename, mimeType: 'application/zip', buffer: await download.body() }); const preview = page.getByRole('dialog', { name: 'Restore validated backup?' }); await expect(preview).toBeVisible(); await expect(preview).toContainText('validated'); await expect(preview.getByRole('button', { name: 'Restore backup', exact: true })).toBeDisabled(); await preview.getByLabel('Restore confirmation').fill('RESTORE'); await expect(preview.getByRole('button', { name: 'Restore backup', exact: true })).toBeEnabled(); await preview.getByRole('button', { name: 'Cancel', exact: true }).click(); await expect(preview).toBeHidden()
 })

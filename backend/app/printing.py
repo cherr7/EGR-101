@@ -1,0 +1,214 @@
+"""Explicit, idempotent label submission to the Mac's existing CUPS queues.
+
+The application never discovers a printer and prints automatically. A person
+previews the PDF and selects a queue. 'submitted' means accepted by CUPS, not
+proof that a physical label emerged from the printer.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from .db import get_db
+from .exports import labels_pdf
+from .models import AuditEvent, PrintJob, Stack, utcnow
+from .services import stack_detail
+
+router = APIRouter(prefix="/api", tags=["Label printing"])
+QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
+
+
+class LabelPreviewBody(BaseModel):
+    stack_ids: list[UUID] = Field(min_length=1, max_length=100)
+    width_mm: float = Field(default=50.8, ge=40, le=150)
+    height_mm: float = Field(default=25.4, ge=25, le=150)
+
+    @field_validator("stack_ids")
+    @classmethod
+    def unique_stacks(cls, values):
+        if len(set(values)) != len(values):
+            raise ValueError("Each stack can appear only once in a label job.")
+        return values
+
+
+class PrintBody(LabelPreviewBody):
+    request_id: UUID
+    printer_queue: str = Field(min_length=1, max_length=200)
+    copies: int = Field(default=1, ge=1, le=10)
+
+    @field_validator("printer_queue")
+    @classmethod
+    def safe_queue(cls, value):
+        if not QUEUE_PATTERN.fullmatch(value):
+            raise ValueError("Choose an installed printer queue.")
+        return value
+
+
+def printer_inventory() -> dict:
+    configured = os.getenv("TRACKER_PRINTER_QUEUE", "").strip() or None
+    lp, lpstat = shutil.which("lp"), shutil.which("lpstat")
+    result = {"available": False, "enabled": False, "configured_queue": configured,
+              "printers": [], "message": "CUPS is unavailable. PDF preview and download still work."}
+    if not lp or not lpstat:
+        return result
+    try:
+        queues = subprocess.run([lpstat, "-a"], check=False, capture_output=True,
+                                text=True, timeout=5, env={**os.environ, "LC_ALL": "C"})
+        default = subprocess.run([lpstat, "-d"], check=False, capture_output=True,
+                                 text=True, timeout=5, env={**os.environ, "LC_ALL": "C"})
+    except (OSError, subprocess.TimeoutExpired):
+        result["message"] = "Printer service is not responding. PDF download still works."
+        return result
+    default_match = re.search(r"default destination:\s*(\S+)", default.stdout or "")
+    default_name = default_match.group(1) if default_match else None
+    names = []
+    for line in (queues.stdout or "").splitlines():
+        parts = line.split(None, 1)
+        if parts and QUEUE_PATTERN.fullmatch(parts[0]) and " not accepting " not in line:
+            names.append(parts[0])
+    result["printers"] = [{"name": name, "is_default": name == default_name}
+                          for name in sorted(set(names))]
+    result["available"] = bool(names)
+    result["enabled"] = configured in names
+    result["message"] = ("Choose a printer after reviewing the labels."
+                         if names else "No accepting printer queues found. Add the Brother printer in macOS Settings.")
+    if configured and configured not in names:
+        result["message"] = "The configured printer queue is unavailable. PDF download still works."
+    return result
+
+
+def _details(db: Session, stack_ids: list[str]) -> list[dict]:
+    details = []
+    for identifier in stack_ids:
+        stack = db.get(Stack, identifier)
+        if stack is None:
+            raise HTTPException(404, "A selected stack is no longer registered.")
+        details.append(stack_detail(db, stack, include_events=False))
+    if sum(len(item["specimens"]) for item in details) > 5000:
+        raise HTTPException(422, "Preview at most 5,000 labels per job.")
+    return details
+
+
+def _job_dict(job: PrintJob) -> dict:
+    return {"id": job.id, "request_id": job.id, "status": job.status,
+            "printer_queue": job.printer_queue, "cups_job_id": job.cups_job_id,
+            "stack_ids": job.stack_ids, "options": job.options, "error": job.error,
+            "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(),
+            "physical_print_confirmed": False,
+            "message": "Accepted by the Mac print queue; verify the physical labels."
+                       if job.status == "submitted" else
+                       "Submission may have reached the printer. Check the queue before creating a new job."
+                       if job.status in {"submitting", "unknown"} else job.error}
+
+
+@router.get("/printers")
+def list_printers():
+    return printer_inventory()
+
+
+@router.post("/labels/preview")
+def preview_labels(body: LabelPreviewBody, db: Session = Depends(get_db)):
+    document = labels_pdf(_details(db, [str(item) for item in body.stack_ids]),
+                          body.width_mm, body.height_mm)
+    return Response(document, media_type="application/pdf", headers={
+        "Content-Disposition": 'inline; filename="specimen-labels.pdf"', "Cache-Control": "no-store"})
+
+
+def submit_print_job(db: Session, body: PrintBody) -> dict:
+    request_id = str(body.request_id)
+    values = body.model_dump(mode="json")
+    fingerprint = hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
+    # The lock serializes the claim, then the persisted 'submitting' state keeps
+    # another request from sending lp again after a lost response or restart.
+    key = int.from_bytes(hashlib.sha256(request_id.encode()).digest()[:8], "big", signed=True)
+    with db.begin():
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+        existing = db.get(PrintJob, request_id)
+        if existing:
+            if existing.fingerprint != fingerprint:
+                raise HTTPException(409, "This print request ID was already used for different labels or settings.")
+            return _job_dict(existing)
+        inventory = printer_inventory()
+        names = {item["name"] for item in inventory["printers"]}
+        if body.printer_queue not in names:
+            raise HTTPException(409, "Choose an available printer queue before printing.")
+        if inventory["configured_queue"] and body.printer_queue != inventory["configured_queue"]:
+            raise HTTPException(409, "This host is configured for a different printer queue.")
+        stack_ids = [str(item) for item in body.stack_ids]
+        details = _details(db, stack_ids)
+        document = labels_pdf(details, body.width_mm, body.height_mm)
+        job = PrintJob(id=request_id, fingerprint=fingerprint, status="submitting",
+                       printer_queue=body.printer_queue, stack_ids=stack_ids,
+                       options={"copies": body.copies, "width_mm": body.width_mm,
+                                "height_mm": body.height_mm, "barcode_format": "DataMatrix",
+                                "label_count": sum(len(item["specimens"]) for item in details) * body.copies})
+        db.add(job)
+        db.flush()
+    status, cups_job_id, error = "unknown", None, None
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="conditioning-labels-", suffix=".pdf", delete=False) as output:
+            output.write(document)
+            temporary = Path(output.name)
+        lp = shutil.which("lp")
+        if not lp:
+            raise OSError("CUPS submission command is unavailable.")
+        completed = subprocess.run([
+            lp, "-d", body.printer_queue, "-n", str(body.copies),
+            "-t", "Fabric Labels " + request_id, "-o",
+            f"media=Custom.{body.width_mm:g}x{body.height_mm:g}mm",
+            "-o", "print-scaling=none", "-o", "fit-to-page=false", str(temporary),
+        ], capture_output=True, text=True, timeout=20, check=False,
+            env={**os.environ, "LC_ALL": "C"})
+        match = re.search(r"request id is\s+(\S+)", completed.stdout or "")
+        if completed.returncode == 0 and match:
+            status, cups_job_id = "submitted", match.group(1)
+        elif completed.returncode == 0:
+            error = "CUPS returned without a recognizable job ID. Check the print queue before reprinting."
+        else:
+            status = "failed"
+            error = (completed.stderr or completed.stdout or "Printer rejected the job.").strip()[:1000]
+    except subprocess.TimeoutExpired:
+        error = "Print submission timed out. Check the queue before creating another print job."
+    except OSError as failure:
+        status, error = "failed", str(failure)[:1000]
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    with db.begin():
+        job = db.scalar(select(PrintJob).where(PrintJob.id == request_id).with_for_update())
+        job.status, job.cups_job_id, job.error, job.updated_at = status, cups_job_id, error, utcnow()
+        for detail in details:
+            db.add(AuditEvent(stack_id=detail["id"], kind="label_print", actor="staff",
+                              specimen_ids=[item["id"] for item in detail["specimens"]],
+                              payload={"print_request_id": request_id, "status": status,
+                                       "printer_queue": body.printer_queue, "cups_job_id": cups_job_id,
+                                       "copies": body.copies, "physical_print_confirmed": False}))
+        db.flush()
+        return _job_dict(job)
+
+
+@router.post("/print-jobs")
+def create_print_job(body: PrintBody, db: Session = Depends(get_db)):
+    return submit_print_job(db, body)
+
+
+@router.get("/print-jobs/{request_id}")
+def print_job_status(request_id: UUID, db: Session = Depends(get_db)):
+    job = db.get(PrintJob, str(request_id))
+    if job is None:
+        raise HTTPException(404, "Print request not found. Retry with the same request ID.")
+    return _job_dict(job)

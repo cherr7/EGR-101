@@ -16,3 +16,7 @@ test-results*/
 backups/
 *.dump
 *.partial.*
+*.partial
+output/macOS/
+output/station-ui/
+output/qa/

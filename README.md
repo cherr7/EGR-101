@@ -1,158 +1,113 @@
 # Fabric Conditioning Tracker
 
-The latest frontend design uses individual integer IDs, one ENTRY/EXIT pair, binary keyboard scanning and separate staff pages. See the [dedicated scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md) and [current prototype gallery](output/prototypes/round-three/README.md). Those prototypes use a mock API; the Docker application documented below retains the earlier backend model.
+The working application runs on one MacBook Neo: PostgreSQL, the FastAPI HTTP API, the React staff app, and label-print submission. Staff computers and three Raspberry Pi scanner stations use that same database through the API. The scanner is a separate fullscreen interface; its Pi deployment keeps its own compiled UI locally.
 
-A classroom prototype for the UL conditioning-room workflow in `Project Outline.pdf`. It registers individual specimens, prints their permanent QR identities, records whole-stack or selected-specimen movements, and preserves an audit history of supervisor corrections. Routine movement records identify the station; corrections identify the authenticated supervisor.
+The current workflow uses **one permanent 128-bit ID per physical specimen**, linked to a stack. Labels encode only that ID as a 39-digit decimal ECC200 Data Matrix. Each specimen has one effective ENTRY and one EXIT for the designated 24-hour conditioning step. Historical UI galleries remain in output/prototypes; they are design archives and do not define the current workflow.
 
-## Run locally
+## Start on the Mac
 
-Requirements: Docker with Compose. The images use Python 3.12, PostgreSQL 18, Node 24, and nginx.
+Install Homebrew, Python 3.14, PostgreSQL 18, and Node.js, then run from the project directory:
 
-```sh
-cp .env.example .env
-docker compose up --build -d
-docker compose ps
-```
+    brew install python@3.14 postgresql@18 node
+    deploy/macos/setup.sh
 
-Open **http://localhost:8080**. API documentation is at **http://localhost:8080/docs** or **http://localhost:8000/docs**. The default supervisor login is **supervisor / classroom-demo**. These are explicit classroom credentials; `.env` holds the local database and session settings.
+Double-click **output/macOS/Fabric Conditioning.app**. The launcher starts the local services if needed, checks database health, and opens **http://127.0.0.1:8120**. API documentation is at **http://127.0.0.1:8120/docs**.
 
-First startup registers the three room configurations and stations. It does **not** create specimen data. To create one clearly marked, 20-specimen DEMO stack:
+For development, an existing project environment can run the host directly:
 
-```sh
-./scripts/seed-demo.sh
-```
+    python3 deploy/macos/host.py start
+    python3 deploy/macos/host.py status
+    python3 deploy/macos/host.py stop
 
-Repeating the seed preserves existing demo identities, sessions, and movements. PostgreSQL data persists in the `conditioning-tracker_postgres_data` volume when containers restart. `docker compose down` stops/removes the containers while retaining that volume. None of the supplied scripts resets application data.
+The web server listens on port **8120**. The private PostgreSQL cluster listens only on **127.0.0.1:55432**; Pi stations and staff browsers never connect directly to SQL. Its generated credentials and local data live outside the app bundle in ~/Library/Application Support/Fabric Conditioning. A system installation instead uses /Library/Application Support/Fabric Conditioning.
 
-On this development Mac, the existing Docker configuration references an unavailable `osxkeychain` helper. To use public images through Colima without changing that authentication configuration, create a separate configuration for the shell session:
+See [Mac installation and startup](deploy/macos/README.md) for the prepared LaunchDaemon installer, startup before interactive desktop login, FileVault limits, service logs, and updates. The installer is supplied for deployment; it is not silently registered during local setup.
 
-```sh
-colima start --cpu 2 --memory 4 --disk 20
-export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
-export DOCKER_CONFIG="$(mktemp -d /tmp/conditioning-docker.XXXXXX)"
-printf '%s\n' '{"cliPluginsExtraDirs":["/opt/homebrew/lib/docker/cli-plugins"]}' > "$DOCKER_CONFIG/config.json"
-docker compose up --build -d
-```
+## Staff workflow
 
-The scripts share `scripts/common.sh` and respect those exported `DOCKER_HOST` and `DOCKER_CONFIG` values. This workaround leaves the existing registry credentials and Docker Desktop data untouched.
+1. **Prep & labels:** upload an Excel .xlsx or .xlsm workbook, inspect the detected worksheets and source warnings, and review the proposed rows. CSV and manual entry are also available.
+2. **Review physical groups:** each registration row represents one material/sample, test, and exact treatment text. Include every physical piece sent to conditioning, including extras. Split combined groups before registration. The importer retains source metadata and leaves ambiguous fields unresolved rather than inventing counts or material identities.
+3. **Register:** complete project, material, test, treatment, and specimen count. Registration creates the stack and its individually numbered specimens with permanent IDs. Repeating the same draft commit returns the existing registration. A repeated workbook upload with the same worksheet selection reuses its draft unless explicitly imported as a new batch.
+4. **Preview & print:** review the labels, then select an installed Mac printer queue. The default layout is 2 inches wide × 1 inch high, or 50.8 × 25.4 mm. Reprints preserve IDs. PDF/CSV exports remain available when the printer is unavailable.
+5. **Stack overview:** see ready specimens first, sort stacks by longest current time inside, and filter by room, status, project, material, test, or treatment. A partially ready stack shows exact ready/inside/finished counts.
+6. **Specimen records:** inspect the single ENTRY/EXIT pair and history for each numbered specimen. Download session CSV, audit CSV, or a printable conditioning report.
+7. **Transaction log:** amend a scan's selected specimen numbers, time, room, or optional notes; record a missed movement; or undo an eligible transaction. No supervisor login or mandatory reason is required. Original observations remain in the append-only audit history.
+8. **Backups:** create/download a checkpoint, configure daily snapshots and an additional copy destination, or validate a backup before explicitly restoring it.
 
-## Try the workflow
+Project numbers remain strings, preserving letters and leading zeroes. They are separate from generated specimen/stack IDs. Treatment wording is copied from the prep sheet; AR, 5L, UV, CH, or other wording describes separate groups of physical pieces, not repeated conditioning cycles for the same specimen.
 
-1. Open **Prepare specimens**. Enter rows manually or import [samples/prep-sheet.csv](samples/prep-sheet.csv), review them, then select **Register specimens**. Each row creates a fixed stack with numbered individual specimens. Project numbers are text: both `000000001234` and `UL-2026-001` are valid.
-2. Download label **PDF** or **CSV**. Labels contain readable project/material/test/preconditioning details and a versioned opaque specimen or stack ID. Reprints reuse the registered identities. Default stock is 54 × 25 mm; the minimum supported page is 40 × 25 mm. Print the PDF at actual size, or map the exported CSV fields in the chosen printer software. Printing normally happens on a staff PC.
-3. Open **Room station**, select the room station, and choose **IN**. Paste a registered QR code string and press Enter, or use a USB keyboard/HID scanner with an Enter suffix. Whole-stack mode applies a member scan to the complete registered group.
-4. Choose **OUT** to remove a stack. Before 24 hours, the system requires acknowledgement and records it. Select specimen mode for an exact partial movement. A mixed stack requires explicit specimen selection; the app never silently moves a guessed subset. Successful specimen movements return the interface to stack mode.
-5. Open **Specimen records** to inspect sessions, search/filter records, reprint identities, download audit CSV, or open the printable report. Open **Supervisor** for corrections and eligible undo. A reason is required; original audit events remain visible.
+Registration allows 1–500 specimens per stack; 20 is typical rather than a hard maximum. Workbook rows are proposals that require review, not proof of how a physical pile has been divided. Additional specimens are registered as a new group rather than appended to an existing stack.
 
-CSV input is UTF-8, with these exact headers:
+## Room scanner
 
-```csv
-project_number,material_ref,test_code,preconditioning_code,specimen_count
-000000001234,COTTON-A,ASTM-D5034,AR,20
-```
+Open **http://MACBOOK-HOSTNAME.local:8120/kiosk?station=shared-door** for a hosted station, or deploy the locally served Pi package described in the [scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md).
 
-Each row is one stack, with 1–500 specimens; uploads support up to 100 rows and must be below 2 MB. The sample file deliberately contains two materials with the same project/test/preconditioning and an alphanumeric project number. Importing a CSV creates ordinary records; only the explicit seed creates records marked DEMO. Commit retries reuse the same draft's identities, but deliberately importing a file as a new draft creates a new batch.
+The production station targets the **1280 × 720 landscape Touch Display 2** and Eyoyo EYH2 USB keyboard scanner. It needs no visible input box. Choose persistent IN or OUT and scan a Data Matrix: an ordinary whole-stack movement records automatically. There is no routine Submit step.
 
-The latest outline's outage behavior is implemented: **NOT AVAILABLE** disables movements and there is no offline queue. Green confirmation follows a confirmed database commit. If a response is lost, the UI preserves the request ID and reconciles/retries that same request, preventing duplicate movements. Routine IN/OUT requests are explicit rather than automatic second-scan toggles.
+- Whole-stack IN includes members awaiting their first entry; scanning any member identifies the stack.
+- Whole-stack OUT includes only members still inside. If 3 of 10 have left, the next whole-stack OUT moves the remaining 7.
+- Individual mode opens numbered checkboxes. Confirming that popup moves exactly those pieces, then returns to whole-stack mode.
+- An OUT before 24 hours opens an early-checkout popup. Override records the real removal and incomplete conditioning.
+- Undo last reverses the exact last transaction, with a brief confirmation. It restores all its affected specimens and retains both observations.
 
-## Room rules and audit meaning
+Green appears only after a confirmed database commit. Repeated IN/OUT scans preserve original timestamps; finished specimens do not start another conditioning period. A pending movement or undo is reconciled before accepting another scan. A failed backend health check shows **NOT AVAILABLE**, disables writes, and accepts no offline transactions.
+
+The readiness/result area and bottom controls remain visible; only the recent log scrolls in the main station view. Popup bodies can scroll while their action bars stay visible.
+
+## Data and conditioning rules
 
 | Station | Room | Temperature | Relative humidity | Required residence |
 | --- | --- | --- | --- | --- |
-| `ppe-door` | PPE | 23 °C ±3 °C | 65% ±5% | 24 hours |
-| `shared-door` | Shared | 23 °C ±1 °C | 65% ±2% | 24 hours |
-| `footwear-door` | Footwear | 21 °C ±3 °C | 50% ±5% | 24 hours |
+| shared-door | Shared | 23 °C ±1 °C | 65% ±2% | 24 hours |
+| ppe-door | PPE | 23 °C ±3 °C | 65% ±5% | 24 hours |
+| footwear-door | Footwear | 21 °C ±3 °C | 50% ±5% | 24 hours |
 
-Timestamps are stored in UTC and displayed in `America/New_York`. A new entry opens a new continuous conditioning session; gaps between sessions are not added together. Early removal is permitted only after acknowledgement. The elapsed time records residence; it does not measure room temperature/humidity or certify a test's environmental compliance.
+The app tracks the designated 24-hour room visit. It does not track a later four-hour post-oven step, laundry equipment, or other prep stages. Timestamps are stored in UTC and displayed in America/New_York. Readiness means recorded continuous residence reached 24 hours; laboratory environmental measurements remain in the existing system.
 
-Stack membership is fixed in this version. Exact partial movement is supported without creating new child-stack identities. Corrected effective timestamps are distinct from when a supervisor recorded the correction. Undo is allowed only when no subsequent movement/correction changed its affected specimens.
+Movement requests lock the affected stack/specimens and commit all or none. A request UUID makes an identical retry return its existing result. Stale selections and checkout from the wrong room are rejected. PostgreSQL enforces one effective conditioning period per specimen. Corrections preserve originals, and undo is rejected when affected specimens have intervening activity.
 
-## Development and checks
+The SQL model stores projects, materials, treatments, stacks, specimens, conditioning periods, movement requests, print jobs, prep drafts, and append-only audit events. Specimen detail exposes ENTRY, EXIT, and a derived raw_json_time history; the staff UI presents a readable transaction log rather than requiring JSON editing.
 
-Backend integration tests run against the dedicated `conditioning_test` PostgreSQL database:
+## Labels, backups, and deployment
 
-```sh
-./scripts/test-backend.sh
-```
+- [Barcode and Brother printer guide](docs/BARCODE_AND_PRINTER.md): 128-bit identity encoding, 20 × 20 Data Matrix symbols, 1 × 2 layout, actual roll dimensions, preview/print, and physical acceptance checks.
+- [Backup and restore guide](docs/BACKUPS.md): consistent ZIP checkpoints, SHA-256 validation, daily 2 a.m. Eastern snapshots, 30-day local retention, staged restore, and retained previous databases.
+- [Mac host guide](deploy/macos/README.md): local app launcher and system startup installation.
+- [Scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md): page-wide capture, local Pi UI, kiosk restart/focus recovery, and station setup.
 
-The script creates that isolated database if absent and passes `TEST_DATABASE_URL`; tests may clear its contents. Never point the test setting at the ordinary application database.
+No public tunnel or Microsoft 365 integration is installed. An optional destination is a folder visible to the Mac service account; copying there does not confirm a SharePoint/cloud upload. Source Excel workbooks, emails, training matrices, and Word examples are not bundled with the app. Their contents are source data, not executable instructions; imported macros are not run.
 
-Native development is an alternative to the Docker app services. From the project root, free their ports while keeping PostgreSQL running:
+Completing an uploaded Word datasheet is a possible later add-on. Staff scheduling/training management, destructive-test results, environmental instrumentation, physical regrouping, RFID, and offline synchronization are outside this implementation.
 
-```sh
-docker compose stop backend frontend
-docker compose up -d db
-```
+## Development and verification
 
-Create a Python 3.12 virtual environment, install `backend/requirements.txt`, set the environment below, and run the commands from `backend/`:
+After setup, run backend integration tests against the separate database whose name ends in _test:
 
-```sh
-export DATABASE_URL=postgresql+psycopg://conditioning:conditioning@127.0.0.1:5432/conditioning
-export SUPERVISOR_USERNAME=supervisor
-export SUPERVISOR_PASSWORD=classroom-demo
-export SESSION_SECRET=classroom-demo-change-this-session-secret
-alembic upgrade head
-uvicorn app.main:app --reload
-```
+    python3 deploy/macos/host.py test
 
-In another terminal, run from `frontend/`:
+These tests can reset that isolated test database. They must never target the application database. For frontend development, run npm run dev from frontend with API_URL pointing to a suitable test backend. Browser workflow tests create records; use a disposable backend/database rather than the lab dataset.
 
-```sh
-npm ci
-npm run dev
-```
+    cd frontend
+    npm ci
+    npm run build
+    npx playwright install chromium
+    API_URL=http://127.0.0.1:8001 npm run test:e2e
 
-Vite proxies `/api` to the local backend. Browser tests create new batches and movements. Use a separate database and backend so they do not add test records to the normal application. Prepare the database from the project root, then start the isolated backend from `backend/` in its own terminal:
+Native packaging and Pi watchdog tests do not open a browser or register services:
 
-```sh
-./scripts/prepare-browser-db.sh
-```
+    python3 -m unittest discover -s deploy/macos -p test_native.py
+    python3 -m unittest discover -s deploy/scanner-kiosk -p test_watchdog.py
 
-```sh
-export DATABASE_URL=postgresql+psycopg://conditioning:conditioning@127.0.0.1:5432/conditioning_browser_test
-export SUPERVISOR_USERNAME=supervisor
-export SUPERVISOR_PASSWORD=classroom-demo
-export SESSION_SECRET=classroom-demo-browser-session-secret
-alembic upgrade head
-uvicorn app.main:app --port 8001
-```
+Build the local Pi UI package after the frontend build:
 
-Stop any development Vite server on port 5173 first, then run these commands from `frontend/` in another terminal. Playwright starts its own Vite server with the API proxy targeting the isolated backend; it refuses to reuse an existing server:
+    python3 scripts/build-station.py
 
-```sh
-npm ci
-npx playwright install chromium
-API_URL=http://127.0.0.1:8001 npm run test:e2e
-npm run build
-```
+Build the Mac app again after final source/frontend changes:
 
-`PLAYWRIGHT_BASE_URL` can target an already-running frontend; use it only with a disposable test deployment. The separate browser database retains its test history when the test server exits.
+    python3 deploy/macos/build_app.py
 
-The integration checks cover fixed-stack movement, exact partial exits, mixed groups, early-exit acknowledgement, repeated-scan no-ops, stale previews, concurrent requests, idempotent retries, room consistency, supervisor corrections, protected audit history, and exported identity/history. The browser checks exercise the visible workflow and unavailable-server behavior. Physical scan speed, first-read accuracy, actual label stock/printer behavior, and Pi boot remain separate acceptance checks.
+Automated checks cover identity preservation, one-period movement, partial checkout, stale/concurrent requests, lost-response reconciliation, amendments/undo, audit history, label decoding, imports, exports, and backup validation. Software checks do not establish physical scan accuracy, stock adhesion, print readability, network behavior, or actual Pi/Mac cold-start recovery. Measure confirmed scan latency from the scanner's final Enter to visible confirmation against the outline's one-second target during hardware acceptance.
 
-Verified on October 2, 2026: all 18 backend tests passed inside Docker against PostgreSQL 18, and all 9 Chromium browser tests passed against the isolated browser database. A 20-specimen whole-stack scan reached visible database confirmation in 96 ms against the one-second target in the local browser test (Vite/native FastAPI with Docker PostgreSQL). All 21 rendered demo QR labels, including the stack header, decoded to their registered IDs. Printable report layout and a backup/restore into a new database were also checked. These timings and rendered-label checks do not substitute for physical scanner, printer, or Pi acceptance testing.
+Verified on October 22, 2026: **44 PostgreSQL integration tests, 15 real-API browser tests, 8 Mac packaging checks, and 13 Pi package/watchdog checks passed**. The compiled Pi package also passed a headless offline-start workflow. A 20-specimen scan took **213 ms from final Enter to visible green confirmation** on this development laptop. The native launcher and portable command-line checkpoint export were checked against the running host. These results do not establish physical printer/scanner performance or actual Mac/Pi cold-start behavior.
 
-For a database backup and a restore into a **new**, explicitly named database:
-
-```sh
-mkdir -p backups
-./scripts/backup.sh backups/conditioning-2026-10-02.dump
-./scripts/restore.sh backups/conditioning-2026-10-02.dump conditioning_restore_20261002
-```
-
-Backup refuses an existing output filename; restore refuses an existing target database and does not clean/drop anything. Restored data does not automatically replace the running application's database. Long-term retention requires scheduled backups and verified restore practices outside this classroom prototype.
-
-## Team interfaces and physical deployment
-
-| Component | Responsibility | Boundary |
-| --- | --- | --- |
-| Label preparation | Review/import prep rows; register identities; produce PDF/CSV labels | Uses registered backend IDs; never invents new identities during reprint |
-| Backend | PostgreSQL sessions, transactions, idempotency, corrections, audit exports | FastAPI `/api`, documented at `/docs` |
-| Frontend | Room station, preparation, records, supervisor UI | Same-origin `/api`; confirms committed results and manages unknown outcomes |
-| Physical station | Scanner, touchscreen, Pi mounting, power/boot | HID scanner with Enter suffix; local compiled UI plus central API proxy |
-
-See [deploy/pi/README.md](deploy/pi/README.md) for Raspberry Pi OS Desktop/labwc provisioning. The local nginx server starts even when the central API/DNS is unavailable; a monitored Chromium service opens the station UI after graphical login and restarts the browser after a crash.
-
-The unspecified old DYMO model has not been verified, so this version supplies printer-independent label PDF/CSV rather than a hardware driver. PDF prep-sheet extraction, RFID, automatic doorway detection, stack regrouping, institutional identity integration, environmental sensors, and writing back to Word project sheets are outside the current prototype. Institutional deployment and the memo's physical accuracy/retention targets still need validation.
-
-The PostgreSQL 18 volume location follows the [official Docker image's PGDATA guidance](https://hub.docker.com/_/postgres). Pi graphical startup follows [Raspberry Pi's official kiosk tutorial](https://www.raspberrypi.com/tutorials/how-to-use-a-raspberry-pi-in-kiosk-mode/), with this project's local UI and supervised restart additions.
+The older Docker Compose files and scripts remain for legacy development. They are not the primary Mac deployment documented here, and old prototype payloads or supervisor workflows should not be used as the current specification.

@@ -58,7 +58,7 @@ def test_scan_any_member_whole_stack_repeat_and_retry(client, stack_factory):
     assert client.get("/api/movement-requests/" + str(uuid4())).status_code == 404
 
 
-def test_partial_early_exit_mixed_selection_and_reentry(client, stack_factory):
+def test_partial_early_exit_remaining_stack_and_no_reentry(client, stack_factory):
     stack = stack_factory()
     initial, _ = move(client, stack)
     selected = [p["id"] for p in stack["specimens"][:3]]
@@ -72,12 +72,13 @@ def test_partial_early_exit_mixed_selection_and_reentry(client, stack_factory):
     assert [p["number"] for p in after["specimens"] if p["state"] == "OUT"] == [1, 2, 3]
     assert all(p["sessions"][0]["incomplete"] and p["sessions"][0]["early_exit_acknowledged"] for p in after["specimens"][:3])
     mixed, _ = move(client, stack, "OUT")
-    assert mixed["status"] == "selection_required"
-    rejected, _ = move(client, stack, "IN", "selection", selected_specimen_ids=[selected[0], stack["specimens"][3]["id"]], expected_version=after["version"])
-    assert rejected["status"] == "rejected" and detail(client, stack)["version"] == after["version"]
+    assert mixed["status"] == "acknowledgment_required" and len(mixed["specimens"]) == 17
+    remaining, _ = move(client, stack, "OUT", expected_version=mixed["version"], acknowledge_early=True)
+    assert remaining["status"] == "committed" and remaining["affected_count"] == 17
+    after = detail(client, stack)
     reentry, _ = move(client, stack, "IN", "selection", selected_specimen_ids=selected, expected_version=after["version"])
-    assert reentry["status"] == "committed"
-    assert all(len(p["sessions"]) == 2 for p in detail(client, stack)["specimens"][:3])
+    assert reentry["status"] == "already_recorded"
+    assert all(len(p["sessions"]) == 1 for p in detail(client, stack)["specimens"])
 
 
 def test_concurrent_and_stale_selection_are_atomic(client, stack_factory):
@@ -146,7 +147,7 @@ def test_corrections_auth_history_and_undo_guard(client, stack_factory, supervis
     assert detail(client, stack)["specimens"][1]["state"] == "IN"
     assert next(e for e in detail(client, stack)["events"] if e["id"] == out["event_id"])["undone"]
     client.post("/api/auth/logout")
-    assert client.post("/api/corrections", json={"kind": "undo", "event_id": out["event_id"], "reason": "Unauthorized"}).status_code == 401
+    assert client.post("/api/corrections", json={"kind": "undo", "event_id": out["event_id"]}).status_code == 409
 
 
 def test_missed_session_recorded_time_overlap_and_future_rejection(client, stack_factory, supervisor):

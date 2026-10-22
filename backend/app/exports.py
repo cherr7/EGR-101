@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from reportlab.lib.utils import ImageReader
@@ -20,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_db
+from .barcodes import datamatrix_image, id_payload
 from .models import AuditEvent, Stack
 from .services import stack_detail
 
@@ -71,9 +71,11 @@ def _label_rows(detail: dict, include_header: bool) -> list[dict]:
     base.update(stack_id=detail["id"], specimen_count=len(detail["specimens"]))
     rows = []
     if include_header:
-        rows.append({**base, "label_kind": "STACK", "qr_payload": f'UL1:S:{detail["id"]}',
+        rows.append({**base, "label_kind": "STACK", "barcode_payload": id_payload(detail["id"]),
+                     "barcode_format": "DataMatrix", "identifier": detail["id"],
                      "specimen_id": "", "specimen_number": ""})
-    rows.extend({**base, "label_kind": "SPECIMEN", "qr_payload": f'UL1:P:{specimen["id"]}',
+    rows.extend({**base, "label_kind": "SPECIMEN", "barcode_payload": id_payload(specimen["id"]),
+                 "barcode_format": "DataMatrix", "identifier": specimen["id"],
                  "specimen_id": specimen["id"], "specimen_number": specimen["number"]}
                 for specimen in detail["specimens"])
     return rows
@@ -102,26 +104,27 @@ def _fit_line(pdf: canvas.Canvas, text: str, x: float, y: float, width: float, f
     pdf.drawString(x, y, text)
 
 
-def labels_pdf(detail: dict, width_mm: float, height_mm: float, include_header: bool) -> bytes:
+def labels_pdf(detail: dict | list[dict], width_mm: float = 50.8,
+               height_mm: float = 25.4, include_header: bool = False) -> bytes:
     stream = io.BytesIO()
     width, height = width_mm * MM, height_mm * MM
     pdf = canvas.Canvas(stream, pagesize=(width, height))
     pdf.setTitle("Fabric Conditioning Tracker - labels")
     font = _font()
-    for row in _label_rows(detail, include_header):
-        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=4, box_size=10)
-        qr.add_data(row["qr_payload"])
-        qr.make(fit=True)
-        image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-        qr_size = min(21 * MM, height - 4 * MM, width * .42)
-        pdf.drawImage(ImageReader(image), 2 * MM, (height - qr_size) / 2,
-                      width=qr_size, height=qr_size, preserveAspectRatio=True)
-        x = qr_size + 3 * MM
+    details = detail if isinstance(detail, list) else [detail]
+    rows = [row for item in details for row in _label_rows(item, include_header)]
+    for row in rows:
+        image = datamatrix_image(row["barcode_payload"]).convert("RGB")
+        code_size = min(18.6 * MM, height - 4 * MM, width * .39)
+        pdf.drawImage(ImageReader(image), 1.7 * MM, (height - code_size) / 2,
+                      width=code_size, height=code_size, preserveAspectRatio=True,
+                      mask="auto")
+        x = code_size + 3 * MM
         text_width = width - x - 2 * MM
         ordinal = "STACK / ALL" if row["label_kind"] == "STACK" else f'Piece {row["specimen_number"]} / {row["specimen_count"]}'
-        lines = [row["project_number"], row["material_ref"],
-                 f'{row["test_code"]} | {row["preconditioning_code"]}', ordinal,
-                 row["qr_payload"].split(":")[-1][:8], "DEMO" if row["is_demo"] else ""]
+        lines = [row["project_number"], row["material_ref"], row["test_code"],
+                 row["preconditioning_code"], ordinal,
+                 ("DEMO " if row["is_demo"] else "") + row["identifier"][:8]]
         line_gap = min(9, (height - 5 * MM) / 6)
         y = height / 2 + 2.5 * line_gap
         for line in lines:
@@ -133,8 +136,8 @@ def labels_pdf(detail: dict, width_mm: float, height_mm: float, include_header: 
 
 
 @router.get("/stacks/{stack_id}/labels.pdf")
-def label_pdf(stack_id: str, width_mm: float = Query(54, ge=40, le=150),
-              height_mm: float = Query(25, ge=25, le=150), include_header: bool = True,
+def label_pdf(stack_id: str, width_mm: float = Query(50.8, ge=40, le=150),
+              height_mm: float = Query(25.4, ge=25, le=150), include_header: bool = False,
               db: Session = Depends(get_db)):
     detail = stack_detail(db, _stack(db, stack_id))
     return Response(labels_pdf(detail, width_mm, height_mm, include_header), media_type="application/pdf",
@@ -142,9 +145,9 @@ def label_pdf(stack_id: str, width_mm: float = Query(54, ge=40, le=150),
 
 
 @router.get("/stacks/{stack_id}/labels.csv")
-def label_csv(stack_id: str, include_header: bool = True, db: Session = Depends(get_db)):
+def label_csv(stack_id: str, include_header: bool = False, db: Session = Depends(get_db)):
     detail = stack_detail(db, _stack(db, stack_id))
-    headers = ["label_kind", "qr_payload", "stack_id", "specimen_id", "project_number", "material_ref",
+    headers = ["label_kind", "barcode_format", "barcode_payload", "stack_id", "specimen_id", "project_number", "material_ref",
                "test_code", "preconditioning_code", "specimen_number", "specimen_count", "is_demo"]
     return _csv_response(headers, _label_rows(detail, include_header), f"labels-{stack_id}.csv")
 

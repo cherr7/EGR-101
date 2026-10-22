@@ -1,133 +1,96 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, codeFor, elapsed, formatTime, post, requestId } from './api'
-import type { Config, Movement, MovementResult, Stack } from './types'
-import { ErrorNotice, Modal, PageHeader } from './App'
+import { api, ApiError, elapsed, entryOf, exitOf, formatTime, isReady, post, requestId } from './api'
+import type { AuditEvent, Config, Movement, MovementResult, Stack } from './types'
+import { Modal } from './App'
+import { attachScanner } from './scannerCapture'
 
-const PENDING_KEY = 'fabric-tracker.pending-movement.v1'
-function readPending(): Movement | null {
-  try { return JSON.parse(localStorage.getItem(PENDING_KEY) || 'null') as Movement | null } catch { return null }
-}
-
+const PENDING_KEY = 'fabric-tracker.pending-movement.v2', LAST_KEY = 'fabric-tracker.last-movement.v2', UNDO_KEY = 'fabric-tracker.pending-undo.v1'
+function stored<T>(key: string): T | null { try { return JSON.parse(localStorage.getItem(key) || 'null') as T | null } catch { return null } }
+type Last = { event_id: string; direction: string; count: number; stack_id: string; version?: number }
+type PendingUndo = Last & { body: { expected_version?: number }; submitted_at: string }
+type Selection = { stack: Stack; code: string; direction: 'IN' | 'OUT'; ids: string[] }
+type Acknowledgment = { stack: Stack; request: Movement; result: MovementResult }
 export default function Kiosk({ config, healthy }: { config: Config; healthy: boolean }) {
-  const [station, setStation] = useState(() => localStorage.getItem('fabric-tracker.station') || 'shared-door')
-  const [direction, setDirection] = useState<'IN' | 'OUT'>('IN')
-  const [scope, setScope] = useState<'stack' | 'specimen'>('stack')
-  const [input, setInput] = useState('')
-  const [detail, setDetail] = useState<Stack | null>(null)
-  const [stackList, setStackList] = useState<Stack[]>([])
-  const [simulatedStack, setSimulatedStack] = useState('')
-  const [simulatedSpecimen, setSimulatedSpecimen] = useState('')
-  const [error, setError] = useState('')
-  const [result, setResult] = useState<MovementResult | null>(null)
-  const [resultDirection, setResultDirection] = useState<'IN' | 'OUT'>('IN')
-  const [busy, setBusy] = useState(false)
-  const [pending, setPending] = useState<Movement | null>(readPending)
-  const [selection, setSelection] = useState<{ stack: Stack; code: string; direction: 'IN' | 'OUT'; ids: string[] } | null>(null)
-  const [acknowledge, setAcknowledge] = useState<{ request: Movement; stack: Stack; result: MovementResult } | null>(null)
-  const [latency, setLatency] = useState<number | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const inFlight = useRef(false)
-  const active = useRef(true)
-  useEffect(() => { active.current = true; inputRef.current?.focus(); return () => { active.current = false } }, [])
-  useEffect(() => { if (healthy && !readPending() && !selection && !acknowledge) requestAnimationFrame(() => inputRef.current?.focus()) }, [healthy])
-  useEffect(() => { if (config.stations.length && !config.stations.some(s => s.id === station)) setStation(config.stations.find(s => s.id === 'shared-door')?.id || config.stations[0].id) }, [config.stations, station])
-  useEffect(() => { localStorage.setItem('fabric-tracker.station', station) }, [station])
-  const focusScan = () => requestAnimationFrame(() => inputRef.current?.focus())
+  const stationConfig = (window as unknown as { fabricStationConfig?: { stationId?: string; fixed?: boolean; stationName?: string; roomId?: string; roomName?: string } }).fabricStationConfig
+  const [station, setStation] = useState(() => stationConfig?.stationId || new URLSearchParams(location.search).get('station') || localStorage.getItem('fabric-tracker.station') || 'shared-door')
+  const [direction, setDirection] = useState<'IN' | 'OUT'>(() => localStorage.getItem('fabric-tracker.direction') === 'OUT' ? 'OUT' : 'IN')
+  const [scope, setScope] = useState<'stack' | 'specimen'>('stack'), [busy, setBusy] = useState(false), [pending, setPending] = useState<Movement | null>(() => stored<Movement>(PENDING_KEY))
+  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => stored<PendingUndo>(UNDO_KEY)), [undoMessage, setUndoMessage] = useState('')
+  const [selection, setSelection] = useState<Selection | null>(null), [acknowledge, setAcknowledge] = useState<Acknowledgment | null>(null), [undoing, setUndoing] = useState(false)
+  const [detail, setDetail] = useState<Stack | null>(null), [events, setEvents] = useState<AuditEvent[]>([]), [last, setLast] = useState<Last | null>(() => stored<Last>(LAST_KEY))
+  const [result, setResult] = useState<MovementResult | null>(null), [resultDirection, setResultDirection] = useState<'IN' | 'OUT'>('IN'), [green, setGreen] = useState(false), [error, setError] = useState(''), [focused, setFocused] = useState(document.hasFocus()), [latency, setLatency] = useState<number | null>(null)
+  const inFlight = useRef(false), active = useRef(true), greenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), historyRef = useRef<HTMLDivElement>(null)
   const room = config.rooms.find(r => r.id === config.stations.find(s => s.id === station)?.room_id)
-  const refreshList = useCallback(async () => {
-    try { const value = await api<{ items: Stack[] }>('/stacks'); if (active.current) { setStackList(value.items); setSimulatedStack(old => old || value.items[0]?.id || '') } } catch { /* Health status owns availability. */ }
-  }, [])
-  useEffect(() => { if (healthy) void refreshList() }, [healthy, refreshList])
-  useEffect(() => {
-    if (!simulatedStack || !healthy) return
-    let alive = true
-    void api<Stack>(`/stacks/${simulatedStack}`).then(value => { if (alive) { setStackList(old => old.map(s => s.id === value.id ? value : s)); setSimulatedSpecimen(value.specimens[0]?.id || '') } }).catch(() => {})
-    return () => { alive = false }
-  }, [simulatedStack, healthy])
-  const acceptResult = useCallback(async (value: MovementResult, request: Movement, loaded?: Stack) => {
-    localStorage.removeItem(PENDING_KEY); setPending(null); setResult(value); setResultDirection(request.direction); setStation(request.station_id); setError('')
+  const blocked = busy || !!pendingUndo || !!pending || !!selection || !!acknowledge || undoing
+  useEffect(() => { active.current = true; return () => { active.current = false; clearTimeout(greenTimer.current) } }, [])
+  useEffect(() => { if (config.stations.length && !config.stations.some(s => s.id === station)) setStation(config.stations.find(s => s.id === 'shared-door')?.id || config.stations[0].id) }, [config.stations, station])
+  useEffect(() => { localStorage.setItem('fabric-tracker.station', station) }, [station]); useEffect(() => { localStorage.setItem('fabric-tracker.direction', direction) }, [direction])
+  const refreshEvents = useCallback(async () => { try { const value = await api<{ items: AuditEvent[] }>('/events?limit=80'); if (active.current) setEvents(value.items) } catch { /* Health owns availability; never invent a successful scan. */ } }, [])
+  useEffect(() => { if (healthy) void refreshEvents() }, [healthy, refreshEvents])
+  const accept = useCallback(async (value: MovementResult, request: Movement, loaded?: Stack) => {
+    localStorage.removeItem(PENDING_KEY); setPending(null); setResult(value); setResultDirection(request.direction); setError('')
     let current = loaded
-    if ((!current || value.status === 'committed' || value.status === 'already_recorded' || value.status === 'rejected') && value.stack_id) {
-      try { current = await api<Stack>(`/stacks/${value.stack_id}`) } catch { /* Result is already confirmed. */ }
-    }
+    if (value.stack_id) try { current = await api<Stack>(`/stacks/${value.stack_id}`) } catch { /* The movement response itself is authoritative. */ }
     if (!active.current) return
     if (current) setDetail(current)
-    if (value.status === 'selection_required' && current) {
-      setSelection({ stack: current, code: request.code, direction: request.direction, ids: [] }); setAcknowledge(null)
-    } else if (value.status === 'acknowledgment_required' && current) {
-      setAcknowledge({ request, stack: current, result: value }); setSelection(null)
-    } else {
-      setSelection(null); setAcknowledge(null)
-      if (value.status === 'committed' || value.status === 'already_recorded') { setScope('stack'); setInput(''); void refreshList(); setTimeout(() => inputRef.current?.focus(), 50) }
-      if (value.status === 'rejected') setError(value.message)
-    }
-  }, [refreshList])
+    if (value.status === 'selection_required' && current) { setSelection({ stack: current, code: request.code, direction: request.direction, ids: [] }); setAcknowledge(null) }
+    else if (value.status === 'acknowledgment_required' && current) { setAcknowledge({ request, stack: current, result: value }); setSelection(null) }
+    else { setSelection(null); setAcknowledge(null); if (value.status === 'committed') { const transaction = value.event_id ? { event_id: value.event_id, direction: request.direction, count: value.affected_count, stack_id: value.stack_id, version: value.version } : null; setLast(transaction); if (transaction) localStorage.setItem(LAST_KEY, JSON.stringify(transaction)); setScope('stack'); setGreen(true); clearTimeout(greenTimer.current); greenTimer.current = setTimeout(() => { if (active.current) { setGreen(false); setResult(null) } }, 3000); void refreshEvents() } else if (value.status === 'already_recorded') { setScope('stack'); clearTimeout(greenTimer.current); greenTimer.current = setTimeout(() => { if (active.current) setResult(null) }, 3000) } else if (value.status === 'rejected') setError(value.message) }
+  }, [refreshEvents])
   async function submit(request: Movement, loaded?: Stack) {
-    if (inFlight.current || !healthy || pending) return
-    inFlight.current = true; setBusy(true); setError(''); setResult(null); setLatency(null)
-    // This is a single unresolved submitted transaction, never an offline queue.
-    // Persist before the request so a reload can reconcile the same identity.
-    localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request)
+    if (inFlight.current || !healthy || stored<Movement>(PENDING_KEY) || stored<PendingUndo>(UNDO_KEY)) return
+    inFlight.current = true; setBusy(true); setGreen(false); setUndoMessage(''); setError(''); setResult(null); setLatency(null)
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); setError('This browser cannot preserve a pending request. Enable local storage before scanning.'); return }
     const start = performance.now()
-    try {
-      const value = await post<MovementResult>('/movements', request)
-      if (active.current) { setLatency(Math.round(performance.now() - start)); await acceptResult(value, request, loaded) }
-    } catch (err) {
-      if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); setError(err.message); if (loaded) void api<Stack>(`/stacks/${loaded.id}`).then(setDetail).catch(() => {}) }
-      else setError('The response was interrupted. Checking this same request before accepting another scan.')
-    } finally { inFlight.current = false; if (active.current) setBusy(false) }
-  }
-  const recover = useCallback(async () => {
-    const request = readPending()
-    if (!request || !healthy || inFlight.current) return
-    inFlight.current = true; setBusy(true)
-    try {
-      let value: MovementResult
-      try { value = await api<MovementResult>(`/movement-requests/${request.request_id}`, {}, 4500) }
-      catch (err) {
-        if (err instanceof ApiError && err.status === 404) value = await post<MovementResult>('/movements', request)
-        else throw err
-      }
-      if (active.current) await acceptResult(value, request)
-    } catch { if (active.current) setError('Confirmation is still pending. Keep this station open; it will retry the same request when connected.') }
+    try { const value = await post<MovementResult>('/movements', request); if (active.current) { setLatency(Math.round(performance.now() - start)); await accept(value, request, loaded) } }
+    catch (err) { if (!active.current) return; if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); setError(err.message) } else setError('Response interrupted. This same request must be confirmed before another scan.') }
     finally { inFlight.current = false; if (active.current) setBusy(false) }
-  }, [healthy, acceptResult])
-  useEffect(() => {
-    if (!pending || !healthy) return
-    void recover()
-    const timer = setInterval(() => void recover(), 5000)
-    return () => clearInterval(timer)
-  }, [pending, healthy, recover])
-  async function scan(code: string) {
-    if (!healthy || busy || pending || selection || acknowledge || !code.trim()) return
-    setBusy(true); setError(''); setResult(null)
-    try {
-      const stack = await post<Stack>('/lookup', { code: code.trim() }); setDetail(stack)
-      if (scope === 'specimen' && !stack.scanned_specimen_id) { setSelection({ stack, code: code.trim(), direction, ids: [] }); return }
-      setBusy(false)
-      await submit({ request_id: requestId(), station_id: station, code: code.trim(), direction, scope, expected_version: stack.version }, stack)
-    } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
   }
-  const simulated = stackList.find(s => s.id === simulatedStack)
-  const selectedEarly = acknowledge ? acknowledge.stack.specimens.filter(s => acknowledge.request.scope === 'stack' || acknowledge.request.selected_specimen_ids?.includes(s.id) || (acknowledge.request.scope === 'specimen' && codeFor(s.id) === acknowledge.request.code)).filter(s => s.state === 'IN' && s.due_at && Date.parse(s.due_at) > Date.now()) : []
-  return <>
-    <PageHeader eyebrow="ROOM STATION" title="Every specimen, accounted for." description="Scan any member to move its stack. Select individual specimens when only part of a stack moves."><span className="badge prototype">LIVE SCAN WORKFLOW</span></PageHeader>
-    <div className="kiosk-grid">
-      <section className="card station-card"><div className="room-heading"><div><div className="eyebrow">CURRENT STATION</div><label className="station-select"><span className="sr-only">Station</span><select value={station} disabled={busy || !!pending || !!selection || !!acknowledge} onChange={e => { setStation(e.target.value); focusScan() }}>{config.stations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><p>{room?.name || 'Waiting for room configuration'}</p></div><span className="room-symbol">↔</span></div>
-        <div className="room-conditions"><div><b>{room?.temperature_c ?? '—'}<small>{room?.temperature_tolerance_c !== undefined && `±${room.temperature_tolerance_c}`}°C</small></b><span>Temperature</span></div><div><b>{room?.relative_humidity ?? '—'}<small>{room?.humidity_tolerance !== undefined && `±${room.humidity_tolerance}`} %</small></b><span>Relative humidity</span></div><div><b>{room?.required_hours ?? 24}<small>h</small></b><span>Continuous conditioning</span></div></div>
-        <div className="control-label"><span>01</span> Movement direction</div><div className="direction-buttons"><button aria-pressed={direction === 'IN'} className={direction === 'IN' ? 'selected in' : ''} disabled={busy || !!pending} aria-label="IN" onClick={() => { setDirection('IN'); focusScan() }}><span>↘</span><strong>IN</strong><small>Begin conditioning</small></button><button aria-pressed={direction === 'OUT'} className={direction === 'OUT' ? 'selected out' : ''} disabled={busy || !!pending} aria-label="OUT" onClick={() => { setDirection('OUT'); focusScan() }}><span>↗</span><strong>OUT</strong><small>Remove specimens</small></button></div>
-        <div className="control-label"><span>02</span> What is moving?</div><div className="segmented"><button className={scope === 'stack' ? 'active' : ''} aria-pressed={scope === 'stack'} disabled={busy || !!pending} onClick={() => { setScope('stack'); focusScan() }}>▦ Whole stack</button><button className={scope === 'specimen' ? 'active' : ''} aria-pressed={scope === 'specimen'} disabled={busy || !!pending} onClick={() => { setScope('specimen'); focusScan() }}>◻ Individual specimens</button></div>
-        <div className="scan-box"><div className="control-label"><span>03</span> Scan a specimen label</div><form onSubmit={e => { e.preventDefault(); void scan(input) }}><span className="scan-symbol">▥</span><input ref={inputRef} aria-label="Scan code" value={input} onChange={e => setInput(e.target.value)} disabled={!healthy || busy || !!pending} placeholder="Scan QR code or paste its ID…" autoComplete="off" spellCheck={false} /><button className="button primary" disabled={!healthy || busy || !!pending || !input.trim()}>{busy ? 'Checking…' : 'Scan →'}</button></form><p>USB scanner: keep this field focused and scan. The scanner sends Enter.</p></div>
-        <ErrorNotice message={error} />
-        {pending && <div className="notice warning" role="status"><strong>Awaiting database confirmation.</strong> This request is being reconciled. Another scan will be available once its outcome is known.<button className="button text" disabled={!healthy || busy} onClick={() => void recover()}>Check confirmation</button></div>}
-        {result && !pending && <div className={`scan-result ${result.status === 'committed' ? 'success' : result.status === 'already_recorded' ? 'neutral' : 'warning'}`} role="status"><span>{result.status === 'committed' ? '✓' : result.status === 'already_recorded' ? '↺' : '!'}</span><div><strong>{result.status === 'committed' ? `${resultDirection} confirmed · ${result.affected_count} specimens` : result.status === 'already_recorded' ? 'Already recorded' : result.status === 'selection_required' ? 'Choose the exact specimens' : result.status === 'acknowledgment_required' ? 'Conditioning time is incomplete' : 'Movement rejected'}</strong><p>{result.message}</p>{result.recorded_at && <small>{formatTime(result.recorded_at)} ET{latency !== null ? ` · Confirmed in ${latency} ms` : ''}</small>}</div></div>}
-      </section>
-      <div className="kiosk-aside"><section className="card simulator"><div className="card-heading"><div><span className="badge muted">DEMO TOOL</span><h2>Scanner simulator</h2><p>Try the workflow with a registered label.</p></div><span className="mini-icon">⌁</span></div><label>Stack<select aria-label="Simulator stack" value={simulatedStack} disabled={busy || !!pending} onChange={e => setSimulatedStack(e.target.value)}><option value="">Select a registered stack</option>{stackList.map(s => <option key={s.id} value={s.id}>{s.project_number} · {s.material_ref} · {s.test_code}{s.is_demo ? ' [DEMO]' : ''}</option>)}</select></label><label>Specimen<select aria-label="Simulator specimen" value={simulatedSpecimen} disabled={busy || !!pending} onChange={e => setSimulatedSpecimen(e.target.value)}>{simulated?.specimens?.map(s => <option key={s.id} value={s.id}>Specimen {String(s.number).padStart(2, '0')} · {s.state}</option>)}</select></label><button className="button secondary full" disabled={!healthy || busy || !!pending || !simulatedSpecimen} onClick={() => { const code = codeFor(simulatedSpecimen); setInput(code); void scan(code) }}>Simulate specimen scan →</button><button className="button text full" disabled={!healthy || busy || !!pending || !simulatedStack} onClick={() => { const code = codeFor(simulatedStack, true); setInput(code); void scan(code) }}>Scan stack header instead</button><p className="input-help">Simulator scans use the same database transactions as a physical scanner.</p></section>
-        <section className="quiet-card"><div className="eyebrow">AT A GLANCE</div><h3>One scan can move a whole stack.</h3><p>The scanned label identifies the group. A green confirmation means the database has recorded every affected specimen.</p><div className="legend"><span className="status-dot in" /> In room <span className="status-dot out" /> Out of room</div></section>
-      </div>
-    </div>
-    {detail && <section className="card stack-card"><div className="card-heading"><div><div className="eyebrow">LAST SCANNED STACK {detail.is_demo && '· DEMO'}</div><h2>{detail.project_number} <span className="subtle">/</span> {detail.material_ref}</h2><p>{detail.test_code} · {detail.preconditioning_code} · {detail.specimens.length} specimens · Fixed membership</p></div><button className="button secondary" disabled={!healthy || busy || !!pending || !!selection || !!acknowledge} onClick={() => setSelection({ stack: detail, code: codeFor(detail.id, true), direction, ids: [] })}>Choose specimens</button></div><div className="specimen-grid">{detail.specimens.map(s => <div key={s.id} className={`specimen-tile ${s.state === 'IN' ? 'in' : ''}`}><b>{String(s.number).padStart(2, '0')}</b><span>{s.state === 'IN' ? 'IN ROOM' : 'OUT'}</span><small>{s.state === 'IN' ? elapsed(s.entered_at) : '—'}</small></div>)}</div></section>}
-    {selection && <Modal title="Select the specimens moving" onClose={() => { setSelection(null); focusScan() }}><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref}. Choose exactly which specimens to move <strong>{selection.direction}</strong>. Mixed stacks always require an explicit selection.</p><div className="selection-grid">{selection.stack.specimens.map(s => <label key={s.id} className={`selection-tile ${selection.ids.includes(s.id) ? 'selected' : ''}`}><input type="checkbox" checked={selection.ids.includes(s.id)} onChange={e => setSelection(old => old ? { ...old, ids: e.target.checked ? [...old.ids, s.id] : old.ids.filter(id => id !== s.id) } : null)} /><b>{String(s.number).padStart(2, '0')}</b><small>{s.state} {s.state === 'IN' ? elapsed(s.entered_at) : ''}</small></label>)}</div><div className="modal-actions"><span>{selection.ids.length} selected</span><button className="button secondary" onClick={() => setSelection(null)}>Cancel</button><button className="button primary" disabled={!healthy || busy || !!pending || selection.ids.length === 0} onClick={() => { const chosen = selection; void submit({ request_id: requestId(), station_id: station, code: chosen.code, direction: chosen.direction, scope: 'selection', selected_specimen_ids: chosen.ids, expected_version: chosen.stack.version }, chosen.stack) }}>Confirm {selection.direction}</button></div></Modal>}
-    {acknowledge && <Modal title="Conditioning is not complete" onClose={() => { setAcknowledge(null); focusScan() }}><div className="notice warning">These specimens have not completed the required continuous conditioning period. Removing them records an incomplete session.</div><div className="early-list">{selectedEarly.length ? selectedEarly.map(s => <div key={s.id}><strong>Specimen {String(s.number).padStart(2, '0')}</strong><span>{elapsed(s.entered_at)} of {room?.required_hours || 24}h</span></div>) : <p>{acknowledge.result.message}</p>}</div><p className="modal-intro">Your acknowledgment will be saved in the audit history.</p><div className="modal-actions"><button className="button secondary" onClick={() => setAcknowledge(null)}>Keep in room</button><button className="button danger" disabled={!healthy || busy || !!pending} onClick={() => { const value = acknowledge; void submit({ ...value.request, request_id: requestId(), acknowledge_early: true }, value.stack) }}>Acknowledge & record OUT</button></div></Modal>}
-  </>
+  const recover = useCallback(async () => { const request = stored<Movement>(PENDING_KEY); if (!request || !healthy || inFlight.current) return; inFlight.current = true; setBusy(true); try { let value: MovementResult; try { value = await api<MovementResult>(`/movement-requests/${request.request_id}`, {}, 4500) } catch (err) { if (err instanceof ApiError && err.status === 404) value = await post<MovementResult>('/movements', request); else throw err } if (active.current) await accept(value, request) } catch { if (active.current) setError('Confirmation pending. The same request will be checked again when connected.') } finally { inFlight.current = false; if (active.current) setBusy(false) } }, [healthy, accept])
+  useEffect(() => { if (!pending || !healthy) return; void recover(); const timer = setInterval(() => void recover(), 5000); return () => clearInterval(timer) }, [pending, healthy, recover])
+  async function scan(code: string) {
+    if (!healthy || blocked || inFlight.current) return
+    inFlight.current = true; setBusy(true); setError(''); setUndoMessage(''); setResult(null); setGreen(false)
+    try { const stack = await post<Stack>('/lookup', { code }); if (!active.current) return; setDetail(stack); if (scope === 'specimen') { const scanned = stack.specimens.find(s => s.id === stack.scanned_specimen_id); const eligible = scanned && (direction === 'IN' ? !entryOf(scanned) : scanned.state === 'IN'); setSelection({ stack, code, direction, ids: eligible ? [scanned!.id] : [] }); return } inFlight.current = false; await submit({ request_id: requestId(), station_id: station, code, direction, scope: 'stack', expected_version: stack.version }, stack) }
+    catch (err) { if (active.current) setError((err as Error).message) } finally { inFlight.current = false; if (active.current) setBusy(false) }
+  }
+  const scanRef = useRef(scan), stateRef = useRef({ healthy, blocked }); scanRef.current = scan; stateRef.current = { healthy, blocked }
+  useEffect(() => { const dispose = attachScanner({ enabled: () => stateRef.current.healthy && !stateRef.current.blocked && !inFlight.current, onScan: code => void scanRef.current(code), onReject: message => { if (!stateRef.current.blocked) setError(message) }, onBlocked: () => { /* Reject scans while a popup or pending transaction is open; never queue them. */ }, onFocusChange: () => setFocused(document.hasFocus() && !document.hidden) }); (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady = true; return () => { dispose(); (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady = false } }, [])
+  const finishUndo = useCallback(async (intent: PendingUndo) => {
+    localStorage.removeItem(UNDO_KEY); localStorage.removeItem(LAST_KEY); setPendingUndo(null); setLast(null); setUndoing(false); setGreen(false); setResult(null); setError(''); setUndoMessage(`Undo confirmed · ${intent.count} specimens restored.`)
+    try { const stack = await api<Stack>(`/stacks/${intent.stack_id}`); if (active.current) setDetail(stack) } catch { /* The undo response or persisted audit event already confirmed the operation. */ }
+    void refreshEvents()
+  }, [refreshEvents])
+  const undoStatus = async (intent: PendingUndo) => { const value = await api<{ items: AuditEvent[] }>(`/transactions?stack_id=${encodeURIComponent(intent.stack_id)}`, {}, 4500); const target = value.items.find(event => event.id === intent.event_id); if (!target) throw new ApiError(404, 'The original transaction could not be found.'); return target }
+  const reconcileUndo = useCallback(async () => {
+    const intent = stored<PendingUndo>(UNDO_KEY); if (!intent || !healthy || inFlight.current) return
+    inFlight.current = true; setBusy(true)
+    const reject = (message: string) => { localStorage.removeItem(UNDO_KEY); setPendingUndo(null); setUndoing(false); setError(message) }
+    try {
+      const status = await undoStatus(intent)
+      if (status.undone) { await finishUndo(intent); return }
+      if (status.can_undo === false) { reject('Undo was not applied: a specimen has intervening activity. Review the transaction log.'); return }
+      await post(`/transactions/${intent.event_id}/undo`, intent.body)
+      if (active.current) await finishUndo(intent)
+    } catch (err) {
+      if (!active.current) return
+      if (err instanceof ApiError && err.status < 500) {
+        try { const status = await undoStatus(intent); if (status.undone) await finishUndo(intent); else reject(err.message) }
+        catch (checkError) { if (checkError instanceof ApiError && checkError.status === 404) reject(checkError.message); else setError('Undo confirmation is pending. This transaction will be checked again before scanning resumes.') }
+      } else setError('Undo confirmation is pending. This transaction will be checked again before scanning resumes.')
+    } finally { inFlight.current = false; if (active.current) setBusy(false) }
+  }, [healthy, finishUndo])
+  useEffect(() => { if (!pendingUndo || !healthy) return; void reconcileUndo(); const timer = setInterval(() => void reconcileUndo(), 5000); return () => clearInterval(timer) }, [pendingUndo, healthy, reconcileUndo])
+  async function undo() {
+    if (!last || !healthy || inFlight.current || stored<PendingUndo>(UNDO_KEY)) return
+    const intent: PendingUndo = { ...last, body: { expected_version: last.version }, submitted_at: new Date().toISOString() }
+    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { setError('This browser cannot preserve a pending undo. Enable local storage before continuing.'); return }
+    setPendingUndo(intent); setUndoing(false); setGreen(false); setResult(null); setUndoMessage(''); setError('')
+    await reconcileUndo()
+  }
+  const available = healthy && focused
+  const title = !healthy ? 'NOT AVAILABLE' : !focused ? 'Tap this screen to resume' : pendingUndo ? 'Confirming undo…' : pending ? 'Confirming transaction…' : busy ? 'Reading label…' : green && result ? `${resultDirection} confirmed` : result?.status === 'already_recorded' ? 'Already recorded' : undoMessage ? 'Transaction undone' : error ? 'Check the message below' : `Ready for ${direction}`
+  const eligible = selection?.stack.specimens.filter(s => selection.direction === 'IN' ? !entryOf(s) : s.state === 'IN') || []
+  const early = acknowledge?.stack.specimens.filter(s => s.state === 'IN' && !isReady(s) && (acknowledge.request.scope === 'stack' || acknowledge.request.selected_specimen_ids?.includes(s.id))) || []
+  return <div className="kiosk-shell"><header className="kiosk-header"><div><span className="eyebrow">CONDITIONING ROOM</span><h1>{room?.name || stationConfig?.roomName || 'Room station'}</h1></div><div className="kiosk-header-right"><select aria-label="Station" value={station} disabled={blocked || stationConfig?.fixed === true} onChange={e => setStation(e.target.value)}>{config.stations.length ? config.stations.map(s => <option key={s.id} value={s.id}>{s.name}</option>) : <option value={station}>{stationConfig?.stationName || station}</option>}</select><span className={`connection ${healthy ? 'good' : 'bad'}`} role="status"><i />{healthy ? 'Database connected' : 'NOT AVAILABLE'}</span></div></header><div className="kiosk-middle"><section className={`readiness-area ${green && healthy ? 'confirmed' : ''} ${!healthy ? 'unavailable' : ''}`} aria-live="polite"><div className="readiness-icon">{!healthy ? '!' : pending || pendingUndo || busy ? '◷' : green ? '✓' : direction === 'IN' ? '↘' : '↗'}</div><span className="eyebrow">{scope === 'stack' ? 'WHOLE STACK' : 'INDIVIDUAL SPECIMENS'}</span><h2>{title}</h2><p className="readiness-description">{!healthy ? 'No scans can be recorded until the database reconnects.' : pendingUndo ? 'Keep this station open. The same undo is being reconciled before another scan.' : pending ? 'Keep this station open. Another scan will be available when the result is known.' : green && result ? `${result.affected_count} specimens · ${formatTime(result.recorded_at)}` : result?.status === 'already_recorded' ? result.message : 'Scan a Data Matrix label. The movement records automatically.'}</p>{detail && <div className="last-stack"><div><span>LAST IDENTIFIED STACK {detail.is_demo && '· DEMO'}</span><h3>{detail.project_number} <em>/</em> {detail.material_ref}</h3><p>{detail.test_code} · {detail.preconditioning_code}</p></div><div className="stack-counts"><span><b>{detail.specimens.filter(s => s.state === 'IN').length}</b> inside</span><span><b>{detail.specimens.filter(s => !!exitOf(s)).length}</b> finished</span><span><b>{detail.specimen_count}</b> total</span></div></div>}{undoMessage && <div className="kiosk-message undo-success" role="status">{undoMessage}</div>}{error && <div className="kiosk-message" role="alert">{error}</div>}{pendingUndo && <button className="button secondary" disabled={!healthy || busy} onClick={() => void reconcileUndo()}>Check undo confirmation</button>}{pending && <button className="button secondary" disabled={!healthy || busy} onClick={() => void recover()}>Check confirmation</button>}{green && latency !== null && <small className="latency">Database confirmed in {latency} ms</small>}</section><aside className="recent-panel"><div className="recent-heading"><h2>Recent activity</h2><span>{events.filter(e => e.kind === 'movement').length}</span></div><div className="recent-scroll" ref={historyRef}>{events.filter(e => e.kind === 'movement' || e.kind.includes('undo') || e.kind.includes('modif')).map(event => <div className="recent-row" key={event.id}><span className={`recent-direction ${event.direction === 'IN' ? 'in' : ''}`}>{event.direction || '↺'}</span><div><b>{event.undone ? 'Undone' : `${event.direction || event.kind.replaceAll('_', ' ')} · ${event.effective_count ?? event.affected_count} specimens`}</b><small>{formatTime(event.recorded_at)}{event.modified ? ' · Modified' : ''}</small><code>{event.stack_id?.slice(0, 8)}</code></div></div>)}{!events.length && <div className="recent-empty">Confirmed movements will appear here.</div>}</div><div className="recent-foot">Only database-confirmed activity</div></aside></div><footer className="kiosk-dock"><div className="dock-direction"><button className={direction === 'IN' ? 'active in' : ''} aria-label="IN" aria-pressed={direction === 'IN'} disabled={blocked} onClick={() => { setDirection('IN'); setError(''); setResult(null) }}><span>↘</span> IN</button><button className={direction === 'OUT' ? 'active out' : ''} aria-label="OUT" aria-pressed={direction === 'OUT'} disabled={blocked} onClick={() => { setDirection('OUT'); setError(''); setResult(null) }}><span>↗</span> OUT</button></div><div className="dock-scope"><button className={scope === 'stack' ? 'active' : ''} aria-pressed={scope === 'stack'} disabled={blocked} onClick={() => setScope('stack')}>▦ Whole stack</button><button className={scope === 'specimen' ? 'active' : ''} aria-pressed={scope === 'specimen'} disabled={blocked} onClick={() => setScope('specimen')}>☷ Individual specimens</button></div><button className="dock-undo" disabled={!available || blocked || !last} onClick={() => setUndoing(true)}>↶ Undo last</button><div className="dock-hint">{room?.temperature_c ?? '—'}°C · {room?.relative_humidity ?? '—'}% RH<br />24-hour conditioning</div></footer>{selection && <Modal title="Choose the specimens moving" onClose={() => !busy && setSelection(null)} wide><div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · Move <b>{selection.direction}</b>. Select numbered physical specimens.</p><div className="selection-tools"><button className="button secondary" onClick={() => setSelection(old => old && { ...old, ids: eligible.map(s => s.id) })}>Select all eligible ({eligible.length})</button><button className="button text" onClick={() => setSelection(old => old && { ...old, ids: [] })}>Clear</button></div><div className="selection-grid">{selection.stack.specimens.map(s => { const allowed = eligible.some(item => item.id === s.id); return <label key={s.id} className={`selection-tile ${selection.ids.includes(s.id) ? 'selected' : ''} ${!allowed ? 'disabled' : ''}`}><input type="checkbox" disabled={!allowed || busy} checked={selection.ids.includes(s.id)} onChange={e => setSelection(old => old && { ...old, ids: e.target.checked ? [...old.ids, s.id] : old.ids.filter(id => id !== s.id) })} /><b>{String(s.number).padStart(2, '0')}</b><small>{exitOf(s) ? 'Finished' : s.state === 'IN' ? elapsed(entryOf(s)) : 'Awaiting entry'}</small></label> })}</div></div><div className="modal-actions"><span>{selection.ids.length} selected</span><button className="button secondary" onClick={() => setSelection(null)}>Cancel</button><button className="button primary" disabled={!healthy || busy || !!pending || !selection.ids.length} onClick={() => { const chosen = selection; void submit({ request_id: requestId(), station_id: station, code: chosen.code, direction: chosen.direction, scope: 'selection', selected_specimen_ids: chosen.ids, expected_version: chosen.stack.version }, chosen.stack) }}>Confirm partial {selection.direction}</button></div></Modal>}{acknowledge && <Modal title="Early checkout" onClose={() => !busy && setAcknowledge(null)}><div className="modal-body"><div className="notice warning">These specimens have not completed 24 hours. Override records their actual removal and incomplete conditioning.</div><div className="early-list">{early.map(s => <div key={s.id}><b>Specimen {String(s.number).padStart(2, '0')}</b><span>{elapsed(entryOf(s))} of 24h</span></div>)}</div>{!early.length && <p>{acknowledge.result.message}</p>}</div><div className="modal-actions"><button className="button secondary" onClick={() => setAcknowledge(null)}>Keep in room</button><button className="button danger" disabled={!healthy || busy || !!pending} onClick={() => { const chosen = acknowledge; void submit({ ...chosen.request, request_id: requestId(), acknowledge_early: true }, chosen.stack) }}>Override & record OUT</button></div></Modal>}{undoing && last && <Modal title="Undo the last transaction?" onClose={() => !busy && setUndoing(false)}><div className="modal-body"><p className="modal-intro">Reverse the entire last <b>{last.direction}</b> transaction for <b>{last.count} specimens</b>. The original scan and this undo both stay in history.</p></div><div className="modal-actions"><button className="button secondary" disabled={busy} onClick={() => setUndoing(false)}>Keep transaction</button><button className="button danger" disabled={!healthy || busy} onClick={() => void undo()}>Undo transaction</button></div></Modal>}</div>
 }

@@ -1,185 +1,160 @@
 # Scanner station implementation guide
 
-Updated October 22, 2026. Target: the 800 × 480 touchscreen and Eyoyo EYH2 USB scanner, using Chromium on 64-bit Raspberry Pi OS Desktop with labwc/Wayland.
+The current station targets a Raspberry Pi 5, a **1280 × 720 landscape Touch Display 2**, and an Eyoyo EYH2 USB keyboard-wedge scanner. It uses the working application's HTTP API on the host Mac. The old 800 × 480, 40-bit/binary mockups are archived prototypes.
 
-The scanner sends keyboard characters consisting of binary digits followed by Enter, as confirmed during the hardware trial. This guide defines the dedicated frontend and the station startup/recovery configuration. The staff transaction editor remains a separate desktop screen.
+The core behavior is: choose persistent IN or OUT, scan a registered specimen label, and automatically record the eligible whole-stack movement. There is no visible input field and no routine Submit step. The staff database editor is a separate desktop interface.
 
-## 1. What is implemented
+## Components and deployment boundary
 
-The focused demo now captures keyboard scans across its entire page. No text box or input focus is needed on the actual station screen. The optional paste field appears only in the development preview controls. Binary text is the default.
-
-The scanner still uses the local mock adapter in demo-api.js. It does not yet call the project's arbitrary HTTP API. The new deployment files provide a concrete Pi startup and focus-recovery setup; they have not been installed or cold-boot tested on a physical Pi.
-
-Relevant files:
-
-| Purpose | Source |
+| Component | Implementation |
 | --- | --- |
-| Scanner UI and movement workflow | ../output/prototypes/round-three/scanner-template.html |
-| Page-wide keyboard capture | ../output/prototypes/round-three/scanner-capture.js |
-| Fullscreen standalone demo | ../output/prototypes/round-three/station.html |
-| Local demo state across reloads | ../output/prototypes/round-three/station-state.js |
-| Mock API boundary | ../output/prototypes/round-three/demo-api.js |
-| Pi installer, launcher, watchdog and nginx | ../deploy/scanner-kiosk/ |
-| Read-only desktop overview | ../output/prototypes/round-three/stacks-template.html |
+| Scanner page and movement/recovery state | frontend/src/Kiosk.tsx |
+| Page-wide keyboard capture | frontend/src/scannerCapture.ts |
+| HTTP adapter and timeout handling | frontend/src/api.ts |
+| Central database/movement rules | backend/app/movements.py and services.py |
+| Local station package builder | scripts/build-station.py |
+| Generated local UI | output/station-ui/ |
+| Pi installer, browser service, nginx, watchdog | deploy/scanner-kiosk/ |
+| Mac host/app startup | deploy/macos/ |
 
-Use the new deploy/scanner-kiosk setup for this design. The older deploy/pi directory targets the earlier application and is an alternative deployment, not an additional service to run on the same port.
+The Pi serves compiled frontend assets locally through nginx and proxies /api requests to the Mac at port 8120. It does not host its own SQL database or accept offline transactions. A browser restart or unavailable Mac must still load the local UI and show the unavailable state.
 
-## 2. Capture a scan without an input field
+Use deploy/scanner-kiosk for this implementation. The older deploy/pi files and prototype galleries are legacy alternatives; do not enable two kiosk nginx configurations on the same port.
 
-Attach one capture-phase keydown listener to the document when the scanner page mounts. The implementation is FabricScannerCapture.attach in scanner-capture.js.
+## Barcode and scanner input
 
-1. Collect the characters into an in-memory buffer. Accept 1–40 binary digits, including leading zeroes.
-2. Consume those keyboard events before they reach focused buttons or checkboxes.
-3. On Enter, consume Enter too, validate the complete frame, decode the binary value, and look up that individual specimen.
-4. Show its stack and the exact members selected by direction and scope. Lookup does not submit a movement.
-5. A deliberate touchscreen Submit records the reviewed selection.
+Each physical specimen has its own permanent 128-bit UUID linked to a stack. App-generated labels encode that value as **39 zero-padded decimal digits** in an ECC200 Data Matrix. The scanner should type those digits followed by Enter. The Enter suffix is configured on the scanner; it is not encoded in the label.
 
-Use BigInt for conversion and range validation, then a JavaScript Number for the API if needed: all unsigned 40-bit integers are exactly representable. Do not use JavaScript bitwise operators, which truncate ordinary Number operands to 32 bits. One specimen ID identifies one individual; the API supplies its stack.
+Decimal text is the agreed production format. Data Matrix does not mean binary keyboard output. Raw USB bytes and WebHID access are unnecessary for a scanner configured as a keyboard. Verify the device's real output in an editor before installing it on a room station. See [barcode and printer details](BARCODE_AND_PRINTER.md).
 
-The capture module uses a configurable 250 ms maximum gap between characters. A timed-out or malformed frame stays invalid until its terminating Enter, so a suffix cannot become a second valid scan. Window blur and visibility changes clear the buffer. Modifier shortcuts and IME composition are not scanner input. Tune the gap against the actual scanner before acceptance.
+The generated code carries no URL or prep information. Scanning a member's ID lets the API resolve the whole stack and current eligibility. Keep IDs as strings across HTTP/JSON and in JavaScript; use BigInt for conversion if required, never Number or JavaScript bitwise arithmetic for a 128-bit value.
 
-While a selection popup, early-checkout override, database request, or unresolved confirmation is active, consume and reject new scans. Do not queue them. In particular, a scanner's Enter must never activate a focused Submit, Use selection, or Override button.
+## Capture without an input box
 
-Reserve Enter for scanning even when the buffer is empty; an isolated suffix after a focus change must not activate a button. Touch remains the normal action input. For keyboard maintenance, use Space to activate a focused button.
+The scanner route attaches one capture-phase keyboard listener to the document. Keyboard events reach it even when a direction button or checkbox has focus, so touching the screen does not require refocusing a text input. The listener is mounted only on the dedicated kiosk route and is removed on unmount; normal desktop typing remains unaffected. [MDN: keydown event](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event)
 
-The capture module has a dispose method; call it when unmounting a real React scanner route. Attach it once per scanner document, outside a component render loop. Keep it out of desktop editing routes so it does not intercept normal typing.
+The implementation:
 
-The browser cannot distinguish a keyboard-wedge scanner from another keyboard using keydown events alone. Keep this document dedicated to scanning. Keyboard events can reach the document even when a button has focus; this follows the browser's [keydown event model](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event).
+1. Buffers printable scanner characters until Enter.
+2. Consumes the scanner's key events before focused controls can act on them.
+3. Consumes Enter even when the buffer is empty, so a trailing scanner suffix cannot click an override or Undo button.
+4. Rejects malformed/oversized input, interrupted scans, modifier shortcuts, and composition input.
+5. Invalidates an incomplete frame after a **350 ms inter-character gap**; it waits for the frame's Enter before resetting validity.
+6. Clears the input buffer on visibility/focus changes.
+7. Delivers a complete valid ID only when database health is confirmed and no popup, write, pending movement, or pending undo blocks scanning.
 
-### Label payload
+New scans arriving while blocked are consumed and rejected, not queued. A dedicated scanner document cannot distinguish another keyboard from a keyboard-wedge scanner through key events alone. Touch is the ordinary action input; use the maintenance procedure below for general keyboard work.
 
-The current demo labels encode a zero-padded 40-character binary string and show the decimal specimen ID as readable text. The builder decodes each generated Data Matrix back to that exact integer. Symbol size is selected by the encoder, not fixed at the earlier proposed 12 × 12. A 40-bit integer and 40 printed binary characters have different barcode storage requirements.
+The browser window itself must be active. A webpage cannot receive scanner keystrokes while another application, browser toolbar, or OS dialog owns keyboard focus. Kiosk mode and the Pi watchdog reduce those failure conditions; they do not grant a webpage control over the operating system. [MDN: document.hasFocus](https://developer.mozilla.org/en-US/docs/Web/API/Document/hasFocus)
 
-The scanner's Enter suffix is a scanner setting; it is not part of the Data Matrix payload. Test the actual label and scanner combination. Decimal and hex remain explicit development options, not automatic guesses.
+## Movement and correction behavior
 
-## 3. Preserve the agreed movement behavior
+Keep room/station identity, connection state, direction, scope, and Undo visible. The large readiness/result region is separate from the recent log. Only the recent log scrolls in the main screen; popup bodies may scroll while their actions remain fixed.
 
-Keep room name, database connection, persistent IN/OUT direction, Whole stack / Individual scope, Undo and Submit visible at 800 × 480. Only the recent log scrolls in the main view. Popups may scroll their bodies while their action buttons stay visible.
+An ordinary scan first looks up its stack and version, then automatically submits the movement. The backend locks records and validates that version before committing. IN and OUT remain persistent across successful scans and browser restarts.
 
-Each specimen conditions once: ENTRY, then EXIT. Whole-stack IN includes only members awaiting entry. Whole-stack OUT includes only members still inside; after 3 of 10 leave, the next whole-stack OUT selects the remaining 7. Partial movement uses numbered checkboxes. Early OUT opens a warning and requires an explicit override.
+- **Whole-stack IN:** move only members awaiting their first entry.
+- **Whole-stack OUT:** move only members currently inside. After 3 of 10 leave, the next whole-stack OUT affects the remaining 7.
+- **Individual specimens:** scanning opens numbered checkboxes; confirm the exact selection. A successful partial movement returns to whole-stack scope.
+- **Early checkout:** before 24 hours, show affected specimens and require an explicit override. The actual exit and incomplete conditioning remain recorded.
+- **Repeat movement:** show Already recorded and preserve timestamps. A finished specimen cannot start another normal conditioning period.
+- **Undo last:** briefly confirm and reverse the entire last transaction. Original movement and undo remain in history. Intervening activity can make an undo unsafe, in which case the backend rejects it.
 
-Green means the API confirmed a committed movement. Repeated movements preserve the original times. Undo reverses the entire transaction and preserves its observation in the log. No supervisor login or mandatory reason is introduced.
+Only a confirmed database commit produces the temporary full green result. An API request being sent, a scanner beep, or a successful lookup is not a successful movement. After a short result interval the station returns to readiness; the confirmed transaction remains in recent activity.
 
-For the real API adapter:
+Corrections and missed entries are available from the staff transaction log without supervisor authentication or mandatory reasons. They update the effective ENTRY/EXIT record and retain original observations. They do not create another conditioning cycle.
 
-- Configure a fixed station ID and room for each Pi. The demo currently uses Shared room / Station 01.
-- Fetch specimen, stack membership, ENTRY/EXIT, room and selection version together.
-- Submit one request containing all affected IDs. The API must commit all or none.
-- Save the pending request ID and exact payload durably before sending. On page load or reconnection, reconcile that same request before enabling another scan.
-- Changed selections or acknowledgment require a new request ID.
-- After a browser restart, restore preferences and pending-request identity, then re-fetch current records. Do not restore a green success screen from cached data.
-- Start with movements disabled until database health is confirmed. Poll with a bounded timeout; show NOT AVAILABLE on failure and recover when healthy.
-- Do not submit or queue offline transactions.
+## Pending responses, reloads, and outages
 
-The standalone demo's local storage preserves its simulated records and direction across reloads. This is useful for kiosk testing; it is not an offline database or a substitute for real API idempotency.
+Before sending a movement, the kiosk saves its request UUID and exact payload in persistent browser storage. If a response is lost, the station blocks another scan, checks that request's status, and retries only the same UUID/details if it was not recorded. Changing a selection or acknowledging early removal requires a new request UUID.
 
-## 4. Startup and automatic recovery
+A pending undo is also preserved and reconciled against the transaction log before scanning resumes. Browser reloads and watchdog restarts retain these pending identities in the dedicated Chromium profile. Do not delete that profile or clear its storage while an outcome is unresolved.
 
-The boot path is:
+The kiosk starts with movement submission disabled until database-backed health is confirmed. Loss of API/database access shows **NOT AVAILABLE**, disables writes, and accepts no offline transactions. Reconnection permits reconciliation of already submitted requests; it does not replay a queue of scans taken during the outage. Cached UI, direction preferences, and pending-request identity are not a local specimen database.
 
-    power on
-      → Raspberry Pi OS graphical desktop autologin
-      → labwc autostart imports the Wayland environment
-      → fabric-scanner.target starts the browser and watchdog
-      → launcher waits for the local nginx page
-      → Chromium opens station.html fullscreen
-      → scan listener attaches and begins accepting complete frames
+## Build the Pi UI package
 
-The UI files are installed locally, so browser startup does not wait for the internet or the central API. A real API outage should show NOT AVAILABLE inside the loaded UI. Keep frontend assets local too; do not depend on external fonts or script CDNs on the Pi.
+Build from the current working application on the Mac:
 
-The browser service uses Restart=always with a three-second delay. A dedicated persistent Chromium profile retains local state. Systemd owns the browser process; do not append an ampersand to the launcher or start a second browser outside the service.
+    cd frontend
+    npm ci
+    npm run build
+    cd ..
+    python3 scripts/build-station.py
 
-The page sends a tiny same-origin heartbeat to local nginx every two seconds. Nginx forwards it to the loopback watchdog. It contains only three booleans: focused, visible, and capture_ready. It carries no specimen data.
+The default output is output/station-ui; --source, --output, and --station can select another compiled frontend, package folder, or fixed station. For example, python3 scripts/build-station.py --station ppe-door builds the PPE station package. The package contains the compiled station page/assets and deployment metadata/configuration. It is a real API-connected kiosk package, not the archived mock gallery. Rebuild it after frontend changes and transfer that directory plus deploy/scanner-kiosk to each Pi. No customer workbooks or application database files belong in this package.
 
-The watchdog allows 45 seconds for startup. After startup, more than 15 seconds without a healthy page triggers a browser restart. It waits for startup again after restarting, avoiding a rapid restart loop. A frozen page, missing listener, closed tab, or persistent loss of focus can therefore recover without an operator finding a text box.
+## Provision a room station
 
-Database availability is deliberately absent from this heartbeat. A database outage must not cause the kiosk to restart repeatedly. The UI must remain available to display the outage.
+Use 64-bit Raspberry Pi OS Desktop with labwc/Wayland. Configure a dedicated desktop account, lab networking, and an SSH maintenance path. Set the display to landscape at 1280 × 720. Enable **Desktop Autologin** for that account and disable screen blanking for the station. These settings are deployment actions on the physical Pi; this repository does not prove they have been applied.
 
-Set window.fabricScannerCaptureReady to true only after installing the listener; set it false on unmount. The current scanner does this after attaching its handler. The installer adds the separate runtime.js heartbeat script to station.html.
+Raspberry Pi's official kiosk tutorial documents the 64-bit desktop, labwc autostart, and fullscreen Chromium approach. This project's service supervision and local page add recovery around that foundation. [Raspberry Pi kiosk tutorial](https://www.raspberrypi.com/tutorials/how-to-use-a-raspberry-pi-in-kiosk-mode/)
 
-Chromium must still be the active application to receive USB keyboard input. Fullscreen alone does not provide operating-system-wide capture. Use a dedicated desktop account and avoid launching other applications or opening OS dialogs on this station. Persistent focus loss is recovered by restarting Chromium; events already typed into another application cannot be recovered. The [document focus API](https://developer.mozilla.org/en-US/docs/Web/API/Document/hasFocus) distinguishes page focus from a merely active DOM element.
+Install the required packages on the Pi:
 
-## 5. Install on the Pi
+    sudo apt update
+    sudo apt install nginx chromium python3
 
-These commands are a deployment recipe. They have not been run on your Mac or a connected Pi.
+Run the project's installer with the transferred package, Mac API origin, desktop username, a reachable LAN DNS resolver, and fixed station ID:
 
-1. Install 64-bit Raspberry Pi OS Desktop. Configure the display at 800 × 480, the network and a dedicated desktop user. Enable SSH for maintenance.
-2. In raspi-config, enable Desktop Autologin for that user and disable screen blanking. Use the labwc/Wayland desktop session, not an older LXDE or Wayfire recipe. Configure automatic time synchronization; API timestamps remain authoritative UTC, displayed in America/New_York.
-3. Install the prerequisites on the Pi:
+    sudo sh deploy/scanner-kiosk/install.sh /path/to/station-ui http://MAC_RESERVED_IP:8120 KIOSK_USER LAN_DNS_IPV4 shared-door
 
-       sudo apt update
-       sudo apt install nginx chromium python3 ca-certificates
+Replace the placeholders with actual values. The fifth station argument is optional and defaults to the station embedded in the package; the builder defaults to shared-door. Use ppe-door or footwear-door for the other room stations. The fixed Pi configuration prevents changing the station through the touchscreen selector.
 
-4. On the development Mac, rebuild and copy the demo and deployment files. Replace the SSH destination:
+For read-only validation on the Mac or Pi before installation, run the same arguments with --check as the first argument; no root permission or system changes are needed:
 
-       .venv/bin/python output/prototypes/round-three/build.py
-       rsync -av output/prototypes/round-three/ kiosk@pi-kiosk.local:~/fabric-station-ui/
-       scp -r deploy/scanner-kiosk kiosk@pi-kiosk.local:~/
+    sh deploy/scanner-kiosk/install.sh --check /path/to/station-ui http://MAC_RESERVED_IP:8120 KIOSK_USER LAN_DNS_IPV4 shared-door
 
-5. On the Pi, install using the chosen API origin, desktop user, and LAN DNS resolver:
+The API origin is only a scheme/host/port, with no /api path or credentials. Prefer a reserved Mac LAN address or a hostname resolvable by the configured LAN DNS. If the network does not resolve .local names through that resolver, use the reserved IP rather than relying on browser-side mDNS behavior.
 
-       sudo sh ~/scanner-kiosk/install.sh ~/fabric-station-ui http://192.168.1.50:8000 kiosk 192.168.1.1
-       sudo reboot
+The installer places the UI under /opt/fabric-scanner/ui, configures nginx on local port 8080, installs browser/watchdog user services, and adds a marked block to the chosen account's labwc autostart. Follow its output, confirm desktop autologin and blanking settings, then reboot the Pi.
 
-The origin example is a placeholder. The API route names remain the backend team's contract. Installing the current mock demo tests scanner capture and kiosk recovery only; it still displays DEMO and does not record laboratory movements. Replace the mock adapter and complete the API acceptance checks before operational use.
+## Boot and recovery sequence
 
-Nginx and the watchdog bind to loopback. No Cloudflare tunnel is required. Keep the browser URL fixed at http://127.0.0.1:8080/station.html. If a different service already uses port 8080, resolve that conflict before installation.
+    Pi power on
+      → Raspberry Pi OS desktop autologin
+      → labwc imports the graphical environment into the user service manager
+      → fabric-scanner.target starts browser and watchdog
+      → local nginx serves station.html
+      → Chromium opens the local page in kiosk mode
+      → capture listener attaches; API health enables scanning
 
-The labwc startup mechanism is documented in the [labwc configuration manual](https://labwc.github.io/labwc-config.5.html). Automatic service restart and intentional stops follow [systemd's service behavior](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html). The [Raspberry Pi kiosk tutorial](https://www.raspberrypi.com/tutorials/how-to-use-a-raspberry-pi-in-kiosk-mode/) provides the platform background; the watchdog and request-reconciliation behavior here are project-specific.
+The browser launcher waits only for the local page, not internet access or the Mac. It uses a dedicated persistent profile and runs Chromium in fullscreen kiosk mode. Systemd restarts the browser after a crash with a short delay.
 
-## 6. Maintenance
+A local heartbeat reports page focus, visibility, and whether the scanner listener is attached. The watchdog allows startup time, then restarts the browser if healthy page heartbeats stop. The current settings allow 45 seconds at startup, treat more than 15 seconds without a healthy page as a fault, and limit rapid restart loops. This heartbeat does not require database connectivity, so a Mac outage leaves the unavailable screen visible rather than deliberately restarting a healthy page.
 
-Run these from the kiosk user's session. From SSH, first set XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS to that user's active session if systemctl reports no user bus.
+This recovery is best effort: a hung OS, failed display, removed scanner, unresolved system dialog, lost power, or broken network still needs physical/maintenance attention. Interrupted scans must be rescanned after focus returns. The kiosk should not display a guarantee that a scan was recorded until the database confirms it.
 
-    export XDG_RUNTIME_DIR=/run/user/$(id -u)
-    export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+## Maintenance and troubleshooting
 
-    systemctl --user status fabric-scanner.target
-    systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service
-    journalctl --user -u fabric-scanner-watchdog.service -n 50
-    journalctl --user -u fabric-scanner-browser.service -n 50
-    sudo nginx -t
-
-For maintenance, stop the whole target so the watchdog does not reopen the browser:
+Use SSH to the dedicated desktop account. Stop the target before opening another application on the touchscreen, otherwise the focus watchdog may restart Chromium during maintenance:
 
     systemctl --user stop fabric-scanner.target
+    systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service
+    journalctl --user -u fabric-scanner-browser.service -u fabric-scanner-watchdog.service -n 100
 
-Resume:
+After maintenance:
 
-    systemctl --user start fabric-scanner.target
+    systemctl --user restart fabric-scanner.target
 
-Reinstall updated UI files using the installer, then restart the target. Retain the dedicated browser profile and pending-request data. Do not erase the profile as a routine recovery step.
+For a locally loaded screen showing NOT AVAILABLE, check the Mac's /api/health, LAN reachability/firewall, configured API origin, and DNS. Check nginx configuration/service separately if the local page itself does not load. Do not clear browser storage to fix an unresolved transaction; inspect/reconcile that transaction first.
 
-## 7. Physical acceptance
+Kiosk mode is an operating mode, not an authentication boundary. Keep the station dedicated to this page, and manage physical/maintenance access through the lab's chosen setup. The application does not add operator badges or supervisor login.
 
-| Check | Expected result |
-| --- | --- |
-| Ten cold boots / normal restarts | Fullscreen station appears; first scan works without touching an input. |
-| Tap IN, OUT, scroll the log, then scan | Complete binary frame is captured; all fixed controls remain visible. |
-| Scan while Submit or Override has keyboard focus | Enter performs lookup or is rejected; it never confirms a movement. |
-| Scan while a popup or request is active | Scan is rejected, not queued or applied later. |
-| Incomplete, overlong, malformed or interrupted scan | No movement; complete rescan required. |
-| Close or kill Chromium | Browser returns automatically. |
-| Leave another window focused or hang the page | Watchdog relaunches Chromium after the configured recovery interval. |
-| Disconnect central API, then reboot | Local UI loads; real adapter shows NOT AVAILABLE; no false green or offline writes. |
-| Reboot after an API commit with a lost response | Same request ID reconciles exactly once; no duplicate movement. |
-| USB unplug/replug | Next complete scan works without choosing a text box. |
-| Actual printed Data Matrix labels | Registered specimen ID matches the readable decimal ID. |
-| API-confirmed scan timing | Measure with actual hardware/API against the outline's one-second target. |
+## Acceptance on real hardware
 
-Browser tests exercise scan capture after button focus, scanner Enter suppression, popup blocking, malformed frames, timeouts, and reload state. Python tests exercise the local watchdog's startup, focus-loss and healthy-heartbeat behavior. Those checks do not replace the physical boot and scanner tests above.
+Verify each station with the actual scanner, screen, printer stock, and lab network:
 
-## 8. Separate stack overview
+- Cold boot to the local fullscreen UI with no manual browser launch.
+- Boot while the Mac/API is unavailable: the local page loads, shows NOT AVAILABLE, and records nothing.
+- Reconnect the Mac: health recovers without an offline scan queue.
+- Touch direction/scope controls, then scan without focusing an input.
+- Ordinary scan records automatically; selection/early-checkout popups require touch confirmation, and scanner Enter cannot activate their buttons.
+- Check out 3 of 10, then use whole-stack OUT for only the remaining 7.
+- Verify repeat scans preserve entry/exit times and Undo restores precisely its transaction.
+- Interrupt a response or restart Chromium during a pending request/undo, then confirm exactly one effective result after recovery.
+- Kill Chromium, hide/unfocus its page, and confirm supervised recovery without losing pending identity.
+- Confirm fixed controls remain visible with a long log and many numbered specimens.
+- Measure final-Enter-to-visible-confirmation latency against the one-second target and record physical first-read accuracy.
 
-The staff overview lists one row per registered stack and brings stacks with ready specimens to the top, then sorts by longest time inside. It also offers explicit longest-inside and next-ready sorting, search, room and status filters, and a read-only specimen popup.
-
-For each specimen still inside:
-
-    elapsed = server_now_utc - ENTRY
-    ready = ENTRY exists AND EXIT is null AND elapsed >= 24 hours
-
-A fully ready stack has all remaining members inside ready and no members still awaiting entry. A partially ready stack shows the exact ready count. Removed specimens remain visible in detail but cannot contribute to current readiness or current time-inside sorting. Different entry times produce an elapsed-time range.
-
-The example E demonstrates 3 ready specimens among 7 inside, with 5 already removed. The overview has no checkout button; movement stays on the scanner. The existing transaction editor handles corrections.
-
-For the real HTTP adapter, return per-stack counts plus earliest/latest current ENTRY, ready member IDs, next ready time, required duration, room and a server timestamp/version. Refresh counts after movements and corrections. A short local timer can advance elapsed time from that confirmed server timestamp, but stale or disconnected data must remain clearly labeled and must not promote new authoritative ready results. The prototype's time-advance controls are demo-only.
+Automated browser/watchdog tests cover software behavior. Actual Pi cold-start, focus recovery on the installed OS, scanner suffix configuration, print readability, and physical timing remain hardware acceptance checks.

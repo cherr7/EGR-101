@@ -1,0 +1,425 @@
+<div id="fabric-scanner-design-lab">
+  <div class="viz-controls" aria-label="Scanner simulation controls">
+    <label class="form-label">Simulated situation<select class="form-select" data-testid="scanner-scenario"><option>Routine</option><option>Early exit</option><option>Mixed stack</option><option>Unavailable</option><option>Response lost</option><option>Unknown label</option><option>Stale selection</option></select></label>
+    <span class="text-small">Simulated labels and records · no laboratory data is changed</span>
+  </div>
+  <div class="viz-carousel" aria-label="Scanner interface alternatives">
+    <section class="scanner-stage" data-variant="Persistent mode" aria-label="Persistent mode scanner">
+      <div class="scanner-product persistent" data-design="persistent"><header class="product-header"><div><span class="eyebrow">FABRIC CONDITIONING</span><h2>Shared room station</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="room-strip">23 ± 1°C <span>65 ± 2% RH</span><span>24h conditioning</span></div><div class="mode-pair"><button data-action="mode" data-value="IN" data-testid="persistent-in">IN<small>Begin conditioning</small></button><button data-action="mode" data-value="OUT" data-testid="persistent-out">OUT<small>Remove specimens</small></button></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>Specimen label<input name="code" data-testid="persistent-code" placeholder="Scan a specimen QR code" autocomplete="off"></label><button class="primary" data-testid="persistent-submit">Scan</button></form><button data-action="scan" data-testid="persistent-scan">Simulate a specimen scan</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="persistent-result"></div></main><footer class="product-footer"><span>USB scanner · simulated station</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Reset after scan" aria-label="Reset after scan scanner" hidden>
+      <div class="scanner-product reset-mode" data-design="reset"><header class="product-header"><div><span class="eyebrow">SHARED CONDITIONING ROOM</span><h2>Choose a direction for this scan</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="intent-status" data-slot="intent"></div><div class="mode-pair"><button data-action="mode" data-value="IN" data-testid="reset-in">IN<small>Arm one movement</small></button><button data-action="mode" data-value="OUT" data-testid="reset-out">OUT<small>Arm one movement</small></button></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>Next specimen label<input name="code" data-testid="reset-code" placeholder="Choose IN or OUT, then scan" autocomplete="off"></label><button class="primary" data-testid="reset-submit">Record this scan</button></form><button data-action="scan" data-testid="reset-scan">Simulate next specimen</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="reset-result"></div></main><footer class="product-footer"><span>One armed direction per movement</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Scan then act" aria-label="Scan then act scanner" hidden>
+      <div class="scanner-product scan-act" data-design="scan-act"><header class="product-header"><div><span class="eyebrow">SPECIMEN LOOKUP</span><h2>Scan first. Choose the movement.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><form class="scan-form" data-action="scan-form"><label>Read a specimen label<input name="code" data-testid="scan-act-code" placeholder="Scan to inspect this stack" autocomplete="off"></label><button class="primary" data-testid="scan-act-submit">Read label</button></form><button data-action="scan" data-testid="scan-act-scan">Simulate label lookup</button><div data-slot="preview"></div><div data-slot="scope"></div><div class="mode-pair action-pair"><button data-action="act" data-value="IN" data-testid="scan-act-in">Check IN<small>Start a continuous session</small></button><button data-action="act" data-value="OUT" data-testid="scan-act-out">Check OUT<small>Close the current session</small></button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="scan-act-result"></div></main><footer class="product-footer"><span>Reading a label does not move specimens</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Guided movement" aria-label="Guided movement scanner" hidden>
+      <div class="scanner-product guided" data-design="guided"><header class="product-header"><div><span class="eyebrow">SHARED ROOM</span><h2>Record a movement</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><ol class="step-track"><li data-step="1">Direction</li><li data-step="2">Label</li><li data-step="3">Review</li><li data-step="4">Receipt</li></ol><div class="guided-step" data-panel="1"><h3>Which way are the specimens moving?</h3><div class="mode-pair"><button data-action="wizard-direction" data-value="IN" data-testid="guided-in">Into the room</button><button data-action="wizard-direction" data-value="OUT" data-testid="guided-out">Out of the room</button></div></div><div class="guided-step" data-panel="2" hidden><h3>Read a specimen label</h3><form class="scan-form" data-action="scan-form"><label>Specimen QR code<input name="code" data-testid="guided-code" placeholder="Scan a label" autocomplete="off"></label><button class="primary" data-testid="guided-submit">Read label</button></form><button data-action="scan" data-testid="guided-scan">Simulate a label scan</button><button data-action="wizard-back">Back to direction</button></div><div class="guided-step" data-panel="3" hidden><div data-slot="preview"></div><div data-slot="scope"></div><div data-slot="grid"></div><button class="primary" data-action="commit" data-testid="guided-commit">Confirm reviewed movement</button><button data-action="wizard-back">Read another label</button></div><div class="guided-step" data-panel="4" hidden><button class="primary" data-action="wizard-next" data-testid="guided-next">Record another movement</button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="guided-result"></div></main><footer class="product-footer"><span>Each stage has one decision</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Dedicated lanes" aria-label="Dedicated entry and exit lanes" hidden>
+      <div class="scanner-product lanes" data-design="lanes"><header class="product-header"><div><span class="eyebrow">SHARED CONDITIONING ROOM</span><h2>Entry and exit lanes</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div data-slot="scope"></div><div class="lane-grid"><section class="lane entry-lane"><span class="lane-sign">ENTRY</span><h3>IN scanner</h3><form data-action="lane-form" data-direction="IN"><label>Entry label<input name="code" data-testid="lanes-in-code" placeholder="Scan at the entry lane" autocomplete="off"></label><button class="primary" data-testid="lanes-in-submit">Record IN</button></form><button data-action="lane-scan" data-value="IN" data-testid="lanes-in">Simulate entry scanner</button></section><section class="lane exit-lane"><span class="lane-sign">EXIT</span><h3>OUT scanner</h3><form data-action="lane-form" data-direction="OUT"><label>Exit label<input name="code" data-testid="lanes-out-code" placeholder="Scan at the exit lane" autocomplete="off"></label><button class="primary" data-testid="lanes-out-submit">Record OUT</button></form><button data-action="lane-scan" data-value="OUT" data-testid="lanes-out">Simulate exit scanner</button></section></div><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="lanes-result"></div></main><footer class="product-footer"><span>Each scanner has a fixed direction</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Scanner command cards" aria-label="Scanner-only command cards" hidden>
+      <div class="scanner-product command-cards" data-design="cards"><header class="product-header"><div><span class="eyebrow">SCANNER-ONLY STATION</span><h2>Scan a command, then a label</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="command-deck"><button data-action="command" data-value="MODE:IN" data-testid="cards-in"><b>IN</b><code>MODE:IN</code></button><button data-action="command" data-value="MODE:OUT" data-testid="cards-out"><b>OUT</b><code>MODE:OUT</code></button><button data-action="command" data-value="SCOPE:STACK" data-testid="cards-stack"><b>Whole stack</b><code>SCOPE:STACK</code></button><button data-action="command" data-value="SCOPE:ONE" data-testid="cards-one"><b>One specimen</b><code>SCOPE:ONE</code></button></div><div class="intent-status" data-slot="intent"></div><form class="scan-form" data-action="command-form"><label>Scanner input<input name="code" data-testid="cards-code" placeholder="Scan command card or specimen label" autocomplete="off"></label><button class="primary" data-testid="cards-submit">Send scan</button></form><button data-action="scan" data-testid="cards-scan">Simulate specimen label</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="cards-result"></div></main><footer class="product-footer"><span>Command cards shown as labelled simulator buttons</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Physical direction buttons" aria-label="Physical direction buttons scanner" hidden>
+      <div class="scanner-product physical" data-design="physical"><header class="product-header"><div><span class="eyebrow">ROOM DOOR STATION</span><h2>Press a direction. Scan the label.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="hardware-simulator" aria-label="Simulated physical button unit"><div class="hardware-label">External button unit · simulated</div><div class="physical-pair"><button data-action="physical-mode" data-value="IN" data-testid="physical-in">IN<small>Physical entry button</small></button><button data-action="physical-mode" data-value="OUT" data-testid="physical-out">OUT<small>Physical exit button</small></button></div></div><div class="hardware-link"><span>Button signal</span><span>→</span><span data-slot="hardware-state">No direction armed</span></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>USB scanner<input name="code" data-testid="physical-code" placeholder="Press a physical button before scanning" autocomplete="off"></label><button class="primary" data-testid="physical-submit">Record label</button></form><button data-action="scan" data-testid="physical-scan">Simulate scanner trigger</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="physical-result"></div></main><footer class="product-footer"><span>Hardware direction resets after confirmation</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="State-suggested action" aria-label="State suggested action with confirmation" hidden>
+      <div class="scanner-product suggested" data-design="suggested"><header class="product-header"><div><span class="eyebrow">SHARED ROOM</span><h2>Review the suggested movement</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><form class="scan-form" data-action="scan-form"><label>Specimen label<input name="code" data-testid="suggested-code" placeholder="Scan to see current location" autocomplete="off"></label><button class="primary" data-testid="suggested-submit">Look up</button></form><button data-action="scan" data-testid="suggested-scan">Simulate specimen lookup</button><div data-slot="preview"></div><div data-slot="suggestion"></div><div data-slot="scope"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="suggested-result"></div></main><footer class="product-footer"><span>A suggestion never records a movement automatically</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Room inventory board" aria-label="Room inventory board scanner" hidden>
+      <div class="scanner-product inventory" data-design="inventory"><header class="product-header"><div><span class="eyebrow">SHARED ROOM INVENTORY</span><h2>Select what is moving</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="compact-scan"><button data-action="scan" data-testid="inventory-scan">Scan a stack label</button><button data-action="clear-selection" data-testid="inventory-clear">Clear selection</button><span>00073-LAB · Cotton twill · 20 specimens</span></div><div class="inventory-board" data-slot="board"></div><div class="selection-count" data-slot="selection-count"></div><div class="mode-pair action-pair"><button data-action="act" data-value="IN" data-testid="inventory-in">Bring selected IN</button><button data-action="act" data-value="OUT" data-testid="inventory-out">Remove selected OUT</button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="inventory-result"></div></main><footer class="product-footer"><span>Select specimen tiles or read the whole stack</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Numbered specimen grid" aria-label="Numbered specimen selection scanner" hidden>
+      <div class="scanner-product numbered" data-design="numbered"><header class="product-header"><div><span class="eyebrow">PARTIAL MOVEMENT</span><h2>Cotton twill · 20 specimens</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="stack-ribbon"><b>00073-LAB</b><span>ASTM D5034 / AR</span><button data-action="scan" data-testid="numbered-scan">Scan specimen #03</button></div><div data-slot="grid"></div><div class="selection-toolbar"><div data-slot="selection-count"></div><button data-action="select-all">Select all 20</button><button data-action="clear-selection">Clear</button></div><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="numbered-in">IN</button><button data-action="mode" data-value="OUT" data-testid="numbered-out">OUT</button></div><button class="primary full" data-action="commit" data-testid="numbered-commit">Record selected specimens</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="numbered-result"></div></main><footer class="product-footer"><span>Only checked specimen numbers move</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Individual scan basket" aria-label="Individual specimen scan basket" hidden>
+      <div class="scanner-product basket" data-design="basket"><header class="product-header"><div><span class="eyebrow">INDIVIDUAL SPECIMENS</span><h2>Scan the specimens you are holding</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="basket-layout"><section><form class="scan-form" data-action="scan-form"><label>Add an individual label<input name="code" data-testid="basket-code" placeholder="One specimen per scan" autocomplete="off"></label><button class="primary" data-testid="basket-submit">Add specimen</button></form><button data-action="scan" data-testid="basket-scan">Simulate next individual label</button><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="basket-in">IN</button><button data-action="mode" data-value="OUT" data-testid="basket-out">OUT</button></div></section><section class="scan-basket"><h3>Movement basket</h3><div data-slot="basket"></div><button class="primary full" data-action="commit" data-testid="basket-commit">Confirm basket movement</button></section></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="basket-result"></div></main><footer class="product-footer"><span>Repeated scans add no duplicate specimens</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Multi-stack staging tray" aria-label="Multi stack staging tray scanner" hidden>
+      <div class="scanner-product staging" data-design="staging"><header class="product-header"><div><span class="eyebrow">DESKTOP MOVEMENT STATION</span><h2>Stage the stacks. Confirm together.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="staging-toolbar"><button data-action="tray-scan" data-value="cotton" data-testid="staging-cotton">Scan cotton stack · 20</button><button data-action="tray-scan" data-value="nylon" data-testid="staging-nylon">Scan nylon stack · 12</button><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="staging-in">IN</button><button data-action="mode" data-value="OUT" data-testid="staging-out">OUT</button></div></div><div class="tray" data-slot="tray"></div><div class="tray-summary" data-slot="selection-count"></div><button class="primary full" data-action="commit" data-testid="staging-commit">Confirm all staged stacks</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="staging-result"></div></main><footer class="product-footer"><span>One review and one simulated atomic receipt</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Destination token pairing" aria-label="Destination token pairing scanner" hidden>
+      <div class="scanner-product pairing" data-design="pairing"><header class="product-header"><div><span class="eyebrow">PORTABLE SCANNER</span><h2>Pair a destination with a specimen</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="token-pair"><section><span class="eyebrow">DESTINATION TOKEN</span><div data-slot="destination"></div><button data-action="destination" data-value="IN" data-testid="pairing-room">Scan shared-room token</button><button data-action="destination" data-value="OUT" data-testid="pairing-out">Scan outside-room token</button></section><span class="pair-connector" aria-hidden="true">+</span><section><span class="eyebrow">SPECIMEN LABEL</span><div data-slot="pair-label"></div><button data-action="scan" data-testid="pairing-scan">Simulate specimen label</button></section></div><div data-slot="scope"></div><button class="primary full" data-action="commit" data-testid="pairing-commit">Confirm destination pairing</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="pairing-result"></div></main><footer class="product-footer"><span>Either token can be scanned first</span><button data-action="reset">Reset pairing</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Handheld camera" aria-label="Handheld camera scanner" hidden>
+      <div class="scanner-product handheld" data-design="handheld"><header class="product-header"><div><span class="eyebrow">SHARED ROOM</span><h2>Scan specimens</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="camera-preview"><i data-lucide="camera" aria-hidden="true"></i><div class="camera-label"><b>00073-LAB</b><span>COTTON TWILL · #03</span><span>Simulated camera label</span></div><span class="camera-caption">Camera simulation · no camera access</span></div><button class="primary full" data-action="scan" data-testid="handheld-scan">Capture simulated label</button><div data-slot="preview"></div><div data-slot="scope"></div><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="handheld-in">IN</button><button data-action="mode" data-value="OUT" data-testid="handheld-out">OUT</button></div><button class="primary full" data-action="commit" data-testid="handheld-commit">Confirm movement</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="handheld-result"></div></main><footer class="product-footer"><span>One-handed scan and review</span><button data-action="reset">Reset</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Minimal scanner console" aria-label="Minimal scanner console" hidden>
+      <div class="scanner-product console" data-design="console"><header class="product-header"><div><span class="eyebrow">FABRIC / SHARED</span><h2>Scanner console</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="console-screen"><div>station: shared-door</div><div>group: 00073-LAB / Cotton twill / 20</div><div>syntax: IN label · OUT label · ACK</div><div data-slot="console-log"></div></div><form class="scan-form" data-action="console-form"><label>Scanner command<input name="code" data-testid="console-code" placeholder="IN UL1:P:…" autocomplete="off"></label><button class="primary" data-testid="console-submit">Execute command</button></form><div class="console-presets"><button data-action="console-scan" data-value="IN" data-testid="console-in">Simulate IN + label</button><button data-action="console-scan" data-value="OUT" data-testid="console-out">Simulate OUT + label</button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="console-result"></div></main><footer class="product-footer"><span>Explicit direction travels with each command</span><button data-action="reset">Reset console</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Operator badge then scan" aria-label="Operator badge followed by label scan" hidden>
+      <div class="scanner-product badge-flow" data-design="badge"><header class="product-header"><div><span class="eyebrow">SHARED ROOM STATION</span><h2>Identify the operator. Record the move.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="operator-lock" data-slot="operator"></div><form class="scan-form" data-action="badge-form"><label>Operator badge<input name="code" data-testid="badge-operator-code" placeholder="Scan an operator badge" autocomplete="off"></label><button data-testid="badge-operator-submit">Read badge</button></form><button data-action="badge" data-testid="badge-signin">Simulate Avery Chen’s badge</button><div class="mode-pair"><button data-action="mode" data-value="IN" data-testid="badge-in">IN</button><button data-action="mode" data-value="OUT" data-testid="badge-out">OUT</button></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>Specimen label<input name="code" data-testid="badge-code" placeholder="Sign in with a badge before scanning" autocomplete="off"></label><button class="primary" data-testid="badge-submit">Record scan</button></form><button data-action="scan" data-testid="badge-scan">Simulate specimen scan</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="badge-result"></div></main><footer class="product-footer"><button data-action="lock" data-testid="badge-lock">Lock station</button><button data-action="reset">Reset station</button></footer></div>
+    </section>
+  </div>
+</div>
+<style>
+#fabric-scanner-design-lab{width:100%;min-width:0}
+#fabric-scanner-design-lab .scanner-stage{min-height:910px;padding:12px 0 20px}
+#fabric-scanner-design-lab .scanner-product{--p-bg:light-dark(#f6f4ee,#182127);--p-surface:light-dark(#fffefa,#212d34);--p-soft:light-dark(#e9eee7,#2b373a);--p-ink:light-dark(#253d49,#e3eeed);--p-muted:light-dark(#5d716b,#b3c7c0);--p-line:light-dark(#d5dfd5,#435852);--p-primary:light-dark(#244e61,#afd6df);--p-primary-ink:light-dark(#ffffff,#14303b);--p-ok:light-dark(#315f43,#b4dbbe);--p-ok-bg:light-dark(#e6f1e6,#234334);--p-warn:light-dark(#7c5421,#f2d09f);--p-warn-bg:light-dark(#f8ecd8,#433827);--p-error:light-dark(#9b3d35,#ffb8ab);--p-error-bg:light-dark(#f7e5df,#4c302d);color:var(--p-ink);background:var(--p-bg);border:1px solid var(--p-line);border-radius:15px;overflow:visible;font:400 15px/1.5 system-ui,-apple-system,sans-serif;min-width:0;max-width:100%;box-shadow:0 9px 26px light-dark(#233e4410,#00000020)}
+#fabric-scanner-design-lab .scanner-product *{box-sizing:border-box}
+#fabric-scanner-design-lab .scanner-product h2,#fabric-scanner-design-lab .scanner-product h3,#fabric-scanner-design-lab .scanner-product p{margin:0}
+#fabric-scanner-design-lab .scanner-product h2{font-size:24px;line-height:1.25;font-weight:500;letter-spacing:-.035em;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .scanner-product h3{font-size:18px;font-weight:500;line-height:1.4}
+#fabric-scanner-design-lab .scanner-product small{font-size:12px;line-height:1.4;display:block;font-weight:400}
+#fabric-scanner-design-lab .scanner-product b,#fabric-scanner-design-lab .scanner-product strong{font-weight:500}
+#fabric-scanner-design-lab .scanner-product button,#fabric-scanner-design-lab .scanner-product input,#fabric-scanner-design-lab .scanner-product select{font:inherit;max-width:100%;min-width:0}
+#fabric-scanner-design-lab .scanner-product button{min-height:44px;min-width:44px;border:1px solid var(--p-line);border-radius:8px;padding:10px 16px;background:var(--p-surface);color:var(--p-ink);white-space:normal;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .scanner-product button:disabled{opacity:.5;cursor:not-allowed}
+#fabric-scanner-design-lab .scanner-product button.primary,#fabric-scanner-design-lab .scanner-product button[aria-pressed="true"]{background:var(--p-primary);color:var(--p-primary-ink);border-color:var(--p-primary)}
+#fabric-scanner-design-lab .scanner-product button.full{width:100%}
+#fabric-scanner-design-lab .scanner-product label{display:block;font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .scanner-product input{width:100%;min-height:46px;padding:11px 12px;border:1px solid var(--p-line);background:var(--p-surface);color:var(--p-ink);border-radius:7px;font-size:16px;margin-top:6px}
+#fabric-scanner-design-lab .scanner-product input::placeholder{color:var(--p-muted);opacity:.8}
+#fabric-scanner-design-lab .product-header{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--p-line);padding:24px 24px 20px;background:var(--p-surface);border-radius:15px 15px 0 0}
+#fabric-scanner-design-lab .product-header>div{min-width:0;flex:1}
+#fabric-scanner-design-lab .eyebrow{display:block;font-size:11px;line-height:1.4;letter-spacing:.12em;font-weight:500;color:var(--p-muted);margin-bottom:7px}
+#fabric-scanner-design-lab .connection{font-size:12px;color:var(--p-muted);display:flex;align-items:center;gap:6px;max-width:170px}
+#fabric-scanner-design-lab .connection::before{content:"";height:7px;width:7px;flex-shrink:0;border-radius:50%;background:currentColor}
+#fabric-scanner-design-lab .connection.unavailable{color:var(--p-error)}
+#fabric-scanner-design-lab .product-main{padding:24px;display:grid;gap:18px;min-width:0}
+#fabric-scanner-design-lab .room-strip{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--p-muted);padding:0 0 15px;border-bottom:1px solid var(--p-line)}
+#fabric-scanner-design-lab .mode-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#fabric-scanner-design-lab .mode-pair>button{min-height:93px;text-align:left;font-size:31px;letter-spacing:.03em;padding:18px 22px}
+#fabric-scanner-design-lab .mode-pair small{margin-top:6px;letter-spacing:0}
+#fabric-scanner-design-lab .scope-bar{display:flex;gap:7px;flex-wrap:wrap;border-bottom:1px solid var(--p-line);padding-bottom:15px}
+#fabric-scanner-design-lab .scope-bar button{flex:1;font-size:13px;padding:9px 12px}
+#fabric-scanner-design-lab .scan-form{display:flex;align-items:end;gap:10px;min-width:0}
+#fabric-scanner-design-lab .scan-form label{flex:1;min-width:0}
+#fabric-scanner-design-lab .scan-form>button{flex-shrink:0;min-height:46px}
+#fabric-scanner-design-lab .product-footer{border-top:1px solid var(--p-line);padding:13px 24px;display:flex;gap:10px;justify-content:space-between;align-items:center;font-size:12px;color:var(--p-muted);background:var(--p-surface);border-radius:0 0 15px 15px}
+#fabric-scanner-design-lab .product-footer button{font-size:12px;padding:8px 12px}
+#fabric-scanner-design-lab [data-slot="preview"]:empty,#fabric-scanner-design-lab [data-slot="gate"]:empty,#fabric-scanner-design-lab [data-slot="result"]:empty{display:none}
+#fabric-scanner-design-lab .stack-preview{padding:16px 18px;border:1px solid var(--p-line);background:var(--p-surface);border-radius:9px;display:flex;justify-content:space-between;gap:15px;align-items:center;min-width:0}
+#fabric-scanner-design-lab .stack-preview strong{font-size:17px;display:block;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .stack-preview p{font-size:13px;color:var(--p-muted);margin-top:5px}
+#fabric-scanner-design-lab .stack-preview>span{font-variant-numeric:tabular-nums;font-size:13px;flex-shrink:0;text-align:right}
+#fabric-scanner-design-lab .movement-result{padding:15px 18px;border-radius:9px;background:var(--p-soft);color:var(--p-ink);overflow-wrap:anywhere}
+#fabric-scanner-design-lab .movement-result p{font-size:13px;margin-top:5px}
+#fabric-scanner-design-lab .movement-result.confirmed{background:var(--p-ok-bg);color:var(--p-ok)}
+#fabric-scanner-design-lab .movement-result.warning{background:var(--p-warn-bg);color:var(--p-warn)}
+#fabric-scanner-design-lab .movement-result.error{background:var(--p-error-bg);color:var(--p-error)}
+#fabric-scanner-design-lab .intent-status{background:var(--p-soft);padding:15px 18px;border-radius:8px;font-size:16px}
+#fabric-scanner-design-lab .guard-panel{background:var(--p-surface);border:1px solid var(--p-line);padding:19px;border-radius:10px;display:grid;gap:13px}
+#fabric-scanner-design-lab .guard-panel.early{border-color:var(--p-warn);color:var(--p-warn)}
+#fabric-scanner-design-lab .guard-panel p{font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .guard-actions{display:flex;gap:9px;flex-wrap:wrap}
+#fabric-scanner-design-lab .specimen-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+#fabric-scanner-design-lab .specimen-choice{position:relative;min-height:64px;border:1px solid var(--p-line);border-radius:7px;background:var(--p-surface);padding:10px 7px;display:flex!important;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-variant-numeric:tabular-nums}
+#fabric-scanner-design-lab .specimen-choice input{width:16px;min-height:16px;height:16px;position:absolute;top:6px;left:6px;margin:0;accent-color:var(--p-primary)}
+#fabric-scanner-design-lab .specimen-choice.selected{background:var(--p-soft);box-shadow:inset 0 0 0 1px var(--p-primary)}
+#fabric-scanner-design-lab .specimen-choice b{font-size:18px;color:var(--p-ink)}
+#fabric-scanner-design-lab .specimen-choice small{font-size:11px;color:var(--p-muted);margin-top:3px}
+#fabric-scanner-design-lab .early-list{font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 15px}
+#fabric-scanner-design-lab .early-list span{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--p-line);padding:5px 0}
+#fabric-scanner-design-lab .action-pair button{font-size:20px;letter-spacing:0;min-height:88px}
+#fabric-scanner-design-lab .step-track{padding:0;margin:0;list-style:none;display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--p-muted);border-bottom:1px solid var(--p-line);padding-bottom:18px}
+#fabric-scanner-design-lab .step-track li.active{color:var(--p-ink);font-weight:500}
+#fabric-scanner-design-lab .guided-step{display:grid;gap:18px}
+#fabric-scanner-design-lab .guided-step[hidden]{display:none}
+#fabric-scanner-design-lab .lane-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+#fabric-scanner-design-lab .lane{padding:20px;border:1px solid var(--p-line);border-radius:10px;background:var(--p-surface);display:grid;gap:16px}
+#fabric-scanner-design-lab .lane-sign{font-size:12px;letter-spacing:.14em;padding-bottom:12px;border-bottom:1px solid var(--p-line);color:var(--p-muted)}
+#fabric-scanner-design-lab .lane h3{font-size:26px}
+#fabric-scanner-design-lab .lane form{display:grid;gap:12px}
+#fabric-scanner-design-lab .command-deck{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#fabric-scanner-design-lab .command-deck button{min-height:107px;padding:15px 10px}
+#fabric-scanner-design-lab .command-deck b{display:block;font-size:22px}
+#fabric-scanner-design-lab .command-deck code{display:block;font-size:11px;color:inherit;margin-top:12px;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .hardware-simulator{background:var(--p-soft);border:1px solid var(--p-line);padding:22px;border-radius:14px}
+#fabric-scanner-design-lab .hardware-label{font-size:12px;text-align:center;color:var(--p-muted);margin-bottom:17px}
+#fabric-scanner-design-lab .physical-pair{display:flex;justify-content:center;gap:30px;flex-wrap:wrap}
+#fabric-scanner-design-lab .physical-pair button{width:150px;min-height:120px;border-radius:50%;font-size:30px;box-shadow:0 6px 0 var(--p-line)}
+#fabric-scanner-design-lab .physical-pair small{font-size:11px;max-width:110px;margin:6px auto 0}
+#fabric-scanner-design-lab .hardware-link{display:flex;gap:16px;justify-content:center;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .suggestion-panel{padding:22px;background:var(--p-soft);border-radius:10px;display:grid;gap:13px}
+#fabric-scanner-design-lab .suggestion-panel .transition{display:flex;align-items:center;gap:13px;font-size:19px}
+#fabric-scanner-design-lab .compact-scan{display:flex;align-items:center;gap:15px;flex-wrap:wrap;font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .inventory-board{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+#fabric-scanner-design-lab .inventory-column{border:1px solid var(--p-line);border-radius:10px;background:var(--p-surface);padding:16px;min-width:0}
+#fabric-scanner-design-lab .inventory-column h3{display:flex;justify-content:space-between;font-size:15px;margin-bottom:15px}
+#fabric-scanner-design-lab .inventory-column .specimen-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+#fabric-scanner-design-lab .inventory-column .empty-message{font-size:13px;color:var(--p-muted);padding:20px 0}
+#fabric-scanner-design-lab .selection-count{font-size:14px;color:var(--p-muted)}
+#fabric-scanner-design-lab .stack-ribbon{display:flex;align-items:center;gap:13px;flex-wrap:wrap;font-size:14px}
+#fabric-scanner-design-lab .stack-ribbon span{color:var(--p-muted)}
+#fabric-scanner-design-lab .stack-ribbon button{margin-left:auto;font-size:13px}
+#fabric-scanner-design-lab .selection-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#fabric-scanner-design-lab .selection-toolbar>div{margin-right:auto}
+#fabric-scanner-design-lab .compact-modes{display:flex;gap:8px}
+#fabric-scanner-design-lab .compact-modes button{flex:1;min-width:85px}
+#fabric-scanner-design-lab .basket-layout{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+#fabric-scanner-design-lab .basket-layout>section{min-width:0;display:grid;gap:16px;align-content:start}
+#fabric-scanner-design-lab .basket-layout .scan-form{display:grid;align-items:stretch}
+#fabric-scanner-design-lab .scan-basket{border:1px solid var(--p-line);border-radius:10px;padding:20px;background:var(--p-surface)}
+#fabric-scanner-design-lab .basket-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--p-line);font-size:13px}
+#fabric-scanner-design-lab .basket-row button{font-size:12px;padding:8px}
+#fabric-scanner-design-lab .empty-message{font-size:14px;color:var(--p-muted);padding:18px 0}
+#fabric-scanner-design-lab .staging-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#fabric-scanner-design-lab .staging-toolbar .compact-modes{margin-left:auto}
+#fabric-scanner-design-lab .tray{display:grid;gap:12px;min-height:135px}
+#fabric-scanner-design-lab .tray-stack{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:20px;background:var(--p-surface);border:1px solid var(--p-line);border-radius:10px;min-width:0}
+#fabric-scanner-design-lab .tray-stack strong{display:block;font-size:17px}
+#fabric-scanner-design-lab .tray-stack small{color:var(--p-muted);margin-top:5px}
+#fabric-scanner-design-lab .tray-stack .quantity{font-size:24px;font-variant-numeric:tabular-nums}
+#fabric-scanner-design-lab .tray-summary{color:var(--p-muted);font-size:14px}
+#fabric-scanner-design-lab .token-pair{display:grid;grid-template-columns:1fr 35px 1fr;gap:12px;align-items:center}
+#fabric-scanner-design-lab .token-pair>section{min-width:0;border:1px solid var(--p-line);background:var(--p-surface);padding:20px;border-radius:10px;display:grid;gap:12px}
+#fabric-scanner-design-lab .token-pair .eyebrow{margin:0}
+#fabric-scanner-design-lab .pair-connector{font-size:26px;text-align:center;color:var(--p-muted)}
+#fabric-scanner-design-lab .pair-readout{font-size:19px;min-height:60px;display:grid;align-content:center;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .pair-readout small{color:var(--p-muted);margin-top:5px}
+#fabric-scanner-design-lab .handheld{max-width:415px;margin:0 auto;border-width:7px;border-radius:24px}
+#fabric-scanner-design-lab .handheld .product-header{padding:20px 17px 17px;border-radius:18px 18px 0 0;align-items:start}
+#fabric-scanner-design-lab .handheld h2{font-size:22px}
+#fabric-scanner-design-lab .handheld .connection{font-size:11px;max-width:100px}
+#fabric-scanner-design-lab .handheld .product-main{padding:17px;gap:14px}
+#fabric-scanner-design-lab .handheld .product-footer{padding:12px 17px;border-radius:0 0 18px 18px}
+#fabric-scanner-design-lab .camera-preview{min-height:165px;border-radius:12px;background:var(--p-soft);border:1px solid var(--p-line);display:grid;align-content:center;justify-items:center;gap:10px;padding:17px;color:var(--p-muted)}
+#fabric-scanner-design-lab .camera-label{background:var(--p-surface);color:var(--p-ink);padding:15px;border-radius:5px;display:grid;text-align:center;font:400 12px/1.6 monospace}
+#fabric-scanner-design-lab .camera-caption{font-size:11px}
+#fabric-scanner-design-lab .handheld .stack-preview{padding:13px;display:block}
+#fabric-scanner-design-lab .handheld .stack-preview>span{display:block;text-align:left;margin-top:8px}
+#fabric-scanner-design-lab .console{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;border-radius:7px}
+#fabric-scanner-design-lab .console .product-header{border-radius:7px 7px 0 0}
+#fabric-scanner-design-lab .console-screen{background:var(--p-surface);padding:20px;border:1px solid var(--p-line);border-radius:6px;font-size:13px;min-height:180px;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .console-screen>div{margin-bottom:9px}
+#fabric-scanner-design-lab .console-presets{display:flex;gap:10px;flex-wrap:wrap}
+#fabric-scanner-design-lab .console-presets button{flex:1}
+#fabric-scanner-design-lab .console .product-footer{border-radius:0 0 7px 7px}
+#fabric-scanner-design-lab .operator-lock{background:var(--p-soft);padding:20px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:15px}
+#fabric-scanner-design-lab .operator-lock strong{display:block;font-size:19px}
+#fabric-scanner-design-lab .operator-lock small{color:var(--p-muted);margin-top:5px}
+@media(max-width:650px){#fabric-scanner-design-lab .scanner-stage{min-height:1230px}#fabric-scanner-design-lab .product-header{padding:20px 17px;display:block}#fabric-scanner-design-lab .product-header .connection{margin-top:11px;max-width:none}#fabric-scanner-design-lab .product-main{padding:17px;gap:16px}#fabric-scanner-design-lab .product-footer{padding:12px 17px;flex-wrap:wrap}#fabric-scanner-design-lab .product-footer>span{flex:1;min-width:135px}#fabric-scanner-design-lab .mode-pair{gap:9px}#fabric-scanner-design-lab .mode-pair>button{min-height:85px;padding:16px;font-size:27px}#fabric-scanner-design-lab .action-pair>button{font-size:19px}#fabric-scanner-design-lab .scan-form{display:grid;align-items:stretch}#fabric-scanner-design-lab .scan-form>button{width:100%}#fabric-scanner-design-lab .stack-preview{display:block;padding:14px}#fabric-scanner-design-lab .stack-preview>span{display:block;text-align:left;margin-top:8px}#fabric-scanner-design-lab .lane-grid,#fabric-scanner-design-lab .basket-layout{grid-template-columns:1fr}#fabric-scanner-design-lab .command-deck{grid-template-columns:1fr 1fr}#fabric-scanner-design-lab .command-deck button{min-height:93px}#fabric-scanner-design-lab .physical-pair{gap:16px}#fabric-scanner-design-lab .physical-pair button{width:107px;min-height:100px;font-size:25px}#fabric-scanner-design-lab .physical-pair small{font-size:11px}#fabric-scanner-design-lab .hardware-simulator{padding:17px 10px}#fabric-scanner-design-lab .inventory-board{grid-template-columns:1fr}#fabric-scanner-design-lab .inventory-column .specimen-grid{grid-template-columns:repeat(5,minmax(0,1fr))}#fabric-scanner-design-lab .token-pair{grid-template-columns:1fr}#fabric-scanner-design-lab .pair-connector{font-size:20px}#fabric-scanner-design-lab .token-pair>section{padding:17px}#fabric-scanner-design-lab .tray-stack{grid-template-columns:1fr auto;gap:10px;padding:16px}#fabric-scanner-design-lab .tray-stack>button{grid-column:1/3}#fabric-scanner-design-lab .early-list{grid-template-columns:1fr}#fabric-scanner-design-lab .guard-panel{padding:15px}#fabric-scanner-design-lab .specimen-grid{gap:6px}#fabric-scanner-design-lab .specimen-choice{min-height:61px;padding-top:13px}#fabric-scanner-design-lab .specimen-choice b{font-size:17px}#fabric-scanner-design-lab .handheld .product-header{display:flex}#fabric-scanner-design-lab .handheld .connection{margin-top:0;max-width:90px}#fabric-scanner-design-lab .operator-lock{padding:16px}#fabric-scanner-design-lab .step-track{font-size:11px;gap:6px}}
+@media(prefers-reduced-motion:no-preference){#fabric-scanner-design-lab .scanner-product button{transition:background .12s,color .12s}}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('fabric-scanner-design-lab');
+  if (!root) return;
+  const designs = Array.from(root.querySelectorAll('.scanner-product'));
+  const options = { scenario: 'Routine' };
+  const states = new Map();
+  const groupA = Array.from({length:20}, (_,i) => ({id:`cotton-${i+1}`,number:i+1,group:'cotton',code:`UL1:P:00000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`}));
+  const groupB = Array.from({length:12}, (_,i) => ({id:`nylon-${i+1}`,number:i+1,group:'nylon',code:`UL1:P:11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`}));
+  const all = [...groupA,...groupB];
+  const sampleCode = groupA[2].code;
+  let serial = 0;
+  const escape = value => String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+  function initial(id) {
+    const s = {id,direction:['reset','physical','cards','pairing','scan-act','suggested','guided','console'].includes(id)?null:'IN',scope:['numbered','basket','inventory'].includes(id)?'selection':'stack',scanned:false,selected:[],tray:[],specimen:groupA[2].id,next:2,step:1,destination:null,operator:null,gate:null,pending:null,result:null,busy:false,revision:0,staleConsumed:false,entries:{},serverEntries:{},log:[]};
+    all.forEach(item => { s.entries[item.id] = {state:options.scenario==='Early exit'?'IN':options.scenario==='Mixed stack'&&item.number<=10?'IN':'OUT',hours:options.scenario==='Early exit'?6.5:26}; });
+    s.serverEntries = structuredClone(s.entries);
+    return s;
+  }
+  const say = (s,kind,title,text='') => {s.result={kind,title,text};};
+  const specimens = s => all.filter(item => s.selected.includes(item.id));
+  function selectedFor(s) {
+    if (s.id==='staging'&&s.scope!=='selection') return all.filter(item=>s.tray.includes(item.group)).map(item=>item.id);
+    if (['numbered','basket','inventory'].includes(s.id) || s.scope==='selection') return [...s.selected];
+    return s.scope==='specimen'?[s.specimen]:groupA.map(item=>item.id);
+  }
+  function reset(product) { states.set(product.dataset.design,initial(product.dataset.design)); render(product); }
+  function available(s) {
+    if (options.scenario==='Unavailable') {say(s,'error','NOT AVAILABLE','The simulated server is unreachable. No movement can be submitted.');return false;}
+    if (s.pending || s.busy) {say(s,'warning','Confirmation still pending','Reconcile the same request before starting another movement.');return false;}
+    return true;
+  }
+  function readLabel(s,code=sampleCode) {
+    if (!available(s)) return false;
+    const item = all.find(item=>item.code===code.trim()) || all.find(item=>item.id===code.trim());
+    if (options.scenario==='Unknown label' || !item) {say(s,'error','Label not registered','No specimens moved. Verify the label or return to specimen preparation.');return false;}
+    s.specimen=item.id;s.scanned=true;s.result=null;
+    return true;
+  }
+  function scan(s,code=sampleCode) {
+    if(s.id==='badge'&&!s.operator){say(s,'warning','Operator badge required','Identify the operator before recording a specimen movement.');return;}
+    if(s.id==='basket') {
+      if(!readLabel(s,code)) return;
+      if(s.selected.includes(s.specimen))say(s,'neutral','Already in the basket','The repeated label did not add another specimen.');
+      else {s.selected.push(s.specimen);say(s,'neutral','Specimen added to basket','Review the scanned specimens and confirm their movement.');}
+      return;
+    }
+    if(!readLabel(s,code))return;
+    if(s.id==='guided'){s.step=3;return;}
+    if(s.id==='inventory'){s.selected=groupA.map(item=>item.id);say(s,'neutral','Stack selected','Choose a direction. Mixed locations require an exact selection.');return;}
+    if(s.id==='numbered'){if(!s.selected.includes(s.specimen))s.selected.push(s.specimen);return;}
+    if(['scan-act','suggested','pairing','handheld'].includes(s.id))return;
+    commit(s);
+  }
+  function commit(s,acknowledged=false) {
+    if(!available(s))return;
+    if(options.scenario==='Unknown label'){say(s,'error','Label not registered','No movement can be recorded for this unknown simulated identity.');return;}
+    const direction=s.id==='pairing'?s.destination:s.direction;
+    if(!direction){say(s,'warning',s.id==='pairing'?'Scan a destination token':'Choose a movement direction','No specimens have moved.');return;}
+    if(!s.scanned&&!['numbered','staging','inventory'].includes(s.id)){say(s,'warning','Read a specimen label first','The movement needs a registered specimen identity.');return;}
+    if(s.id==='badge'&&!s.operator){say(s,'warning','Operator badge required');return;}
+    let ids=selectedFor(s);
+    if(!ids.length){say(s,'warning','Choose the specimens','Select at least one exact specimen or stage a stack.');return;}
+    const locations=new Set(ids.map(id=>s.entries[id].state));
+    if(s.scope==='stack'&&locations.size>1){s.scope='selection';s.selected=[];s.gate={kind:'selection',direction};say(s,'warning','This stack has mixed locations','Select the exact numbered specimens. No eligible subset is moved automatically.');return;}
+    if(locations.size>1){say(s,'error','Selected specimens have different locations','Choose specimens all entering or all leaving. This request made no partial changes.');return;}
+    if(options.scenario==='Stale selection'&&!s.staleConsumed){s.staleConsumed=true;s.revision++;s.selected=[];s.gate=null;say(s,'error','Selection changed while you reviewed it','The simulated server rejected every change. Review the current specimens and submit a new request.');return;}
+    if(ids.every(id=>s.entries[id].state===direction)){
+      s.gate=null;
+      if(['reset','physical'].includes(s.id))s.direction=null;
+      if(s.id==='guided')s.step=4;
+      if(['basket','inventory'].includes(s.id))s.selected=[];
+      if(s.id==='staging')s.tray=[];
+      if(s.id==='pairing'){s.destination=null;s.scanned=false;}
+      if(['handheld','suggested'].includes(s.id))s.scanned=false;
+      say(s,'neutral','Already recorded · no changes',`All ${ids.length} selected specimens are already ${direction}. Original entry times and session counts are preserved.`);return;
+    }
+    const early=direction==='OUT'?ids.filter(id=>s.entries[id].hours<24):[];
+    if(early.length&&!acknowledged){s.gate={kind:'early',direction,ids,early};say(s,'warning','Conditioning is incomplete','Removal requires acknowledgment for the listed specimens. Nothing has moved yet.');return;}
+    const request=`SIM-${String(++serial).padStart(4,'0')}`;
+    s.busy=true;s.gate=null;say(s,'neutral','Awaiting simulated server confirmation',`${request} · ${direction} · ${ids.length} specimens`);
+    const product=designs.find(product=>product.dataset.design===s.id);render(product);
+    setTimeout(()=>{
+      if(states.get(s.id)!==s)return;
+      ids.forEach(id=>{s.serverEntries[id]={state:direction,hours:direction==='IN'?0:s.entries[id].hours};});
+      s.busy=false;s.revision++;
+      if(options.scenario==='Response lost'){s.pending={request,direction,ids,acknowledged};say(s,'warning','Confirmation unknown',`${request} was submitted. Its response was lost; keep this request pending until checked.`);}
+      else finish(s,{request,direction,ids,acknowledged});
+      render(product);
+    },360);
+  }
+  function finish(s,receipt){
+    s.entries=structuredClone(s.serverEntries);s.pending=null;s.gate=null;
+    const actor=s.operator?` · ${s.operator}`:'';
+    say(s,'confirmed',`${receipt.direction} confirmed by simulated server`,`${receipt.ids.length} specimens · ${receipt.request}${actor}${receipt.acknowledged?' · Incomplete conditioning acknowledged':''}`);
+    s.log.push(`${receipt.request}: ${receipt.direction} ${receipt.ids.length} specimens confirmed`);
+    if(['reset','physical'].includes(s.id))s.direction=null;
+    if(s.id==='guided')s.step=4;
+    if(s.id==='basket')s.selected=[];
+    if(s.id==='inventory')s.selected=[];
+    if(s.id==='staging')s.tray=[];
+    if(s.id==='pairing'){s.destination=null;s.scanned=false;}
+    if(s.id==='handheld')s.scanned=false;
+    if(s.id==='suggested')s.scanned=false;
+    if(!['numbered','inventory','basket'].includes(s.id))s.scope='stack';
+  }
+  function reconcile(s){
+    if(!s.pending)return;
+    const receipt=s.pending;s.busy=true;say(s,'neutral','Checking the same simulated request',receipt.request);
+    setTimeout(()=>{if(states.get(s.id)!==s)return;s.busy=false;finish(s,receipt);render(designs.find(product=>product.dataset.design===s.id));},300);
+  }
+  function command(s,text){
+    const value=text.trim().toUpperCase();
+    if(value==='MODE:IN'||value==='MODE:OUT'){s.direction=value.slice(5);s.result=null;return;}
+    if(value==='SCOPE:ONE'||value==='SCOPE:STACK'){s.scope=value==='SCOPE:ONE'?'specimen':'stack';s.selected=[];return;}
+    if(value==='ACK:EARLY'||value==='ACK'){if(s.gate?.kind==='early'){s.selected=[...s.gate.ids];s.scope='selection';s.direction=s.gate.direction;commit(s,true);}else say(s,'warning','No early-exit acknowledgment is pending');return;}
+    if(value==='MOVE:SELECTED'){s.scope='selection';commit(s);return;}
+    if(value.startsWith('SPECIMEN:')){const number=Number(value.slice(9));const item=groupA.find(item=>item.number===number);if(item){s.scope='selection';s.scanned=true;if(!s.selected.includes(item.id))s.selected.push(item.id);say(s,'neutral',`Specimen #${String(number).padStart(2,'0')} selected`);}else say(s,'error','Unknown specimen number');return;}
+    if(value.startsWith('SELECT ')){const match=value.match(/^SELECT ([0-9, ]+) (IN|OUT)$/);if(!match){say(s,'error','Use SELECT 02,05 IN or SELECT 02,05 OUT');return;}s.direction=match[2];s.scope='selection';s.scanned=true;s.selected=groupA.filter(item=>match[1].split(',').map(Number).includes(item.number)).map(item=>item.id);s.gate=null;commit(s);return;}
+    const prefixed=text.trim().match(/^(IN|OUT)\s+(.+)$/i);
+    if(prefixed){s.direction=prefixed[1].toUpperCase();scan(s,prefixed[2]);return;}
+    scan(s,text);
+  }
+  function grid(s,items=groupA){return `<div class="specimen-grid">${items.map(item=>`<label class="specimen-choice cursor-interaction ${s.selected.includes(item.id)?'selected':''}"><input type="checkbox" data-action="select-specimen" data-value="${item.id}" data-testid="${s.id}-specimen-${item.group==='nylon'?'nylon-':''}${String(item.number).padStart(2,'0')}" ${s.selected.includes(item.id)?'checked':''} ${s.busy||s.pending?'disabled':''}><b>${String(item.number).padStart(2,'0')}</b><small>${item.group==='nylon'?'Nylon · ':''}${s.entries[item.id].state}</small></label>`).join('')}</div>`;}
+  function preview(s){if(!s.scanned)return '';const inCount=groupA.filter(item=>s.entries[item.id].state==='IN').length;return `<div class="stack-preview"><div><strong>00073-LAB / Cotton twill</strong><p>ASTM D5034 · AR · Scanned specimen #${String(all.find(item=>item.id===s.specimen)?.number||3).padStart(2,'0')}</p></div><span>20 registered<br>${inCount} IN · ${20-inCount} OUT</span></div>`;}
+  function gate(s){
+    if(s.pending)return `<div class="guard-panel"><h3>Resolve the pending request</h3><p>No new scan is accepted while the outcome is uncertain. The same request identity is checked again.</p><button class="primary" data-action="reconcile" data-testid="${s.id}-reconcile">Check same request ${s.pending.request}</button></div>`;
+    if(!s.gate)return '';
+    if(s.gate.kind==='selection'){
+      if(['cards','console'].includes(s.id))return `<div class="guard-panel"><h3>Select numbered specimens</h3><p>Scan selection command cards or type SELECT 02,05 ${s.gate.direction}.</p><div class="guard-actions"><button data-action="command" data-value="SPECIMEN:02" data-testid="${s.id}-select-02">SPECIMEN:02</button><button data-action="command" data-value="SPECIMEN:05" data-testid="${s.id}-select-05">SPECIMEN:05</button><button class="primary" data-action="command" data-value="MOVE:SELECTED" data-testid="${s.id}-selection-confirm">MOVE:SELECTED</button></div><p>Selected: ${specimens(s).map(item=>String(item.number).padStart(2,'0')).join(', ')||'none'}</p></div>`;
+      return `<div class="guard-panel"><h3>Which exact specimens move ${s.gate.direction}?</h3>${grid(s,s.id==='staging'?all.filter(item=>s.tray.includes(item.group)):groupA)}<div class="guard-actions"><button class="primary" data-action="selection-confirm" data-testid="${s.id}-selection-confirm">Move ${s.selected.length} selected ${s.gate.direction}</button><button data-action="cancel-gate">Cancel selection</button></div></div>`;
+    }
+    return `<div class="guard-panel early"><h3>These specimens have not completed 24h</h3><div class="early-list">${s.gate.early.map(id=>{const item=all.find(item=>item.id===id),hours=s.entries[id].hours,duration=`${Math.floor(hours)}h ${String(Math.round(hours%1*60)).padStart(2,'0')}m`;return `<span>#${String(item.number).padStart(2,'0')} ${item.group==='nylon'?'Nylon':'Cotton'} <b>${duration} / 24h</b></span>`;}).join('')}</div><p>Acknowledgment records an incomplete conditioning session for exactly these specimens.</p><div class="guard-actions"><button class="primary" data-action="acknowledge" data-testid="${s.id}-ack">${['cards','console'].includes(s.id)?'Simulate ACK:EARLY card':'Acknowledge & record OUT'}</button><button data-action="cancel-gate">Keep in room</button></div></div>`;
+  }
+  function render(product){
+    const s=states.get(product.dataset.design);if(!s)return;
+    const put=(slot,content)=>product.querySelectorAll(`[data-slot="${slot}"]`).forEach(element=>{element.innerHTML=content;});
+    const disconnected=options.scenario==='Unavailable';
+    const connection=product.querySelector('[data-slot="connection"]');connection.textContent=disconnected?'NOT AVAILABLE':'Simulated server';connection.classList.toggle('unavailable',disconnected);
+    put('scope',`<div class="scope-bar" aria-label="Movement scope"><button data-action="scope" data-value="stack" data-testid="${s.id}-scope-stack" aria-pressed="${s.scope==='stack'}">Whole stack · 20</button><button data-action="scope" data-value="specimen" data-testid="${s.id}-scope-specimen" aria-pressed="${s.scope==='specimen'}">Scanned specimen only</button></div>`);
+    put('preview',preview(s));put('grid',s.gate?'':grid(s));put('gate',gate(s));
+    put('intent',s.direction?`${s.direction} armed · ${s.scope==='stack'?'whole stack':s.scope==='specimen'?'one specimen':'exact selection'}`:'No direction armed · choose IN or OUT');
+    put('hardware-state',s.direction?`${s.direction} button signal received`:'No direction armed');
+    put('selection-count',s.id==='staging'?`${s.tray.length} stacks · ${selectedFor(s).length} specimens staged`:`${s.selected.length} exact specimens selected`);
+    put('result',s.result?`<div class="movement-result ${s.result.kind}" data-state="${s.result.kind}"><strong>${escape(s.result.title)}</strong><p>${escape(s.result.text)}</p></div>`:disconnected?'<div class="movement-result error" data-state="error"><strong>NOT AVAILABLE</strong><p>No scan can be recorded while the simulated server is unreachable.</p></div>':'');
+    product.querySelectorAll('[data-action="mode"],[data-action="physical-mode"]').forEach(button=>button.setAttribute('aria-pressed',String(s.direction===button.dataset.value)));
+    product.querySelectorAll('[data-panel]').forEach(panel=>{panel.hidden=Number(panel.dataset.panel)!==s.step;});
+    product.querySelectorAll('[data-step]').forEach(step=>step.classList.toggle('active',Number(step.dataset.step)===s.step));
+    const inCount=groupA.filter(item=>s.entries[item.id].state==='IN').length;
+    put('suggestion',s.scanned?`<div class="suggestion-panel"><div class="transition">${inCount===0?'Currently OUT → Proposed IN':inCount===20?'Currently IN → Proposed OUT':'Mixed locations → Choose exact specimens'}</div>${inCount===0||inCount===20?`<button class="primary" data-action="suggested-confirm" data-value="${inCount===0?'IN':'OUT'}" data-testid="suggested-confirm">Confirm proposed ${inCount===0?'IN':'OUT'}</button>`:'<div class="compact-modes"><button data-action="act" data-value="IN" data-testid="suggested-in">Choose IN</button><button data-action="act" data-value="OUT" data-testid="suggested-out">Choose OUT</button></div>'}</div>`:'');
+    put('board',['IN','OUT'].map(state=>{const items=groupA.filter(item=>s.entries[item.id].state===state);return `<section class="inventory-column"><h3>${state==='IN'?'Inside shared room':'Outside room'} <span>${items.length}</span></h3>${items.length?grid(s,items):'<p class="empty-message">No specimens here</p>'}</section>`;}).join(''));
+    put('basket',s.selected.length?specimens(s).map(item=>`<div class="basket-row"><span>Cotton #${String(item.number).padStart(2,'0')} · ${s.entries[item.id].state}</span><button data-action="remove-specimen" data-value="${item.id}" aria-label="Remove specimen ${item.number}">Remove</button></div>`).join(''):'<p class="empty-message">No specimens scanned yet</p>');
+    put('tray',s.tray.length?s.tray.map(group=>`<div class="tray-stack"><div><strong>${group==='cotton'?'Cotton twill':'Nylon ripstop'}</strong><small>00073-LAB · ASTM D5034 / AR</small></div><span class="quantity">${group==='cotton'?20:12}</span><button data-action="remove-stack" data-value="${group}">Remove stack</button></div>`).join(''):'<p class="empty-message">Scan each stack onto this staging tray.</p>');
+    put('destination',`<div class="pair-readout">${s.destination==='IN'?'Shared conditioning room':s.destination==='OUT'?'Outside conditioning room':'No token read'}<small>${s.destination?'Destination recorded locally':'Scan a destination token'}</small></div>`);
+    put('pair-label',`<div class="pair-readout">${s.scanned?'Cotton twill · #03':'No label read'}<small>${s.scanned?'00073-LAB · 20 registered':'Read a specimen label'}</small></div>`);
+    put('operator',`<div><strong>${s.operator?escape(s.operator):'Station locked'}</strong><small>${s.operator?'Movements will include this operator identity':'Scan an operator badge to unlock movement recording'}</small></div><i data-lucide="${s.operator?'user-check':'lock-keyhole'}" aria-hidden="true"></i>`);
+    put('console-log',s.log.slice(-4).map(line=>`<div>${escape(line)}</div>`).join('')||'<div>ready: waiting for explicit movement command</div>');
+    product.querySelectorAll('button,input').forEach(control=>{
+      if(control.tagName==='BUTTON'){
+        control.classList.add('cursor-interaction');
+        if(control.closest('form')&&!control.dataset.action){control.dataset.action='submit-code';control.type='button';}
+      }
+      const action=control.dataset.action;const exempt=['reset','cancel-gate','lock'].includes(action);
+      const isReconcile=action==='reconcile';
+      const gated=s.id==='badge'&&!s.operator&&(action==='scan'||control.closest('form')?.dataset.action==='scan-form');
+      control.disabled=exempt?false:isReconcile?s.busy||disconnected:s.busy||!!s.pending||disconnected||gated;
+    });
+    if(globalThis.lucide)lucide.createIcons({attrs:{width:18,height:18}});
+  }
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-action]');if(!button||!root.contains(button)||button.disabled)return;
+    const product=button.closest('.scanner-product');if(!product)return;
+    const s=states.get(product.dataset.design),action=button.dataset.action,value=button.dataset.value;
+    if(action==='reset'){reset(product);return;}
+    if(action==='mode'||action==='physical-mode'){s.direction=value;s.result=null;}
+    else if(action==='scope'){s.scope=value;s.selected=[];s.gate=null;}
+    else if(action==='scan'){const code=s.id==='basket'?groupA[s.next++%20].code:sampleCode;scan(s,code);}
+    else if(action==='act'){s.direction=value;commit(s);}
+    else if(action==='commit')commit(s);
+    else if(action==='lane-scan'){s.direction=value;scan(s);}
+    else if(action==='wizard-direction'){s.direction=value;s.step=2;s.result=null;}
+    else if(action==='wizard-back'){s.step=Math.max(1,s.step-1);s.gate=null;}
+    else if(action==='wizard-next'){s.step=1;s.scanned=false;s.direction=null;s.selected=[];s.gate=null;s.result=null;}
+    else if(action==='suggested-confirm'){s.direction=value;commit(s);}
+    else if(action==='select-all'){s.selected=groupA.map(item=>item.id);s.scope='selection';}
+    else if(action==='clear-selection')s.selected=[];
+    else if(action==='remove-specimen')s.selected=s.selected.filter(id=>id!==value);
+    else if(action==='tray-scan'){if(options.scenario==='Unknown label')say(s,'error','Stack label not registered');else if(!s.tray.includes(value)){s.tray.push(value);s.scanned=true;s.result=null;}else say(s,'neutral','Stack already staged','No second copy was added.');}
+    else if(action==='remove-stack')s.tray=s.tray.filter(group=>group!==value);
+    else if(action==='destination'){s.destination=value;s.result=null;}
+    else if(action==='console-scan'){s.direction=value;scan(s);}
+    else if(action==='command')command(s,value);
+    else if(action==='badge'){s.operator='Avery Chen';s.result=null;}
+    else if(action==='lock'){s.operator=null;s.result=null;}
+    else if(action==='selection-confirm'){s.scope='selection';s.direction=s.gate.direction;commit(s);}
+    else if(action==='acknowledge'){const gate=s.gate;s.selected=[...gate.ids];s.scope='selection';s.direction=gate.direction;commit(s,true);}
+    else if(action==='cancel-gate'){s.gate=null;s.selected=[];s.result=null;}
+    else if(action==='reconcile')reconcile(s);
+    else if(action==='submit-code'){submitCode(button.closest('form'));return;}
+    render(product);
+  });
+  root.addEventListener('change',event=>{
+    const input=event.target;
+    if(input.matches('[data-testid="scanner-scenario"]')){options.scenario=input.value;designs.forEach(reset);return;}
+    if(input.dataset.action!=='select-specimen')return;
+    const product=input.closest('.scanner-product'),s=states.get(product.dataset.design);
+    s.scope='selection';if(input.checked&&!s.selected.includes(input.dataset.value))s.selected.push(input.dataset.value);else if(!input.checked)s.selected=s.selected.filter(id=>id!==input.dataset.value);
+    render(product);
+  });
+  function submitCode(form){
+    if(!form?.dataset.action)return;
+    const product=form.closest('.scanner-product'),s=states.get(product.dataset.design),text=form.elements.code.value.trim();
+    if(s.busy||s.pending||options.scenario==='Unavailable')return;
+    if(form.dataset.action==='badge-form'){if(text==='OP:AVERY')s.operator='Avery Chen';else say(s,'error','Operator badge not recognized','Station remains locked.');}
+    else if(form.dataset.action==='command-form'||form.dataset.action==='console-form')command(s,text);
+    else {if(form.dataset.action==='lane-form')s.direction=form.dataset.direction;scan(s,text);}
+    render(product);
+  }
+  root.addEventListener('submit',event=>{event.preventDefault();submitCode(event.target);});
+  root.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&event.target.matches('.scanner-product input[name="code"]')){event.preventDefault();submitCode(event.target.closest('form'));}
+  });
+  designs.forEach(reset);
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:root.querySelector('.viz-controls'),onChange:()=>{root.querySelector('[data-testid="scanner-scenario"]').value=options.scenario;designs.forEach(reset);}});
+    tweak.addSelect(options,'scenario',{label:'Simulated situation',options:['Routine','Early exit','Mixed stack','Unavailable','Response lost','Unknown label','Stale selection']});
+  }
+})();
+</script>

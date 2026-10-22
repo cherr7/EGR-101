@@ -1,0 +1,370 @@
+<div id="fabric-stack-overview">
+  <div class="viz-controls" aria-label="Stack overview demo controls">
+    <button type="button" class="btn" data-demo="hour">Advance 1 hour</button>
+    <button type="button" class="btn" data-demo="day">Advance 24 hours</button>
+    <button type="button" class="btn" data-demo="reset">Reset demo</button>
+    <label class="form-check"><input class="form-check-input" type="checkbox" data-demo="offline"><span class="form-check-label">Database unavailable</span></label>
+    <span class="text-small">DEMO · October 8, 2026, 10:40 ET</span>
+  </div>
+  <div class="stack-app" aria-label="Stack readiness overview">
+    <header class="stack-header"><div><small>FABRIC / MAIN LAB</small><h2>Stack overview</h2></div><span class="stack-connection">DB connected · DEMO</span></header>
+    <div class="stack-summary" aria-live="polite"></div>
+    <div class="stack-filters">
+      <label>Find a stack<input type="search" data-field="search" aria-label="Find a stack" placeholder="Stack, project, material or ID"></label>
+      <label>Room<select data-field="room"><option value="">All rooms</option><option>Shared</option><option>PPE</option><option>Footwear</option></select></label>
+      <label>Show<select data-field="filter"><option value="all">All stacks</option><option value="ready">Has ready specimens</option><option value="inside">Still inside</option><option value="awaiting">Awaiting entry</option><option value="finished">Finished</option></select></label>
+      <label>Sort<select data-field="sort"><option value="ready">Ready first, longest inside</option><option value="oldest">Longest inside</option><option value="next">Next ready</option><option value="project">Project / stack</option></select></label>
+    </div>
+    <div class="stack-notice" hidden role="status">NOT AVAILABLE · showing the last confirmed snapshot. Readiness is not current.</div>
+    <main class="stack-table-scroll"><table aria-label="All specimen stacks"><thead><tr><th>Stack / project</th><th>Material · test / treatment</th><th>Room</th><th>Specimens</th><th>Time inside</th><th>Readiness</th><th></th></tr></thead><tbody></tbody></table></main>
+    <footer class="stack-footer"><span class="stack-count"></span><span class="stack-clock"></span><small>24 h required · read-only</small></footer>
+    <div class="stack-overlay" hidden></div>
+  </div>
+</div>
+<style>
+  #fabric-stack-overview [hidden]{display:none!important}
+  #fabric-stack-overview .viz-controls{margin-bottom:14px}
+  #fabric-stack-overview .stack-app{
+    --o-bg:light-dark(#f4f7fa,#172430);--o-panel:light-dark(#ffffff,#223344);--o-ink:light-dark(#1a2e43,#edf5fc);
+    --o-muted:light-dark(#536c82,#bbcedd);--o-line:light-dark(#d1dde8,#405b72);--o-soft:light-dark(#eaf1f7,#2c435a);
+    --o-primary:light-dark(#255981,#afd6f2);--o-on-primary:light-dark(#ffffff,#163249);
+    --o-ready:light-dark(#176447,#9bdfbe);--o-ready-bg:light-dark(#e6f5ed,#203f34);
+    --o-warn:light-dark(#85530a,#ffd18a);--o-warn-bg:light-dark(#fff2db,#493920);
+    --o-error:light-dark(#a52b3a,#ffb3bd);
+    box-sizing:border-box;width:100%;height:660px;position:relative;display:flex;flex-direction:column;overflow:hidden;
+    background:var(--o-bg);color:var(--o-ink);border:1px solid var(--o-line);border-radius:8px;
+    font:14px/1.4 system-ui,-apple-system,sans-serif;text-align:left;color-scheme:light dark
+  }
+  #fabric-stack-overview .stack-app *{box-sizing:border-box}
+  #fabric-stack-overview .stack-app h2,#fabric-stack-overview .stack-app h3,#fabric-stack-overview .stack-app p{margin:0;font-weight:500}
+  #fabric-stack-overview .stack-app strong{font-weight:500}
+  #fabric-stack-overview .stack-app small{font-size:12px;color:var(--o-muted)}
+  #fabric-stack-overview .stack-app button,#fabric-stack-overview .stack-app input,#fabric-stack-overview .stack-app select{font:inherit;color:inherit;min-height:38px;border:1px solid var(--o-line);border-radius:5px;background:var(--o-panel);padding:8px 10px}
+  #fabric-stack-overview .stack-header{flex:none;padding:15px 18px;border-bottom:1px solid var(--o-line);display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--o-panel)}
+  #fabric-stack-overview .stack-header>div{display:flex;align-items:center;gap:24px}
+  #fabric-stack-overview .stack-header small{letter-spacing:.1em}
+  #fabric-stack-overview .stack-header h2{font-size:21px}
+  #fabric-stack-overview .stack-connection{font-size:12px;color:var(--o-ready);white-space:nowrap}
+  #fabric-stack-overview .stack-app[data-offline=true] .stack-connection{color:var(--o-error)}
+  #fabric-stack-overview .stack-summary{flex:none;display:flex;gap:25px;padding:15px 18px;border-bottom:1px solid var(--o-line);flex-wrap:wrap}
+  #fabric-stack-overview .stack-summary span{display:flex;align-items:baseline;gap:6px;color:var(--o-muted);font-size:13px}
+  #fabric-stack-overview .stack-summary strong{font-size:23px;color:var(--o-ink)}
+  #fabric-stack-overview .stack-filters{flex:none;display:flex;align-items:end;gap:10px;padding:12px 18px;background:var(--o-panel);border-bottom:1px solid var(--o-line);flex-wrap:wrap}
+  #fabric-stack-overview .stack-filters label{display:grid;gap:4px;min-width:0;font-size:12px;color:var(--o-muted)}
+  #fabric-stack-overview .stack-filters label:first-child{flex:1;min-width:180px}
+  #fabric-stack-overview .stack-filters input,#fabric-stack-overview .stack-filters select{width:100%;font-size:13px;color:var(--o-ink)}
+  #fabric-stack-overview .stack-notice{flex:none;padding:10px 18px;background:var(--o-warn-bg);color:var(--o-warn);font-size:13px}
+  #fabric-stack-overview .stack-table-scroll{flex:1;min-height:0;overflow:auto;padding:0 18px}
+  #fabric-stack-overview table{border-collapse:collapse;width:100%;font-size:13px}
+  #fabric-stack-overview thead{position:sticky;top:0;background:var(--o-bg);z-index:1}
+  #fabric-stack-overview th{text-align:left;font-weight:500;white-space:nowrap;color:var(--o-muted);font-size:12px;padding:12px 8px;border-bottom:1px solid var(--o-line)}
+  #fabric-stack-overview td{padding:14px 8px;border-bottom:1px solid var(--o-line);vertical-align:middle}
+  #fabric-stack-overview td small{display:block;margin-top:3px;white-space:nowrap}
+  #fabric-stack-overview td .stack-name{font-size:16px}
+  #fabric-stack-overview .readiness{display:inline-block;padding:4px 7px;border-radius:5px;white-space:nowrap;background:var(--o-soft);color:var(--o-muted);font-size:12px}
+  #fabric-stack-overview .readiness[data-kind=ready]{background:var(--o-ready-bg);color:var(--o-ready)}
+  #fabric-stack-overview .readiness[data-kind=partial]{background:var(--o-warn-bg);color:var(--o-warn)}
+  #fabric-stack-overview .stack-app[data-offline=true] .readiness{background:var(--o-soft);color:var(--o-muted)}
+  #fabric-stack-overview .stack-footer{flex:none;padding:13px 18px;border-top:1px solid var(--o-line);background:var(--o-panel);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px}
+  #fabric-stack-overview .stack-overlay{position:absolute;inset:0;z-index:5;background:light-dark(#192c4255,#04090dbb);padding:18px;display:flex;align-items:center;justify-content:center}
+  #fabric-stack-overview .stack-dialog{width:100%;max-width:850px;max-height:100%;display:flex;flex-direction:column;background:var(--o-panel);border:1px solid var(--o-line);border-radius:8px;overflow:hidden}
+  #fabric-stack-overview .stack-dialog header,#fabric-stack-overview .stack-dialog footer{flex:none;padding:15px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--o-line)}
+  #fabric-stack-overview .stack-dialog footer{border-bottom:0;border-top:1px solid var(--o-line);font-size:12px;color:var(--o-muted)}
+  #fabric-stack-overview .stack-dialog h3{font-size:20px}
+  #fabric-stack-overview .stack-dialog-body{min-height:0;overflow:auto;padding:0 18px}
+  #fabric-stack-overview .specimen-id{font:12px/1.4 ui-monospace,SFMono-Regular,monospace;white-space:nowrap}
+  @media(max-width:650px){
+    #fabric-stack-overview .stack-header,#fabric-stack-overview .stack-summary,#fabric-stack-overview .stack-filters,#fabric-stack-overview .stack-footer{padding:11px}
+    #fabric-stack-overview .stack-header small{display:none}
+    #fabric-stack-overview .stack-header h2{font-size:18px}
+    #fabric-stack-overview .stack-summary{gap:12px}
+    #fabric-stack-overview .stack-summary strong{font-size:20px}
+    #fabric-stack-overview .stack-filters label{flex:1;min-width:110px}
+    #fabric-stack-overview .stack-filters label:first-child{flex-basis:100%}
+    #fabric-stack-overview .stack-table-scroll{padding:0 10px}
+    #fabric-stack-overview .stack-overlay{padding:8px}
+  }
+</style>
+<script>
+/* Local stand-in for the project's future HTTP API. No network or SQL access. */
+(() => {
+  const MAX_ID=1099511627775n;
+  const clone=value=>JSON.parse(JSON.stringify(value));
+  const config=[
+    {stack:'A',base:100000000100,count:10,project:'00073-LAB',material:'Cotton twill',test:'D5034',treatment:'AR'},
+    {stack:'B',base:1099511627755,count:20,project:'AB-004',material:'Nylon weave',test:'D2261',treatment:'3L'},
+    {stack:'C',base:271000000000,count:6,project:'00702',material:'Polyester mesh',test:'D5034',treatment:'1L'}
+  ];
+  function decodeId(input,format='decimal') {
+    let text=String(input).trim(),value;
+    if(/^0x[0-9a-f]+$/i.test(text))value=BigInt(text);
+    else if(/^0b[01]+$/i.test(text))value=BigInt(text);
+    else if(format==='binary'&&/^[01]+$/.test(text))value=BigInt('0b'+text);
+    else if(format==='hex'&&/^[0-9a-f]+$/i.test(text))value=BigInt('0x'+text);
+    else if(format==='decimal'&&/^\d+$/.test(text))value=BigInt(text);
+    else throw new Error('ID format not recognized. Check the scanner input setting.');
+    if(value<0n||value>MAX_ID)throw new Error('ID is outside the unsigned 40-bit range.');
+    return Number(value);
+  }
+  function decodeBytes(bytes,littleEndian=false) {
+    if(!(bytes instanceof Uint8Array)||bytes.length!==5)throw new Error('Expected five ID bytes.');
+    const ordered=littleEndian?Array.from(bytes).reverse():Array.from(bytes);
+    return Number(ordered.reduce((n,b)=>(n<<8n)|BigInt(b),0n));
+  }
+  function localInput(iso) {
+    if(!iso)return '';
+    const parts=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(iso));
+    const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+    return p.year+'-'+p.month+'-'+p.day+'T'+p.hour+':'+p.minute;
+  }
+  function utcInput(value) {
+    if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value))throw new Error('Enter a valid movement time.');
+    const wall=Date.parse(value+'Z');let guess=wall;
+    for(let i=0;i<3;i++)guess+=wall-Date.parse(localInput(new Date(guess).toISOString())+'Z');
+    const result=new Date(guess).toISOString();
+    if(localInput(result)!==value)throw new Error('That local time does not exist.');
+    return result;
+  }
+  function clockText(iso) {return new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(iso));}
+  function dateText(iso) {return iso?new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso)):'—';}
+  function create(options={}) {
+    const groups=options.overview?config.concat([
+      {stack:'D',base:410000000000,count:8,project:'00073-LAB',material:'Cotton twill',test:'D5034',treatment:'1L'},
+      {stack:'E',base:510000000000,count:12,project:'Q-001',material:'Aramid blend',test:'D2261',treatment:'5L'},
+      {stack:'F',base:610000000000,count:8,project:'00018',material:'Polyester knit',test:'D5034',treatment:'AR'}
+    ]):config;
+    const fixtures=groups.flatMap(group=>Array.from({length:group.count},(_,i)=>({ID:group.base+i+1,prep:{...group,number:i+1}})));
+    const ids=stack=>fixtures.filter(r=>r.prep.stack===stack).map(r=>r.ID);
+    const initial=[
+      {transaction_id:'T001',type:'movement',direction:'IN',room:'Shared',specimen_ids:ids('A'),observed_at:'2026-10-07T12:40:00.000Z',recorded_at:'2026-10-07T12:40:00.000Z',note:''},
+      {transaction_id:'T002',type:'movement',direction:'IN',room:'Shared',specimen_ids:ids('C'),observed_at:'2026-10-08T10:40:00.000Z',recorded_at:'2026-10-08T10:40:00.000Z',note:''},
+      {transaction_id:'T003',type:'printed',specimen_ids:ids('B'),recorded_at:'2026-10-08T12:00:00.000Z'}
+    ];
+    if(options.mistake)initial.push({transaction_id:'T004',type:'movement',direction:'OUT',room:'Shared',specimen_ids:ids('A'),observed_at:'2026-10-08T14:10:00.000Z',recorded_at:'2026-10-08T14:10:00.000Z',note:''});
+    if(options.overview)[
+      {direction:'IN',room:'PPE',specimen_ids:ids('D'),observed_at:'2026-10-07T15:10:00.000Z'},
+      {direction:'IN',room:'Shared',specimen_ids:ids('E').slice(0,8),observed_at:'2026-10-07T13:00:00.000Z'},
+      {direction:'IN',room:'Shared',specimen_ids:ids('E').slice(8),observed_at:'2026-10-08T04:40:00.000Z'},
+      {direction:'OUT',room:'Shared',specimen_ids:ids('E').slice(0,5),observed_at:'2026-10-08T14:00:00.000Z'},
+      {direction:'IN',room:'Footwear',specimen_ids:ids('F'),observed_at:'2026-10-05T12:00:00.000Z'},
+      {direction:'OUT',room:'Footwear',specimen_ids:ids('F'),observed_at:'2026-10-06T13:00:00.000Z'}
+    ].forEach(event=>initial.push({transaction_id:'T'+String(initial.length+1).padStart(3,'0'),type:'movement',recorded_at:event.observed_at,note:'',...event}));
+    let events=clone(initial),revision=0,now=Date.parse('2026-10-08T14:40:00.000Z'),scenario='normal';
+    const requests=new Map();
+    function effective(source=events) {
+      const map=new Map();
+      source.forEach(event=>{
+        if(event.type==='movement')map.set(event.transaction_id,{...clone(event),cancelled:false,modified:false});
+        if(event.type==='modification'&&map.has(event.target_transaction))map.set(event.target_transaction,{...map.get(event.target_transaction),...clone(event.changes),modified:true});
+        if(event.type==='undo'&&map.has(event.target_transaction))map.get(event.target_transaction).cancelled=true;
+      });
+      return Array.from(map.values());
+    }
+    function project(source=events,strict=false) {
+      const rows=fixtures.map(r=>({...clone(r),ENTRY:null,EXIT:null,room:null,raw_json_time:[]}));
+      const byId=new Map(rows.map(r=>[r.ID,r]));
+      const movements=effective(source).filter(e=>!e.cancelled).sort((a,b)=>a.observed_at.localeCompare(b.observed_at)||a.transaction_id.localeCompare(b.transaction_id));
+      movements.forEach(event=>event.specimen_ids.forEach(id=>{
+        const row=byId.get(id);if(!row)throw new Error('Unknown specimen ID.');
+        if(event.direction==='IN') {
+          if(strict&&row.ENTRY)throw new Error('Specimen '+row.prep.number+' already has its one ENTRY. Correct the existing transaction.');
+          row.ENTRY=event.observed_at;row.room=event.room;
+        } else {
+          if(strict&&(!row.ENTRY||row.EXIT))throw new Error('Specimen '+row.prep.number+' needs one ENTRY before one EXIT.');
+          if(strict&&event.observed_at<row.ENTRY)throw new Error('EXIT must be after ENTRY.');
+          row.EXIT=event.observed_at;
+        }
+      }));
+      source.forEach(event=>{
+        const target=event.target_transaction?source.find(e=>e.transaction_id===event.target_transaction):null;
+        const affected=new Set([...(event.specimen_ids||[]),...(target?.specimen_ids||[]),...(event.changes?.specimen_ids||[])]);
+        affected.forEach(id=>{if(byId.has(id))byId.get(id).raw_json_time.push(clone(event));});
+      });
+      rows.forEach(row=>row.status=!row.ENTRY?'Awaiting entry':row.EXIT?'Finished':'Conditioning');
+      return rows;
+    }
+    function append(event) {
+      const id='T'+String(events.length+1).padStart(3,'0');now+=1000;
+      const full={transaction_id:id,recorded_at:new Date(now).toISOString(),...event};
+      project(events.concat(full),true);events.push(full);revision++;
+      return full;
+    }
+    function delay(fn) {
+      return new Promise((resolve,reject)=>setTimeout(()=>{
+        if(scenario==='offline'){reject(new Error('NOT AVAILABLE · no database connection.'));return;}
+        try {resolve(fn());}catch(error){reject(error);}
+      },200));
+    }
+    function lookup(id) {
+      const rows=project(),record=rows.find(r=>r.ID===Number(id));
+      if(!record)throw new Error('Specimen ID not registered.');
+      return {record,members:rows.filter(r=>r.prep.stack===record.prep.stack),version:revision};
+    }
+    function eligible(records,direction) {return records.filter(r=>direction==='IN'?!r.ENTRY:!!r.ENTRY&&!r.EXIT);}
+    function canUndo(transactionId) {
+      const target=effective().find(e=>e.transaction_id===transactionId);
+      if(!target||target.cancelled)return {allowed:false,reason:'This transaction is already cancelled.'};
+      const index=events.findIndex(e=>e.transaction_id===transactionId);
+      for(const later of events.slice(index+1)) {
+        const affected=later.specimen_ids||events.find(e=>e.transaction_id===later.target_transaction)?.specimen_ids||[];
+        if(affected.some(id=>target.specimen_ids.includes(id)))return {allowed:false,reason:'A later transaction affects these specimens. Use the log editor.'};
+      }
+      try {project(events.concat({type:'undo',target_transaction:transactionId}),true);}
+      catch(error){return {allowed:false,reason:error.message};}
+      return {allowed:true,count:target.specimen_ids.length,direction:target.direction,specimen_ids:target.specimen_ids};
+    }
+    const api={
+      fixtures:clone(fixtures),decodeId,decodeBytes,eligible,clockText,dateText,localInput,utcInput,
+      setScenario(value){scenario=value;},
+      now(){return now;},
+      lookup(id){return delay(()=>lookup(id));},
+      listRecords(){return clone(project());},
+      listTransactions(){return clone(events);},
+      listMovements(){return clone(effective());},
+      canUndo,
+      snapshot(){return {events:clone(events),revision,now,requests:Array.from(requests.entries()).slice(-3)};},
+      restore(snapshot){
+        if(!snapshot||!Array.isArray(snapshot.events))return;
+        try {project(snapshot.events,true);events=clone(snapshot.events);revision=Number(snapshot.revision)||0;now=Number(snapshot.now)||now;requests.clear();(snapshot.requests||[]).forEach(([id,record])=>requests.set(id,record));}catch {}
+      },
+      previewModification(transactionId,changes){
+        return clone(project(events.concat({type:'modification',target_transaction:transactionId,changes}),true));
+      },
+      move(request){
+        return delay(()=>{
+          const old=requests.get(request.request_id);
+          if(old) {
+            if(JSON.stringify(old.payload)!==JSON.stringify(request))throw new Error('Request ID cannot be reused with different details.');
+            return clone(old.result);
+          }
+          if(request.version!==revision||scenario==='stale')throw new Error('The stack changed. Rescan before submitting.');
+          const {members}=lookup(request.scanned_id);
+          const selected=request.scope==='stack'?eligible(members,request.direction):members.filter(r=>request.specimen_ids.includes(r.ID));
+          if(request.scope==='individual'&&request.specimen_ids.some(id=>!members.some(r=>r.ID===id)))throw new Error('Selection contains a specimen from another stack.');
+          if(!selected.length){
+            const result={noop:true,direction:request.direction,detail:request.direction==='IN'?'Already entered or finished · no new conditioning period.':'Already OUT or not yet entered · no transaction added.'};
+            requests.set(request.request_id,{payload:clone(request),result:clone(result)});return result;
+          }
+          if(selected.some(r=>!eligible([r],request.direction).length))throw new Error('Some selected specimens cannot make this movement.');
+          if(request.direction==='OUT'&&selected.some(r=>r.room!==request.room))throw new Error('Checkout room does not match ENTRY.');
+          const early=request.direction==='OUT'?selected.filter(r=>now-Date.parse(r.ENTRY)<24*3600000):[];
+          if(early.length&&!request.acknowledge_early)throw new Error('Early checkout needs an override.');
+          const transaction=append({type:'movement',direction:request.direction,room:request.room,specimen_ids:selected.map(r=>r.ID),observed_at:new Date(now+1000).toISOString(),request_id:request.request_id,note:'',early_override:!!early.length});
+          const result={transaction_id:transaction.transaction_id,direction:request.direction,count:selected.length,specimen_ids:selected.map(r=>r.ID),recorded_at:transaction.recorded_at,early_override:!!early.length};
+          requests.set(request.request_id,{payload:clone(request),result:clone(result)});
+          if(scenario==='lost'){const error=new Error('Response lost · confirmation pending.');error.pending=true;error.request_id=request.request_id;throw error;}
+          return result;
+        });
+      },
+      status(requestId){return delay(()=>{const record=requests.get(requestId);if(!record)throw new Error('Request not found.');return clone(record.result);});},
+      undo(transactionId){
+        return delay(()=>{
+          const verdict=canUndo(transactionId);if(!verdict.allowed)throw new Error(verdict.reason);
+          if(scenario==='stale')throw new Error('Transaction changed. Refresh before undo.');
+          const event=append({type:'undo',target_transaction:transactionId,specimen_ids:verdict.specimen_ids});
+          return {transaction_id:event.transaction_id,target_transaction:transactionId,count:verdict.count,recorded_at:event.recorded_at};
+        });
+      },
+      modify(transactionId,changes,version){
+        return delay(()=>{
+          if(version!==revision||scenario==='stale')throw new Error('Transaction changed elsewhere. Reopen the row.');
+          const original=effective().find(e=>e.transaction_id===transactionId);
+          if(!original||original.cancelled)throw new Error('Transaction cannot be edited.');
+          if(changes.observed_at&&Date.parse(changes.observed_at)>now)throw new Error('Movement time is in the future.');
+          if(changes.specimen_ids&&(!changes.specimen_ids.length||new Set(changes.specimen_ids).size!==changes.specimen_ids.length||changes.specimen_ids.some(id=>!fixtures.some(r=>r.ID===id&&r.prep.stack===fixtures.find(x=>x.ID===original.specimen_ids[0]).prep.stack))))throw new Error('Select registered specimens from this stack, or cancel the transaction.');
+          const event=append({type:'modification',target_transaction:transactionId,changes:clone(changes)});
+          return {transaction_id:event.transaction_id,recorded_at:event.recorded_at};
+        });
+      },
+      version(){return revision;},
+      recordMissed(details){
+        return delay(()=>{
+          if(scenario==='stale')throw new Error('Records changed elsewhere. Reopen the form.');
+          if(Date.parse(details.observed_at)>now)throw new Error('Movement time is in the future.');
+          if(!Array.isArray(details.specimen_ids)||!details.specimen_ids.length||new Set(details.specimen_ids).size!==details.specimen_ids.length)throw new Error('Select numbered specimens for the manual record.');
+          const event=append({type:'movement',source:'manual',...clone(details)});
+          return {transaction_id:event.transaction_id,recorded_at:event.recorded_at};
+        });
+      },
+      simulateLaterMovement(){
+        const row=project().find(r=>r.ENTRY&&!r.EXIT);
+        if(row)append({type:'movement',direction:'OUT',room:row.room,specimen_ids:[row.ID],observed_at:new Date(now+1000).toISOString(),note:''});
+      }
+    };
+    if(options.saved)api.restore(options.saved);
+    return api;
+  }
+  window.FabricPrototypeAPI={create,config,decodeId,decodeBytes,localInput,utcInput,clockText,dateText};
+})();
+
+</script>
+<script>
+(() => {
+  const root=document.getElementById('fabric-stack-overview'),app=root.querySelector('.stack-app'),api=FabricPrototypeAPI.create({overview:true});
+  const hour=3600000,required=24*hour,esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let state={search:'',room:'',filter:'all',sort:'ready',offset:0,offline:false,selected:null},lastSaved=null;
+  function now(){return api.now()+state.offset*hour;}
+  function age(ms){const minutes=Math.floor(Math.max(0,ms)/60000);return Math.floor(minutes/60)+' h '+String(minutes%60).padStart(2,'0')+' m';}
+  function rows(){
+    const grouped=new Map();
+    api.listRecords().forEach(record=>{const key=record.prep.stack;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(record);});
+    return Array.from(grouped,([stack,members])=>{
+      const inside=members.filter(r=>r.ENTRY&&!r.EXIT),ready=inside.filter(r=>now()-Date.parse(r.ENTRY)>=required),finished=members.filter(r=>r.EXIT),awaiting=members.filter(r=>!r.ENTRY);
+      const ages=inside.map(r=>now()-Date.parse(r.ENTRY)),oldest=ages.length?Math.max(...ages):null,newest=ages.length?Math.min(...ages):null;
+      const kind=!inside.length?finished.length===members.length?'finished':'awaiting':ready.length===inside.length&&!awaiting.length?'ready':ready.length?'partial':'conditioning';
+      const next=inside.filter(r=>!ready.includes(r)).map(r=>Math.max(0,required-(now()-Date.parse(r.ENTRY))));
+      return {stack,members,inside,ready,finished,awaiting,oldest,newest,kind,prep:members[0].prep,rooms:Array.from(new Set(members.filter(r=>r.ENTRY).map(r=>r.room))),next:next.length?Math.min(...next):null,allReady:inside.length?Math.max(0,required-newest):null};
+    });
+  }
+  function remember(){
+    if(!window.openai?.setWidgetState)return;
+    const saved={modelContent:{page:'Stack overview',filter:state.filter,sort:state.sort,selected_stack:state.selected,demo_hours_advanced:state.offset},privateContent:{type:'stack-overview-v1',...state}};
+    lastSaved=JSON.stringify(saved);window.openai.setWidgetState(saved).catch(()=>{});
+  }
+  function restore(saved){const s=saved?.privateContent;if(s?.type!=='stack-overview-v1'||JSON.stringify(saved)===lastSaved)return;state={...state,...s};root.querySelector('[data-demo=offline]').checked=state.offline;render();}
+  function readiness(row){return row.kind==='ready'?'Ready':row.kind==='partial'?'Partly ready':row.kind==='finished'?'Finished':row.kind==='awaiting'?'Awaiting entry':'Conditioning';}
+  function render(){
+    app.dataset.offline=String(state.offline);app.querySelector('.stack-notice').hidden=!state.offline;
+    app.querySelector('.stack-connection').textContent=state.offline?'DB NOT AVAILABLE':'DB connected · DEMO';
+    for(const name of ['search','room','filter','sort'])app.querySelector('[data-field='+name+']').value=state[name];
+    const all=rows(),readyStacks=all.filter(r=>r.ready.length),readyCount=all.reduce((n,r)=>n+r.ready.length,0),inside=all.reduce((n,r)=>n+r.inside.length,0);
+    app.querySelector('.stack-summary').innerHTML='<span><strong>'+readyStacks.length+'</strong> stacks with ready specimens</span><span><strong>'+readyCount+'</strong> specimens ready</span><span><strong>'+inside+'</strong> specimens inside</span>';
+    let list=all.filter(row=>{
+      const query=(row.stack+' '+Object.values(row.prep).join(' ')+' '+row.members.map(r=>r.ID).join(' ')).toLowerCase();
+      return query.includes(state.search.toLowerCase())&&(!state.room||row.rooms.includes(state.room))&&(state.filter==='all'||state.filter==='ready'&&row.ready.length||state.filter==='inside'&&row.inside.length||state.filter==='awaiting'&&row.awaiting.length||state.filter==='finished'&&row.kind==='finished');
+    });
+    list.sort((a,b)=>{
+      if(state.sort==='project')return a.prep.project.localeCompare(b.prep.project)||a.stack.localeCompare(b.stack);
+      if(state.sort==='ready'&&!!a.ready.length!==!!b.ready.length)return a.ready.length?-1:1;
+      if(state.sort==='next')return (a.ready.length?0:a.next??Infinity)-(b.ready.length?0:b.next??Infinity)||a.stack.localeCompare(b.stack);
+      return (b.oldest??-Infinity)-(a.oldest??-Infinity)||a.stack.localeCompare(b.stack);
+    });
+    app.querySelector('tbody').innerHTML=list.map(row=>{
+      const time=row.oldest===null?'—':row.oldest===row.newest?age(row.oldest):age(row.newest)+' – '+age(row.oldest);
+      const next=row.next===null?'':row.ready.length?'Next '+age(row.next):'Ready in '+age(row.next);
+      return '<tr data-stack="'+row.stack+'"><td><strong class="stack-name">'+row.stack+'</strong><small>'+esc(row.prep.project)+'</small></td><td>'+esc(row.prep.material)+'<small>'+esc(row.prep.test)+' / '+esc(row.prep.treatment)+'</small></td><td>'+esc(row.rooms.join(', ')||'Not assigned')+'</td><td><strong>'+row.inside.length+' / '+row.members.length+' inside</strong><small>'+row.finished.length+' out · '+row.awaiting.length+' awaiting</small></td><td>'+time+'<small>Current specimens only</small></td><td><span class="readiness" data-kind="'+row.kind+'">'+readiness(row)+'</span><small>'+row.ready.length+' / '+row.inside.length+' inside ready'+(next?' · '+next:'')+'</small></td><td><button type="button" class="cursor-interaction" data-open="'+row.stack+'" aria-label="View stack '+row.stack+'">View</button></td></tr>';
+    }).join('')||'<tr><td colspan="7">No matching stacks</td></tr>';
+    app.querySelector('.stack-count').textContent=list.length+' of '+all.length+' stacks';
+    app.querySelector('.stack-clock').textContent=(state.offline?'Snapshot: ':'As of ')+api.dateText(new Date(now()).toISOString())+' ET';
+    root.querySelector('[data-demo=hour]').disabled=state.offline;root.querySelector('[data-demo=day]').disabled=state.offline;
+    renderDetail();
+  }
+  function renderDetail(){
+    const overlay=app.querySelector('.stack-overlay');overlay.hidden=!state.selected;if(!state.selected){overlay.innerHTML='';return;}
+    const row=rows().find(r=>r.stack===state.selected);if(!row){state.selected=null;return;}
+    overlay.innerHTML='<section class="stack-dialog" role="dialog" aria-modal="true" aria-label="Stack '+row.stack+' specimens"><header><div><h3>Stack '+row.stack+'</h3><small>'+esc(row.prep.project)+' · '+esc(row.prep.material)+' · '+row.ready.length+' ready / '+row.inside.length+' inside</small></div><button type="button" class="cursor-interaction" data-close>Close</button></header><div class="stack-dialog-body"><table><thead><tr><th>Specimen / ID</th><th>ENTRY · ET</th><th>EXIT · ET</th><th>Time inside</th><th>Status</th></tr></thead><tbody>'+row.members.map(r=>{
+      const elapsed=r.ENTRY?age(Date.parse(r.EXIT||new Date(now()).toISOString())-Date.parse(r.ENTRY)):'—';
+      const status=r.EXIT?'Finished':!r.ENTRY?'Awaiting entry':now()-Date.parse(r.ENTRY)>=required?'Ready':'Conditioning';
+      return '<tr><td>#'+String(r.prep.number).padStart(2,'0')+'<small class="specimen-id">'+r.ID+'</small></td><td>'+api.dateText(r.ENTRY)+'</td><td>'+api.dateText(r.EXIT)+'</td><td>'+elapsed+'</td><td>'+status+'</td></tr>';
+    }).join('')+'</tbody></table></div><footer><span>Readiness uses each specimen’s own ENTRY. Removed specimens never count as ready inside.</span></footer></section>';
+  }
+  app.addEventListener('input',event=>{if(event.target.dataset.field==='search'){state.search=event.target.value;render();remember();}});
+  app.addEventListener('change',event=>{if(event.target.dataset.field){state[event.target.dataset.field]=event.target.value;render();remember();}});
+  app.addEventListener('click',event=>{const open=event.target.closest('[data-open]');if(open){state.selected=open.dataset.open;renderDetail();remember();}if(event.target.closest('[data-close]')){state.selected=null;renderDetail();remember();}});
+  root.querySelector('[data-demo=hour]').addEventListener('click',()=>{state.offset++;render();remember();});
+  root.querySelector('[data-demo=day]').addEventListener('click',()=>{state.offset+=24;render();remember();});
+  root.querySelector('[data-demo=offline]').addEventListener('change',event=>{state.offline=event.target.checked;render();remember();});
+  root.querySelector('[data-demo=reset]').addEventListener('click',()=>{state={search:'',room:'',filter:'all',sort:'ready',offset:0,offline:false,selected:null};root.querySelector('[data-demo=offline]').checked=false;render();remember();});
+  render();restore(window.openai?.widgetState);window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+})();
+</script>

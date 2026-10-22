@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fabric · UI layouts, round two</title>
+  <style>
+    :root { color-scheme:light dark; --bg:light-dark(#f5f7f9,#16202b); --panel:light-dark(#ffffff,#202e3d); --ink:light-dark(#172b40,#edf4fc); --muted:light-dark(#52697d,#b6c9da); --line:light-dark(#d5dfe8,#3c5267); --blue:light-dark(#28577e,#a9d2f1); --on-blue:light-dark(#ffffff,#143048); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,sans-serif; }
+    a { color:inherit; text-underline-offset:4px; }
+    header { padding:18px 24px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; align-items:center; flex-wrap:wrap; }
+    .brand { font-size:13px; letter-spacing:.12em; }
+    header a { font-size:13px; }
+    main { max-width:1120px; padding:40px 24px 64px; margin:auto; }
+    .eyebrow { color:var(--muted); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
+    h1 { font-size:clamp(28px,4vw,44px); font-weight:500; line-height:1.15; letter-spacing:-.025em; margin:12px 0 16px; }
+    h2 { font-size:24px; font-weight:500; margin:0 0 10px; }
+    h3 { font-size:17px; font-weight:500; margin:0 0 5px; }
+    p { margin:0 0 14px; color:var(--muted); }
+    .intro { max-width:800px; }
+    .choices { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin:30px 0; }
+    .choice { padding:24px; background:var(--panel); border:1px solid var(--line); border-radius:12px; display:flex; flex-direction:column; gap:10px; }
+    .choice p { flex:1; }
+    .choice img { width:100%; height:245px; object-fit:contain; object-position:top; border-radius:6px; background:var(--bg); border:1px solid var(--line); }
+    .launch { display:block; text-align:center; padding:13px 16px; min-height:48px; background:var(--blue); color:var(--on-blue); border-radius:6px; text-decoration:none; }
+    .secondary { font-size:13px; text-align:center; }
+    .catalogue { display:grid; grid-template-columns:1fr 1fr; gap:32px; }
+    ol { padding-left:24px; margin:0; }
+    li { margin:0 0 18px; padding-left:4px; }
+    li p { font-size:14px; margin:0; }
+    .scope { padding:20px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin:25px 0 35px; }
+    .scope p { margin:6px 0 0; max-width:900px; }
+    .try { margin-top:35px; padding-top:25px; border-top:1px solid var(--line); }
+    .try p { max-width:900px; }
+    code { font-size:13px; }
+    @media(max-width:760px) { main{padding:28px 16px;} .choices,.catalogue{grid-template-columns:1fr;} .choice img{height:auto;max-height:330px;} }
+  </style>
+</head>
+<body>
+  <header><div class="brand">FABRIC / UI EXPLORATION</div><a href="../">Original 40-concept gallery</a></header>
+  <main>
+    <p><a href="../round-three/">Latest: focused bottom-dock scanner and popup editor with integer specimen IDs →</a></p>
+    <div class="eyebrow">Round two · October 8, 2026</div>
+    <h1>Same work. Different screen layouts.</h1>
+    <p class="intro">Two independent sets: room scanning on the 7-inch touchscreen, and transaction editing at staff desktops. Choose a scanner layout and a log layout separately.</p>
+    <div class="choices">
+      <section class="choice">
+        <div class="eyebrow">8 layouts · 800 × 480</div><h2>Room scanner</h2>
+        <img src="screenshots/scanner.png" alt="Fixed-size scanner with bottom direction controls">
+        <p>Persistent IN/OUT, whole-stack or individual scope, visible database status, and recent scans. Six layouts record immediately; two let you scan, then act. Toolbars stay visible as the middle scrolls.</p>
+        <a class="launch" href="previews/scanners.html">Compare scanner layouts</a>
+        <a class="secondary" href="station.html">Open the 800 × 480 USB-scanner demo</a>
+      </section>
+      <section class="choice">
+        <div class="eyebrow">6 layouts · desktop</div><h2>Transaction log</h2>
+        <img src="screenshots/log-editor.png" alt="Desktop transaction table and editing controls">
+        <p>Find a movement, change its numbered specimens, time, room or notes, or cancel a mistaken scan. Counts follow the selected specimens. Notes are optional; there are no approval or permission screens.</p>
+        <a class="launch" href="previews/logs.html">Compare log layouts</a>
+        <a class="secondary" href="demo-labels.html">On-screen and letter-size printable demo QR labels</a>
+      </section>
+    </div>
+    <div class="scope"><strong>One shared record source; two separate frontends.</strong><p>Room touchscreen + USB scanner → shared backend/database ← main-lab staff computers for prep, labels and log editing. These demos simulate that connection locally. Every result, movement and modification is demo data.</p></div>
+    <div class="catalogue">
+      <section><h2>Scanner layouts</h2><ol>
+        <li><h3>Bottom dock</h3><p>Large IN/OUT buttons and scope at the bottom; room and connection at the top. A straightforward touch layout with a short reach to the main controls.</p></li>
+        <li><h3>Top controls</h3><p>Direction stays beside the room header; scope stays at the bottom. The current direction is prominent before looking at the scan result.</p></li>
+        <li><h3>Side controls</h3><p>Large vertical IN/OUT buttons in a left rail, with a scrolling content area to the right. Gives the direction controls a distinct, stable location.</p></li>
+        <li><h3>History rail</h3><p>Scan result on the left, independently scrolling recent scans on the right. Keeps a quick visual trail beside the current work.</p></li>
+        <li><h3>History first</h3><p>A compact fixed receipt above a large transaction list, with the direction dock below. Prioritizes checking what just happened.</p></li>
+        <li><h3>Receipt header</h3><p>Direction and temporary confirmation live near the top, scope at the bottom, and history in between. Keeps immediate feedback outside the scrolling area.</p></li>
+        <li><h3>Review card</h3><p>Scan to identify the stack and see its counts, then press Record. Persistent direction and scope remain in the bottom dock.</p></li>
+        <li><h3>Review bar</h3><p>Direction at the top, reviewed stack and history in the middle, and an explicit Record action at the bottom. A different placement for the same scan-then-act behavior.</p></li>
+      </ol></section>
+      <section><h2>Log layouts</h2><ol>
+        <li><h3>Table and popup</h3><p>A familiar transaction table; Edit opens a focused popup. The main log stays visually simple.</p></li>
+        <li><h3>Side inspector</h3><p>The selected transaction opens beside the table. You can compare the row with its editing fields without covering the surrounding log.</p></li>
+        <li><h3>Inline row editor</h3><p>Expand the editing controls directly under the selected transaction. Keeps the change attached to its place in the log.</p></li>
+        <li><h3>Direct cells</h3><p>Edit a row's time, direction and room in place; click its specimen count for a selection popup. Save or discard from the fixed footer.</p></li>
+        <li><h3>Expanded specimens</h3><p>Expand a stack transaction into numbered specimen rows. Useful for checking exactly which individual movements are included.</p></li>
+        <li><h3>Table and JSON</h3><p>Select a transaction and edit its structured payload beside the table. Shows how numbered specimen arrays and log modifications could feed a later audit generator.</p></li>
+      </ol></section>
+    </div>
+    <div class="try"><h2>Try the same examples in different layouts</h2><p><strong>Scanner:</strong> Stack A has 10 specimens already inside. Select OUT and scan it. For a partial removal, reset, select Individual, scan A and choose 01–03. Then scan A in Whole stack mode: the remaining 7 leave. Stack B has 20 outside; Stack C has 6 inside for only 4 hours.</p><p><strong>Log:</strong> Edit T004 from 10 OUT to specimens 01–03. The current result becomes 7 inside, 3 outside. Switch to All transactions to see the modification event. Alternatively, cancel T004 to undo the mistaken checkout.</p><p>The shared QR labels identify the stack; printed specimen numbers identify individuals in the selection popup. The demo label sheet also offers unique specimen QR codes for comparison.</p></div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,55 @@
+name: conditioning-tracker
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-conditioning}
+      POSTGRES_USER: ${POSTGRES_USER:-conditioning}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-conditioning}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-conditioning}:${POSTGRES_PASSWORD:-conditioning}@db:5432/${POSTGRES_DB:-conditioning}
+      SUPERVISOR_USERNAME: ${SUPERVISOR_USERNAME:-supervisor}
+      SUPERVISOR_PASSWORD: ${SUPERVISOR_PASSWORD:-classroom-demo}
+      SESSION_SECRET: ${SESSION_SECRET:-classroom-demo-change-this-session-secret}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 12
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  postgres_data:

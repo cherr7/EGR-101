@@ -1,0 +1,9 @@
+{
+  "scanner_layouts": 8,
+  "log_layouts": 6,
+  "layout_checks": 56,
+  "movement_checks": 64,
+  "log_checks": 18,
+  "errors": [],
+  "requests": []
+}

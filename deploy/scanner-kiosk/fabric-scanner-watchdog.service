@@ -1,0 +1,10 @@
+[Unit]
+Description=Fabric scanner page and focus watchdog
+PartOf=fabric-scanner.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/fabric-scanner/bin/watchdog.py
+Restart=always
+RestartSec=3

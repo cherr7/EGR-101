@@ -1,0 +1,258 @@
+[
+  {
+    "id": "timeline",
+    "name": "Specimen timeline",
+    "device": "Desktop or tablet",
+    "interaction": "Select a numbered specimen and edit its effective session time beside its immutable timeline.",
+    "functional_difference": "The session and original scan are visible together while editing one specimen.",
+    "benefit": "Makes the difference between an observation and a correction easy to inspect.",
+    "risk": "Slow when many specimens need the same correction.",
+    "backend_change": "Existing timestamp correction supports the concept; specimen-specific selection and timeline are presentation changes. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Select specimen 02 or 03.",
+      "Enter a reason, then Save timestamp correction.",
+      "Set entry to11:00 to see future-time rejection, or exit08:30 to see chronology rejection.",
+      "Select Stale edit or Unavailable in the external demo harness and try saving."
+    ]
+  },
+  {
+    "id": "ledger",
+    "name": "Staged spreadsheet ledger",
+    "device": "Desktop keyboard",
+    "interaction": "Edit multiple proposed-time cells, stage them, then commit the reviewed batch.",
+    "functional_difference": "Four per-row edits share a staged transaction with one reason.",
+    "benefit": "Efficient for corrections affecting several records at once.",
+    "risk": "Cell editing can obscure the impact unless staging is mandatory.",
+    "backend_change": "Policy/interface extension: existing API edits one session at a time; needs a transactional bulk correction endpoint and row versions. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Change one proposed time and enter a reason.",
+      "Stage 4 cell edits; confirm the table says Staged with0 committed.",
+      "Commit 4 staged edits and inspect the immutable original 09:12 row.",
+      "Reset, stage again, select Stale edit, then commit to see0 specimens changed."
+    ]
+  },
+  {
+    "id": "wizard",
+    "name": "Guided correction wizard",
+    "device": "Touchscreen or desktop",
+    "interaction": "Identify the issue, review a readable proposal, then explicitly confirm.",
+    "functional_difference": "Progressive three-step flow separates entry, review, and recording.",
+    "benefit": "Reduces accidental correction for infrequent supervisors.",
+    "risk": "Adds steps to repetitive work.",
+    "backend_change": "Existing correction API; guidance and review stages can remain local UI state. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Choose a correction type and enter a reason.",
+      "Review this correction to move from Identify to Review.",
+      "Confirm reviewed correction; observeRecord step and retained original scan.",
+      "Try Unavailable or Stale edit before final confirmation."
+    ]
+  },
+  {
+    "id": "comparison",
+    "name": "Before and after comparison",
+    "device": "Desktop or wide tablet",
+    "interaction": "Compare current and proposed session fields in two aligned panels.",
+    "functional_difference": "A review-first diff makes the precise changed field the dominant view.",
+    "benefit": "Useful when an approver needs to understand the change quickly.",
+    "risk": "Less efficient for many small edits.",
+    "backend_change": "Existing correction API with current stack version included in the reviewed request. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Compare observed 09:12 with claimed 08:45 and recording 10:05.",
+      "Enter a reason and apply the reviewed difference.",
+      "Reset and enter a future time to test rejection."
+    ]
+  },
+  {
+    "id": "inbox",
+    "name": "Exception triage inbox",
+    "device": "Desktop",
+    "interaction": "Choose a discrepancy case from a queue and resolve it with a reviewed correction.",
+    "functional_difference": "Work begins from reported exceptions rather than searching raw specimen history.",
+    "benefit": "Directs supervisor attention to unresolved problems.",
+    "risk": "Requires ownership rules so multiple reviewers do not duplicate work.",
+    "backend_change": "Concept extension: persisted exception cases, status, ownership, and resolution references; correction uses the existing core service. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Select CT-105 missing entry or CT-106 room discrepancy.",
+      "Enter a resolution reason, then resolve the selected exception.",
+      "Observe only the selected ticket’s status change and retained scan history.",
+      "Try Stale edit or Unavailable and confirm no case resolves."
+    ]
+  },
+  {
+    "id": "undo",
+    "name": "Undo impact preview",
+    "device": "Desktop or tablet",
+    "interaction": "Review all20affected specimens before confirming one undo.",
+    "functional_difference": "Eligibility and consequences are shown before the reversal.",
+    "benefit": "Makes an all-or-none undo understandable.",
+    "risk": "An undo can be blocked by one later event and requires a different correction path.",
+    "backend_change": "Existing guarded undo; preview endpoint or read-only impact calculation would improve the UI. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Enter a reason and Preview undo impact.",
+      "Confirm undo of 20 sessions; inspect retained original IN event.",
+      "Reset and select Intervening movement in the harness.",
+      "Try preview again: specimen 03 blocks the entire undo."
+    ]
+  },
+  {
+    "id": "reconstruction",
+    "name": "Missed entry reconstruction",
+    "device": "Desktop or tablet",
+    "interaction": "Reconcile a claimed physical entry, observed evidence, and the time the supervisor records it.",
+    "functional_difference": "Three parallel accounts distinguish claimed time, existing observations, and recording time.",
+    "benefit": "Avoids turning an operator account into a fabricated scanner event.",
+    "risk": "Claimed residence time needs a reliable documented basis.",
+    "backend_change": "Existing missed-session correction supports source and recorded_at; evidence references would be an extension. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Enter a reason explaining the missed scan.",
+      "Build reconstructed session to inspect the claim/source separation.",
+      "Record reconstructed session; confirm source missed entry and recorded 10:05.",
+      "Enter exit earlier than entry to see chronology rejection."
+    ]
+  },
+  {
+    "id": "bulk",
+    "name": "Atomic group time adjustment",
+    "device": "Touchscreen tablet or desktop",
+    "interaction": "Select a group of specimens, preview a shared entry-time adjustment, then commit atomically.",
+    "functional_difference": "Selection and group impact are visible before a single all-or-none write.",
+    "benefit": "Handles stack-wide transcription errors with consistent reasoning.",
+    "risk": "An overly broad selection can alter specimens with different physical histories.",
+    "backend_change": "Concept extension: transactional bulk-session correction with expected versions for every selected specimen. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Clear selection, then select specimens01–05, or choose Select all.",
+      "Enter a shared reason and preview the selected adjustments.",
+      "Commit selected time adjustments and inspect original 09:12 history.",
+      "Stage a group, select Stale edit, then commit to see entire batch rejection."
+    ]
+  },
+  {
+    "id": "approval",
+    "name": "Two person approval queue",
+    "device": "Desktop",
+    "interaction": "Eva approves first; Noah independently approves before any effective time changes.",
+    "functional_difference": "Requires two distinct approvals and records each review separately.",
+    "benefit": "Adds deliberate scrutiny to consequential corrections.",
+    "risk": "Slower resolution and reviewer availability dependencies.",
+    "backend_change": "Explicit policy concept: needs approval records, distinct reviewer enforcement, pending statuses, and atomic final approval; current backend has a single supervisor correction. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Enter a rationale and approve as Eva Morales.",
+      "Inspect pending state: effective entry still 09:12.",
+      "Approve independently as Noah Chen; confirm correction recorded 10:11 with both reviews retained.",
+      "Use Stale edit before final approval to see0 changes."
+    ]
+  },
+  {
+    "id": "request",
+    "name": "Operator request and supervisor review",
+    "device": "Operator tablet plus supervisor desktop",
+    "interaction": "An operator submits a discrepancy request; a supervisor later reviews and approves it.",
+    "functional_difference": "Request recorded 10:05is a different event from approval/correction recorded 10:11.",
+    "benefit": "Operators can capture context without permission to alter sessions.",
+    "risk": "Requests need routing and a clear pending state.",
+    "backend_change": "Concept extension: request entities, operator capture authorization, reviewer actions, and request-to-correction links.",
+    "trial_actions": [
+      "Enter an operator account and Submit correction request.",
+      "Inspect the request lifecycle and unchanged original 09:12effective time.",
+      "Approve request as supervisor to record the separate 10:11 correction.",
+      "Select Unavailable before either action and verify no new event records."
+    ]
+  },
+  {
+    "id": "reconciliation",
+    "name": "Room reconciliation worksheet",
+    "device": "Tablet carried between rooms",
+    "interaction": "Compare physical inventory with recorded location and verify a mismatch before correcting it.",
+    "functional_difference": "The starting point is a shelf check across three rooms, not a timestamp form.",
+    "benefit": "Finds mistakes that ordinary scan history will not reveal.",
+    "risk": "Requires precise specimen identification during the physical check.",
+    "backend_change": "Concept extension: reconciliation-check records and verified findings; room/session correction can use existing core correction behavior. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Check the physical verification for specimen 19.",
+      "Choose its confirmed room, enter a reason, and review the mismatch.",
+      "Record verified room correction; inspect original Shared 09:12 history.",
+      "Try without physical verification to see rejection."
+    ]
+  },
+  {
+    "id": "workbench",
+    "name": "Project case workbench",
+    "device": "Desktop",
+    "interaction": "Inspect chronology and operator notes while composing a correction in a persistent case inspector.",
+    "functional_difference": "Case context remains available as a correction is recorded.",
+    "benefit": "Supports complex discrepancies spanning several people or observations.",
+    "risk": "A case workspace can be excessive for simple one-time errors.",
+    "backend_change": "Concept extension: case records, linked notes, and correction associations; core correction API remains reusable. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Switch between Chronology, Operator notes, and Case actions.",
+      "Enter a rationale and Record correction in this case.",
+      "Inspect Case actions and immutable audit to see the new event."
+    ]
+  },
+  {
+    "id": "handheld",
+    "name": "Handheld incident capture",
+    "device": "Handheld touch device or scanner-equipped phone",
+    "interaction": "Identify a specimen, choose an incident type, and capture a short account for later review.",
+    "functional_difference": "A narrow touch flow captures a request and never applies a correction.",
+    "benefit": "Preserves details where the problem is noticed.",
+    "risk": "Captured requests can remain unresolved without a review queue.",
+    "backend_change": "Concept extension: persisted incident/request capture; no supervisor correction permission on this device.",
+    "trial_actions": [
+      "Choose Wrong room or Missed IN scan.",
+      "Keep demo specimen UL1:P:0007-03 or enter another recognized numbered code.",
+      "Enter a short account and Capture incident for review.",
+      "Confirm original effective entry stays 09:12 and request is recorded 10:05."
+    ]
+  },
+  {
+    "id": "command",
+    "name": "Keyboard command palette",
+    "device": "Desktop keyboard; scanner-compatible identifier input",
+    "interaction": "Type a structured correction command, dry-run it, then execute its reviewed effect.",
+    "functional_difference": "Intent is expressed through a keyboard grammar with explicit preview and execution.",
+    "benefit": "Fast for experienced operators and accessibility-friendly keyboard work.",
+    "risk": "Command interpretation must remain unambiguous and previewed.",
+    "backend_change": "Concept extension: strict client/server command parser translating to existing correction/undo APIs, with expected versions. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Use a sample command or type “correct #03 entered 08:45”.",
+      "Enter a reason and Dry-run this command; Ctrl + Enter also triggers review.",
+      "Execute reviewed command and inspect retained original log.",
+      "Choose Undo last movement with Intervening movement to see atomic block.",
+      "Enter “correct #03 entered 11:00” to test future-time rejection."
+    ]
+  },
+  {
+    "id": "handoff",
+    "name": "Read only kiosk handoff",
+    "device": "Room touchscreen, USB scanner, or scanner-only request capture",
+    "interaction": "Scan a specimen, scan a printed reason-card code, then scan SEND to capture a review ticket; touch controls offer the same path.",
+    "functional_difference": "The kiosk produces a review reference while leaving all effective session records read-only.",
+    "benefit": "Keeps correction requests available where the scanner already lives.",
+    "risk": "Physical or digital tickets need a dependable handoff process.",
+    "backend_change": "Concept extension: request capture and ticket/reference generation; no kiosk correction permission.",
+    "trial_actions": [
+      "Choose a reason category; scan or type UL1:P:0007-03.",
+      "Create supervisor handoff ticket, or press Enter in the scan input after selecting a reason.",
+      "Scanner-only trial: reset, scan UL1:P:0007-03 and Enter, scan WHY:LATE and Enter, then scan SEND and Enter.",
+      "Inspect ticket CT-104 and distinct observed09:12,claimed08:45,request-recorded 10:05times.",
+      "Select Unavailable and ensure a ticket is not issued."
+    ]
+  },
+  {
+    "id": "evidence",
+    "name": "Evidence backed correction case",
+    "device": "Desktop or tablet",
+    "interaction": "Select supporting records, link them to a proposal, then record an evidence-supported correction.",
+    "functional_difference": "Evidence selection is part of the reviewed correction flow rather than an optional note.",
+    "benefit": "Makes the reasoning and supporting material traceable.",
+    "risk": "Evidence collection adds work and needs retention policies if implemented.",
+    "backend_change": "Concept extension: evidence metadata, references or attachments, authorization, and correction links; existing correction API stores the reason. The simulated stale-edit guard additionally needs correction-version preconditions; current correction requests do not carry an expected version.",
+    "trial_actions": [
+      "Select supporting evidence and optionally attach the simulated operator note.",
+      "Enter an interpretation and Link evidence and review.",
+      "Record supported correction; inspect linked evidence names in the immutable audit addition.",
+      "Clear all evidence to see validation rejection."
+    ]
+  }
+]

@@ -1,0 +1,988 @@
+<div id="fabric-workflow-explorer" aria-label="Fabric workflow prototype gallery">
+  <div class="viz-row" style="justify-content:space-between;padding-inline-end:90px;margin-bottom:1rem">
+    <span>Simulated specimens · 40 concepts</span>
+    <span class="text-small">Touchscreen · scanner-only · desktop · handheld</span>
+  </div>
+  <div class="nav nav-pills" role="tablist" aria-label="Workflow explorations">
+    <button class="nav-link active" type="button" role="tab" id="explorer-scan-tab" aria-controls="explorer-scan-panel" aria-selected="true">Scanning · 16</button>
+    <button class="nav-link" type="button" role="tab" id="explorer-correction-tab" aria-controls="explorer-correction-panel" aria-selected="false">Corrections · 16</button>
+    <button class="nav-link" type="button" role="tab" id="explorer-landscape-tab" aria-controls="explorer-landscape-panel" aria-selected="false">Tools · 8</button>
+  </div>
+  <section role="tabpanel" id="explorer-scan-panel" aria-labelledby="explorer-scan-tab" style="margin-top:1rem">
+    <div id="fabric-scanner-design-lab">
+  <div class="viz-controls" aria-label="Scanner simulation controls">
+    <label class="form-label">Simulated situation<select class="form-select" data-testid="scanner-scenario"><option>Routine</option><option>Early exit</option><option>Mixed stack</option><option>Unavailable</option><option>Response lost</option><option>Unknown label</option><option>Stale selection</option></select></label>
+    <span class="text-small">Simulated labels and records · no laboratory data is changed</span>
+  </div>
+  <div class="viz-carousel" aria-label="Scanner interface alternatives">
+    <section class="scanner-stage" data-variant="Persistent mode" aria-label="Persistent mode scanner">
+      <div class="scanner-product persistent" data-design="persistent"><header class="product-header"><div><span class="eyebrow">FABRIC CONDITIONING</span><h2>Shared room station</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="room-strip">23 ± 1°C <span>65 ± 2% RH</span><span>24h conditioning</span></div><div class="mode-pair"><button data-action="mode" data-value="IN" data-testid="persistent-in">IN<small>Begin conditioning</small></button><button data-action="mode" data-value="OUT" data-testid="persistent-out">OUT<small>Remove specimens</small></button></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>Specimen label<input name="code" data-testid="persistent-code" placeholder="Scan a specimen QR code" autocomplete="off"></label><button class="primary" data-testid="persistent-submit">Scan</button></form><button data-action="scan" data-testid="persistent-scan">Simulate a specimen scan</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="persistent-result"></div></main><footer class="product-footer"><span>USB scanner · simulated station</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Reset after scan" aria-label="Reset after scan scanner" hidden>
+      <div class="scanner-product reset-mode" data-design="reset"><header class="product-header"><div><span class="eyebrow">SHARED CONDITIONING ROOM</span><h2>Choose a direction for this scan</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="intent-status" data-slot="intent"></div><div class="mode-pair"><button data-action="mode" data-value="IN" data-testid="reset-in">IN<small>Arm one movement</small></button><button data-action="mode" data-value="OUT" data-testid="reset-out">OUT<small>Arm one movement</small></button></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>Next specimen label<input name="code" data-testid="reset-code" placeholder="Choose IN or OUT, then scan" autocomplete="off"></label><button class="primary" data-testid="reset-submit">Record this scan</button></form><button data-action="scan" data-testid="reset-scan">Simulate next specimen</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="reset-result"></div></main><footer class="product-footer"><span>One armed direction per movement</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Scan then act" aria-label="Scan then act scanner" hidden>
+      <div class="scanner-product scan-act" data-design="scan-act"><header class="product-header"><div><span class="eyebrow">SPECIMEN LOOKUP</span><h2>Scan first. Choose the movement.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><form class="scan-form" data-action="scan-form"><label>Read a specimen label<input name="code" data-testid="scan-act-code" placeholder="Scan to inspect this stack" autocomplete="off"></label><button class="primary" data-testid="scan-act-submit">Read label</button></form><button data-action="scan" data-testid="scan-act-scan">Simulate label lookup</button><div data-slot="preview"></div><div data-slot="scope"></div><div class="mode-pair action-pair"><button data-action="act" data-value="IN" data-testid="scan-act-in">Check IN<small>Start a continuous session</small></button><button data-action="act" data-value="OUT" data-testid="scan-act-out">Check OUT<small>Close the current session</small></button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="scan-act-result"></div></main><footer class="product-footer"><span>Reading a label does not move specimens</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Guided movement" aria-label="Guided movement scanner" hidden>
+      <div class="scanner-product guided" data-design="guided"><header class="product-header"><div><span class="eyebrow">SHARED ROOM</span><h2>Record a movement</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><ol class="step-track"><li data-step="1">Direction</li><li data-step="2">Label</li><li data-step="3">Review</li><li data-step="4">Receipt</li></ol><div class="guided-step" data-panel="1"><h3>Which way are the specimens moving?</h3><div class="mode-pair"><button data-action="wizard-direction" data-value="IN" data-testid="guided-in">Into the room</button><button data-action="wizard-direction" data-value="OUT" data-testid="guided-out">Out of the room</button></div></div><div class="guided-step" data-panel="2" hidden><h3>Read a specimen label</h3><form class="scan-form" data-action="scan-form"><label>Specimen QR code<input name="code" data-testid="guided-code" placeholder="Scan a label" autocomplete="off"></label><button class="primary" data-testid="guided-submit">Read label</button></form><button data-action="scan" data-testid="guided-scan">Simulate a label scan</button><button data-action="wizard-back">Back to direction</button></div><div class="guided-step" data-panel="3" hidden><div data-slot="preview"></div><div data-slot="scope"></div><div data-slot="grid"></div><button class="primary" data-action="commit" data-testid="guided-commit">Confirm reviewed movement</button><button data-action="wizard-back">Read another label</button></div><div class="guided-step" data-panel="4" hidden><button class="primary" data-action="wizard-next" data-testid="guided-next">Record another movement</button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="guided-result"></div></main><footer class="product-footer"><span>Each stage has one decision</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Dedicated lanes" aria-label="Dedicated entry and exit lanes" hidden>
+      <div class="scanner-product lanes" data-design="lanes"><header class="product-header"><div><span class="eyebrow">SHARED CONDITIONING ROOM</span><h2>Entry and exit lanes</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div data-slot="scope"></div><div class="lane-grid"><section class="lane entry-lane"><span class="lane-sign">ENTRY</span><h3>IN scanner</h3><form data-action="lane-form" data-direction="IN"><label>Entry label<input name="code" data-testid="lanes-in-code" placeholder="Scan at the entry lane" autocomplete="off"></label><button class="primary" data-testid="lanes-in-submit">Record IN</button></form><button data-action="lane-scan" data-value="IN" data-testid="lanes-in">Simulate entry scanner</button></section><section class="lane exit-lane"><span class="lane-sign">EXIT</span><h3>OUT scanner</h3><form data-action="lane-form" data-direction="OUT"><label>Exit label<input name="code" data-testid="lanes-out-code" placeholder="Scan at the exit lane" autocomplete="off"></label><button class="primary" data-testid="lanes-out-submit">Record OUT</button></form><button data-action="lane-scan" data-value="OUT" data-testid="lanes-out">Simulate exit scanner</button></section></div><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="lanes-result"></div></main><footer class="product-footer"><span>Each scanner has a fixed direction</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Scanner command cards" aria-label="Scanner-only command cards" hidden>
+      <div class="scanner-product command-cards" data-design="cards"><header class="product-header"><div><span class="eyebrow">SCANNER-ONLY STATION</span><h2>Scan a command, then a label</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="command-deck"><button data-action="command" data-value="MODE:IN" data-testid="cards-in"><b>IN</b><code>MODE:IN</code></button><button data-action="command" data-value="MODE:OUT" data-testid="cards-out"><b>OUT</b><code>MODE:OUT</code></button><button data-action="command" data-value="SCOPE:STACK" data-testid="cards-stack"><b>Whole stack</b><code>SCOPE:STACK</code></button><button data-action="command" data-value="SCOPE:ONE" data-testid="cards-one"><b>One specimen</b><code>SCOPE:ONE</code></button></div><div class="intent-status" data-slot="intent"></div><form class="scan-form" data-action="command-form"><label>Scanner input<input name="code" data-testid="cards-code" placeholder="Scan command card or specimen label" autocomplete="off"></label><button class="primary" data-testid="cards-submit">Send scan</button></form><button data-action="scan" data-testid="cards-scan">Simulate specimen label</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="cards-result"></div></main><footer class="product-footer"><span>Command cards shown as labelled simulator buttons</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Physical direction buttons" aria-label="Physical direction buttons scanner" hidden>
+      <div class="scanner-product physical" data-design="physical"><header class="product-header"><div><span class="eyebrow">ROOM DOOR STATION</span><h2>Press a direction. Scan the label.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="hardware-simulator" aria-label="Simulated physical button unit"><div class="hardware-label">External button unit · simulated</div><div class="physical-pair"><button data-action="physical-mode" data-value="IN" data-testid="physical-in">IN<small>Physical entry button</small></button><button data-action="physical-mode" data-value="OUT" data-testid="physical-out">OUT<small>Physical exit button</small></button></div></div><div class="hardware-link"><span>Button signal</span><span>→</span><span data-slot="hardware-state">No direction armed</span></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>USB scanner<input name="code" data-testid="physical-code" placeholder="Press a physical button before scanning" autocomplete="off"></label><button class="primary" data-testid="physical-submit">Record label</button></form><button data-action="scan" data-testid="physical-scan">Simulate scanner trigger</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="physical-result"></div></main><footer class="product-footer"><span>Hardware direction resets after confirmation</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="State-suggested action" aria-label="State suggested action with confirmation" hidden>
+      <div class="scanner-product suggested" data-design="suggested"><header class="product-header"><div><span class="eyebrow">SHARED ROOM</span><h2>Review the suggested movement</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><form class="scan-form" data-action="scan-form"><label>Specimen label<input name="code" data-testid="suggested-code" placeholder="Scan to see current location" autocomplete="off"></label><button class="primary" data-testid="suggested-submit">Look up</button></form><button data-action="scan" data-testid="suggested-scan">Simulate specimen lookup</button><div data-slot="preview"></div><div data-slot="suggestion"></div><div data-slot="scope"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="suggested-result"></div></main><footer class="product-footer"><span>A suggestion never records a movement automatically</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Room inventory board" aria-label="Room inventory board scanner" hidden>
+      <div class="scanner-product inventory" data-design="inventory"><header class="product-header"><div><span class="eyebrow">SHARED ROOM INVENTORY</span><h2>Select what is moving</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="compact-scan"><button data-action="scan" data-testid="inventory-scan">Scan a stack label</button><button data-action="clear-selection" data-testid="inventory-clear">Clear selection</button><span>00073-LAB · Cotton twill · 20 specimens</span></div><div class="inventory-board" data-slot="board"></div><div class="selection-count" data-slot="selection-count"></div><div class="mode-pair action-pair"><button data-action="act" data-value="IN" data-testid="inventory-in">Bring selected IN</button><button data-action="act" data-value="OUT" data-testid="inventory-out">Remove selected OUT</button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="inventory-result"></div></main><footer class="product-footer"><span>Select specimen tiles or read the whole stack</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Numbered specimen grid" aria-label="Numbered specimen selection scanner" hidden>
+      <div class="scanner-product numbered" data-design="numbered"><header class="product-header"><div><span class="eyebrow">PARTIAL MOVEMENT</span><h2>Cotton twill · 20 specimens</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="stack-ribbon"><b>00073-LAB</b><span>ASTM D5034 / AR</span><button data-action="scan" data-testid="numbered-scan">Scan specimen #03</button></div><div data-slot="grid"></div><div class="selection-toolbar"><div data-slot="selection-count"></div><button data-action="select-all">Select all 20</button><button data-action="clear-selection">Clear</button></div><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="numbered-in">IN</button><button data-action="mode" data-value="OUT" data-testid="numbered-out">OUT</button></div><button class="primary full" data-action="commit" data-testid="numbered-commit">Record selected specimens</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="numbered-result"></div></main><footer class="product-footer"><span>Only checked specimen numbers move</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Individual scan basket" aria-label="Individual specimen scan basket" hidden>
+      <div class="scanner-product basket" data-design="basket"><header class="product-header"><div><span class="eyebrow">INDIVIDUAL SPECIMENS</span><h2>Scan the specimens you are holding</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="basket-layout"><section><form class="scan-form" data-action="scan-form"><label>Add an individual label<input name="code" data-testid="basket-code" placeholder="One specimen per scan" autocomplete="off"></label><button class="primary" data-testid="basket-submit">Add specimen</button></form><button data-action="scan" data-testid="basket-scan">Simulate next individual label</button><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="basket-in">IN</button><button data-action="mode" data-value="OUT" data-testid="basket-out">OUT</button></div></section><section class="scan-basket"><h3>Movement basket</h3><div data-slot="basket"></div><button class="primary full" data-action="commit" data-testid="basket-commit">Confirm basket movement</button></section></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="basket-result"></div></main><footer class="product-footer"><span>Repeated scans add no duplicate specimens</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Multi-stack staging tray" aria-label="Multi stack staging tray scanner" hidden>
+      <div class="scanner-product staging" data-design="staging"><header class="product-header"><div><span class="eyebrow">DESKTOP MOVEMENT STATION</span><h2>Stage the stacks. Confirm together.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="staging-toolbar"><button data-action="tray-scan" data-value="cotton" data-testid="staging-cotton">Scan cotton stack · 20</button><button data-action="tray-scan" data-value="nylon" data-testid="staging-nylon">Scan nylon stack · 12</button><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="staging-in">IN</button><button data-action="mode" data-value="OUT" data-testid="staging-out">OUT</button></div></div><div class="tray" data-slot="tray"></div><div class="tray-summary" data-slot="selection-count"></div><button class="primary full" data-action="commit" data-testid="staging-commit">Confirm all staged stacks</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="staging-result"></div></main><footer class="product-footer"><span>One review and one simulated atomic receipt</span><button data-action="reset">Reset station</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Destination token pairing" aria-label="Destination token pairing scanner" hidden>
+      <div class="scanner-product pairing" data-design="pairing"><header class="product-header"><div><span class="eyebrow">PORTABLE SCANNER</span><h2>Pair a destination with a specimen</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="token-pair"><section><span class="eyebrow">DESTINATION TOKEN</span><div data-slot="destination"></div><button data-action="destination" data-value="IN" data-testid="pairing-room">Scan shared-room token</button><button data-action="destination" data-value="OUT" data-testid="pairing-out">Scan outside-room token</button></section><span class="pair-connector" aria-hidden="true">+</span><section><span class="eyebrow">SPECIMEN LABEL</span><div data-slot="pair-label"></div><button data-action="scan" data-testid="pairing-scan">Simulate specimen label</button></section></div><div data-slot="scope"></div><button class="primary full" data-action="commit" data-testid="pairing-commit">Confirm destination pairing</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="pairing-result"></div></main><footer class="product-footer"><span>Either token can be scanned first</span><button data-action="reset">Reset pairing</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Handheld camera" aria-label="Handheld camera scanner" hidden>
+      <div class="scanner-product handheld" data-design="handheld"><header class="product-header"><div><span class="eyebrow">SHARED ROOM</span><h2>Scan specimens</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="camera-preview"><i data-lucide="camera" aria-hidden="true"></i><div class="camera-label"><b>00073-LAB</b><span>COTTON TWILL · #03</span><span>Simulated camera label</span></div><span class="camera-caption">Camera simulation · no camera access</span></div><button class="primary full" data-action="scan" data-testid="handheld-scan">Capture simulated label</button><div data-slot="preview"></div><div data-slot="scope"></div><div class="compact-modes"><button data-action="mode" data-value="IN" data-testid="handheld-in">IN</button><button data-action="mode" data-value="OUT" data-testid="handheld-out">OUT</button></div><button class="primary full" data-action="commit" data-testid="handheld-commit">Confirm movement</button><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="handheld-result"></div></main><footer class="product-footer"><span>One-handed scan and review</span><button data-action="reset">Reset</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Minimal scanner console" aria-label="Minimal scanner console" hidden>
+      <div class="scanner-product console" data-design="console"><header class="product-header"><div><span class="eyebrow">FABRIC / SHARED</span><h2>Scanner console</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="console-screen"><div>station: shared-door</div><div>group: 00073-LAB / Cotton twill / 20</div><div>syntax: IN label · OUT label · ACK</div><div data-slot="console-log"></div></div><form class="scan-form" data-action="console-form"><label>Scanner command<input name="code" data-testid="console-code" placeholder="IN UL1:P:…" autocomplete="off"></label><button class="primary" data-testid="console-submit">Execute command</button></form><div class="console-presets"><button data-action="console-scan" data-value="IN" data-testid="console-in">Simulate IN + label</button><button data-action="console-scan" data-value="OUT" data-testid="console-out">Simulate OUT + label</button></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="console-result"></div></main><footer class="product-footer"><span>Explicit direction travels with each command</span><button data-action="reset">Reset console</button></footer></div>
+    </section>
+    <section class="scanner-stage" data-variant="Operator badge then scan" aria-label="Operator badge followed by label scan" hidden>
+      <div class="scanner-product badge-flow" data-design="badge"><header class="product-header"><div><span class="eyebrow">SHARED ROOM STATION</span><h2>Identify the operator. Record the move.</h2></div><span class="connection" data-slot="connection"></span></header><main class="product-main"><div class="operator-lock" data-slot="operator"></div><form class="scan-form" data-action="badge-form"><label>Operator badge<input name="code" data-testid="badge-operator-code" placeholder="Scan an operator badge" autocomplete="off"></label><button data-testid="badge-operator-submit">Read badge</button></form><button data-action="badge" data-testid="badge-signin">Simulate Avery Chen’s badge</button><div class="mode-pair"><button data-action="mode" data-value="IN" data-testid="badge-in">IN</button><button data-action="mode" data-value="OUT" data-testid="badge-out">OUT</button></div><div data-slot="scope"></div><form class="scan-form" data-action="scan-form"><label>Specimen label<input name="code" data-testid="badge-code" placeholder="Sign in with a badge before scanning" autocomplete="off"></label><button class="primary" data-testid="badge-submit">Record scan</button></form><button data-action="scan" data-testid="badge-scan">Simulate specimen scan</button><div data-slot="preview"></div><div data-slot="gate"></div><div data-slot="result" aria-live="polite" data-testid="badge-result"></div></main><footer class="product-footer"><button data-action="lock" data-testid="badge-lock">Lock station</button><button data-action="reset">Reset station</button></footer></div>
+    </section>
+  </div>
+</div>
+<style>
+#fabric-scanner-design-lab{width:100%;min-width:0}
+#fabric-scanner-design-lab .scanner-stage{min-height:910px;padding:12px 0 20px}
+#fabric-scanner-design-lab .scanner-product{--p-bg:light-dark(#f6f4ee,#182127);--p-surface:light-dark(#fffefa,#212d34);--p-soft:light-dark(#e9eee7,#2b373a);--p-ink:light-dark(#253d49,#e3eeed);--p-muted:light-dark(#5d716b,#b3c7c0);--p-line:light-dark(#d5dfd5,#435852);--p-primary:light-dark(#244e61,#afd6df);--p-primary-ink:light-dark(#ffffff,#14303b);--p-ok:light-dark(#315f43,#b4dbbe);--p-ok-bg:light-dark(#e6f1e6,#234334);--p-warn:light-dark(#7c5421,#f2d09f);--p-warn-bg:light-dark(#f8ecd8,#433827);--p-error:light-dark(#9b3d35,#ffb8ab);--p-error-bg:light-dark(#f7e5df,#4c302d);color:var(--p-ink);background:var(--p-bg);border:1px solid var(--p-line);border-radius:15px;overflow:visible;font:400 15px/1.5 system-ui,-apple-system,sans-serif;min-width:0;max-width:100%;box-shadow:0 9px 26px light-dark(#233e4410,#00000020)}
+#fabric-scanner-design-lab .scanner-product *{box-sizing:border-box}
+#fabric-scanner-design-lab .scanner-product h2,#fabric-scanner-design-lab .scanner-product h3,#fabric-scanner-design-lab .scanner-product p{margin:0}
+#fabric-scanner-design-lab .scanner-product h2{font-size:24px;line-height:1.25;font-weight:500;letter-spacing:-.035em;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .scanner-product h3{font-size:18px;font-weight:500;line-height:1.4}
+#fabric-scanner-design-lab .scanner-product small{font-size:12px;line-height:1.4;display:block;font-weight:400}
+#fabric-scanner-design-lab .scanner-product b,#fabric-scanner-design-lab .scanner-product strong{font-weight:500}
+#fabric-scanner-design-lab .scanner-product button,#fabric-scanner-design-lab .scanner-product input,#fabric-scanner-design-lab .scanner-product select{font:inherit;max-width:100%;min-width:0}
+#fabric-scanner-design-lab .scanner-product button{min-height:44px;min-width:44px;border:1px solid var(--p-line);border-radius:8px;padding:10px 16px;background:var(--p-surface);color:var(--p-ink);white-space:normal;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .scanner-product button:disabled{opacity:.5;cursor:not-allowed}
+#fabric-scanner-design-lab .scanner-product button.primary,#fabric-scanner-design-lab .scanner-product button[aria-pressed="true"]{background:var(--p-primary);color:var(--p-primary-ink);border-color:var(--p-primary)}
+#fabric-scanner-design-lab .scanner-product button.full{width:100%}
+#fabric-scanner-design-lab .scanner-product label{display:block;font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .scanner-product input{width:100%;min-height:46px;padding:11px 12px;border:1px solid var(--p-line);background:var(--p-surface);color:var(--p-ink);border-radius:7px;font-size:16px;margin-top:6px}
+#fabric-scanner-design-lab .scanner-product input::placeholder{color:var(--p-muted);opacity:.8}
+#fabric-scanner-design-lab .product-header{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--p-line);padding:24px 24px 20px;background:var(--p-surface);border-radius:15px 15px 0 0}
+#fabric-scanner-design-lab .product-header>div{min-width:0;flex:1}
+#fabric-scanner-design-lab .eyebrow{display:block;font-size:11px;line-height:1.4;letter-spacing:.12em;font-weight:500;color:var(--p-muted);margin-bottom:7px}
+#fabric-scanner-design-lab .connection{font-size:12px;color:var(--p-muted);display:flex;align-items:center;gap:6px;max-width:170px}
+#fabric-scanner-design-lab .connection::before{content:"";height:7px;width:7px;flex-shrink:0;border-radius:50%;background:currentColor}
+#fabric-scanner-design-lab .connection.unavailable{color:var(--p-error)}
+#fabric-scanner-design-lab .product-main{padding:24px;display:grid;gap:18px;min-width:0}
+#fabric-scanner-design-lab .room-strip{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--p-muted);padding:0 0 15px;border-bottom:1px solid var(--p-line)}
+#fabric-scanner-design-lab .mode-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#fabric-scanner-design-lab .mode-pair>button{min-height:93px;text-align:left;font-size:31px;letter-spacing:.03em;padding:18px 22px}
+#fabric-scanner-design-lab .mode-pair small{margin-top:6px;letter-spacing:0}
+#fabric-scanner-design-lab .scope-bar{display:flex;gap:7px;flex-wrap:wrap;border-bottom:1px solid var(--p-line);padding-bottom:15px}
+#fabric-scanner-design-lab .scope-bar button{flex:1;font-size:13px;padding:9px 12px}
+#fabric-scanner-design-lab .scan-form{display:flex;align-items:end;gap:10px;min-width:0}
+#fabric-scanner-design-lab .scan-form label{flex:1;min-width:0}
+#fabric-scanner-design-lab .scan-form>button{flex-shrink:0;min-height:46px}
+#fabric-scanner-design-lab .product-footer{border-top:1px solid var(--p-line);padding:13px 24px;display:flex;gap:10px;justify-content:space-between;align-items:center;font-size:12px;color:var(--p-muted);background:var(--p-surface);border-radius:0 0 15px 15px}
+#fabric-scanner-design-lab .product-footer button{font-size:12px;padding:8px 12px}
+#fabric-scanner-design-lab [data-slot="preview"]:empty,#fabric-scanner-design-lab [data-slot="gate"]:empty,#fabric-scanner-design-lab [data-slot="result"]:empty{display:none}
+#fabric-scanner-design-lab .stack-preview{padding:16px 18px;border:1px solid var(--p-line);background:var(--p-surface);border-radius:9px;display:flex;justify-content:space-between;gap:15px;align-items:center;min-width:0}
+#fabric-scanner-design-lab .stack-preview strong{font-size:17px;display:block;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .stack-preview p{font-size:13px;color:var(--p-muted);margin-top:5px}
+#fabric-scanner-design-lab .stack-preview>span{font-variant-numeric:tabular-nums;font-size:13px;flex-shrink:0;text-align:right}
+#fabric-scanner-design-lab .movement-result{padding:15px 18px;border-radius:9px;background:var(--p-soft);color:var(--p-ink);overflow-wrap:anywhere}
+#fabric-scanner-design-lab .movement-result p{font-size:13px;margin-top:5px}
+#fabric-scanner-design-lab .movement-result.confirmed{background:var(--p-ok-bg);color:var(--p-ok)}
+#fabric-scanner-design-lab .movement-result.warning{background:var(--p-warn-bg);color:var(--p-warn)}
+#fabric-scanner-design-lab .movement-result.error{background:var(--p-error-bg);color:var(--p-error)}
+#fabric-scanner-design-lab .intent-status{background:var(--p-soft);padding:15px 18px;border-radius:8px;font-size:16px}
+#fabric-scanner-design-lab .guard-panel{background:var(--p-surface);border:1px solid var(--p-line);padding:19px;border-radius:10px;display:grid;gap:13px}
+#fabric-scanner-design-lab .guard-panel.early{border-color:var(--p-warn);color:var(--p-warn)}
+#fabric-scanner-design-lab .guard-panel p{font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .guard-actions{display:flex;gap:9px;flex-wrap:wrap}
+#fabric-scanner-design-lab .specimen-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+#fabric-scanner-design-lab .specimen-choice{position:relative;min-height:64px;border:1px solid var(--p-line);border-radius:7px;background:var(--p-surface);padding:10px 7px;display:flex!important;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-variant-numeric:tabular-nums}
+#fabric-scanner-design-lab .specimen-choice input{width:16px;min-height:16px;height:16px;position:absolute;top:6px;left:6px;margin:0;accent-color:var(--p-primary)}
+#fabric-scanner-design-lab .specimen-choice.selected{background:var(--p-soft);box-shadow:inset 0 0 0 1px var(--p-primary)}
+#fabric-scanner-design-lab .specimen-choice b{font-size:18px;color:var(--p-ink)}
+#fabric-scanner-design-lab .specimen-choice small{font-size:11px;color:var(--p-muted);margin-top:3px}
+#fabric-scanner-design-lab .early-list{font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 15px}
+#fabric-scanner-design-lab .early-list span{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--p-line);padding:5px 0}
+#fabric-scanner-design-lab .action-pair button{font-size:20px;letter-spacing:0;min-height:88px}
+#fabric-scanner-design-lab .step-track{padding:0;margin:0;list-style:none;display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--p-muted);border-bottom:1px solid var(--p-line);padding-bottom:18px}
+#fabric-scanner-design-lab .step-track li.active{color:var(--p-ink);font-weight:500}
+#fabric-scanner-design-lab .guided-step{display:grid;gap:18px}
+#fabric-scanner-design-lab .guided-step[hidden]{display:none}
+#fabric-scanner-design-lab .lane-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+#fabric-scanner-design-lab .lane{padding:20px;border:1px solid var(--p-line);border-radius:10px;background:var(--p-surface);display:grid;gap:16px}
+#fabric-scanner-design-lab .lane-sign{font-size:12px;letter-spacing:.14em;padding-bottom:12px;border-bottom:1px solid var(--p-line);color:var(--p-muted)}
+#fabric-scanner-design-lab .lane h3{font-size:26px}
+#fabric-scanner-design-lab .lane form{display:grid;gap:12px}
+#fabric-scanner-design-lab .command-deck{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#fabric-scanner-design-lab .command-deck button{min-height:107px;padding:15px 10px}
+#fabric-scanner-design-lab .command-deck b{display:block;font-size:22px}
+#fabric-scanner-design-lab .command-deck code{display:block;font-size:11px;color:inherit;margin-top:12px;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .hardware-simulator{background:var(--p-soft);border:1px solid var(--p-line);padding:22px;border-radius:14px}
+#fabric-scanner-design-lab .hardware-label{font-size:12px;text-align:center;color:var(--p-muted);margin-bottom:17px}
+#fabric-scanner-design-lab .physical-pair{display:flex;justify-content:center;gap:30px;flex-wrap:wrap}
+#fabric-scanner-design-lab .physical-pair button{width:150px;min-height:120px;border-radius:50%;font-size:30px;box-shadow:0 6px 0 var(--p-line)}
+#fabric-scanner-design-lab .physical-pair small{font-size:11px;max-width:110px;margin:6px auto 0}
+#fabric-scanner-design-lab .hardware-link{display:flex;gap:16px;justify-content:center;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .suggestion-panel{padding:22px;background:var(--p-soft);border-radius:10px;display:grid;gap:13px}
+#fabric-scanner-design-lab .suggestion-panel .transition{display:flex;align-items:center;gap:13px;font-size:19px}
+#fabric-scanner-design-lab .compact-scan{display:flex;align-items:center;gap:15px;flex-wrap:wrap;font-size:13px;color:var(--p-muted)}
+#fabric-scanner-design-lab .inventory-board{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+#fabric-scanner-design-lab .inventory-column{border:1px solid var(--p-line);border-radius:10px;background:var(--p-surface);padding:16px;min-width:0}
+#fabric-scanner-design-lab .inventory-column h3{display:flex;justify-content:space-between;font-size:15px;margin-bottom:15px}
+#fabric-scanner-design-lab .inventory-column .specimen-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+#fabric-scanner-design-lab .inventory-column .empty-message{font-size:13px;color:var(--p-muted);padding:20px 0}
+#fabric-scanner-design-lab .selection-count{font-size:14px;color:var(--p-muted)}
+#fabric-scanner-design-lab .stack-ribbon{display:flex;align-items:center;gap:13px;flex-wrap:wrap;font-size:14px}
+#fabric-scanner-design-lab .stack-ribbon span{color:var(--p-muted)}
+#fabric-scanner-design-lab .stack-ribbon button{margin-left:auto;font-size:13px}
+#fabric-scanner-design-lab .selection-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#fabric-scanner-design-lab .selection-toolbar>div{margin-right:auto}
+#fabric-scanner-design-lab .compact-modes{display:flex;gap:8px}
+#fabric-scanner-design-lab .compact-modes button{flex:1;min-width:85px}
+#fabric-scanner-design-lab .basket-layout{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+#fabric-scanner-design-lab .basket-layout>section{min-width:0;display:grid;gap:16px;align-content:start}
+#fabric-scanner-design-lab .basket-layout .scan-form{display:grid;align-items:stretch}
+#fabric-scanner-design-lab .scan-basket{border:1px solid var(--p-line);border-radius:10px;padding:20px;background:var(--p-surface)}
+#fabric-scanner-design-lab .basket-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--p-line);font-size:13px}
+#fabric-scanner-design-lab .basket-row button{font-size:12px;padding:8px}
+#fabric-scanner-design-lab .empty-message{font-size:14px;color:var(--p-muted);padding:18px 0}
+#fabric-scanner-design-lab .staging-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#fabric-scanner-design-lab .staging-toolbar .compact-modes{margin-left:auto}
+#fabric-scanner-design-lab .tray{display:grid;gap:12px;min-height:135px}
+#fabric-scanner-design-lab .tray-stack{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:20px;background:var(--p-surface);border:1px solid var(--p-line);border-radius:10px;min-width:0}
+#fabric-scanner-design-lab .tray-stack strong{display:block;font-size:17px}
+#fabric-scanner-design-lab .tray-stack small{color:var(--p-muted);margin-top:5px}
+#fabric-scanner-design-lab .tray-stack .quantity{font-size:24px;font-variant-numeric:tabular-nums}
+#fabric-scanner-design-lab .tray-summary{color:var(--p-muted);font-size:14px}
+#fabric-scanner-design-lab .token-pair{display:grid;grid-template-columns:1fr 35px 1fr;gap:12px;align-items:center}
+#fabric-scanner-design-lab .token-pair>section{min-width:0;border:1px solid var(--p-line);background:var(--p-surface);padding:20px;border-radius:10px;display:grid;gap:12px}
+#fabric-scanner-design-lab .token-pair .eyebrow{margin:0}
+#fabric-scanner-design-lab .pair-connector{font-size:26px;text-align:center;color:var(--p-muted)}
+#fabric-scanner-design-lab .pair-readout{font-size:19px;min-height:60px;display:grid;align-content:center;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .pair-readout small{color:var(--p-muted);margin-top:5px}
+#fabric-scanner-design-lab .handheld{max-width:415px;margin:0 auto;border-width:7px;border-radius:24px}
+#fabric-scanner-design-lab .handheld .product-header{padding:20px 17px 17px;border-radius:18px 18px 0 0;align-items:start}
+#fabric-scanner-design-lab .handheld h2{font-size:22px}
+#fabric-scanner-design-lab .handheld .connection{font-size:11px;max-width:100px}
+#fabric-scanner-design-lab .handheld .product-main{padding:17px;gap:14px}
+#fabric-scanner-design-lab .handheld .product-footer{padding:12px 17px;border-radius:0 0 18px 18px}
+#fabric-scanner-design-lab .camera-preview{min-height:165px;border-radius:12px;background:var(--p-soft);border:1px solid var(--p-line);display:grid;align-content:center;justify-items:center;gap:10px;padding:17px;color:var(--p-muted)}
+#fabric-scanner-design-lab .camera-label{background:var(--p-surface);color:var(--p-ink);padding:15px;border-radius:5px;display:grid;text-align:center;font:400 12px/1.6 monospace}
+#fabric-scanner-design-lab .camera-caption{font-size:11px}
+#fabric-scanner-design-lab .handheld .stack-preview{padding:13px;display:block}
+#fabric-scanner-design-lab .handheld .stack-preview>span{display:block;text-align:left;margin-top:8px}
+#fabric-scanner-design-lab .console{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;border-radius:7px}
+#fabric-scanner-design-lab .console .product-header{border-radius:7px 7px 0 0}
+#fabric-scanner-design-lab .console-screen{background:var(--p-surface);padding:20px;border:1px solid var(--p-line);border-radius:6px;font-size:13px;min-height:180px;overflow-wrap:anywhere}
+#fabric-scanner-design-lab .console-screen>div{margin-bottom:9px}
+#fabric-scanner-design-lab .console-presets{display:flex;gap:10px;flex-wrap:wrap}
+#fabric-scanner-design-lab .console-presets button{flex:1}
+#fabric-scanner-design-lab .console .product-footer{border-radius:0 0 7px 7px}
+#fabric-scanner-design-lab .operator-lock{background:var(--p-soft);padding:20px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:15px}
+#fabric-scanner-design-lab .operator-lock strong{display:block;font-size:19px}
+#fabric-scanner-design-lab .operator-lock small{color:var(--p-muted);margin-top:5px}
+@media(max-width:650px){#fabric-scanner-design-lab .scanner-stage{min-height:1230px}#fabric-scanner-design-lab .product-header{padding:20px 17px;display:block}#fabric-scanner-design-lab .product-header .connection{margin-top:11px;max-width:none}#fabric-scanner-design-lab .product-main{padding:17px;gap:16px}#fabric-scanner-design-lab .product-footer{padding:12px 17px;flex-wrap:wrap}#fabric-scanner-design-lab .product-footer>span{flex:1;min-width:135px}#fabric-scanner-design-lab .mode-pair{gap:9px}#fabric-scanner-design-lab .mode-pair>button{min-height:85px;padding:16px;font-size:27px}#fabric-scanner-design-lab .action-pair>button{font-size:19px}#fabric-scanner-design-lab .scan-form{display:grid;align-items:stretch}#fabric-scanner-design-lab .scan-form>button{width:100%}#fabric-scanner-design-lab .stack-preview{display:block;padding:14px}#fabric-scanner-design-lab .stack-preview>span{display:block;text-align:left;margin-top:8px}#fabric-scanner-design-lab .lane-grid,#fabric-scanner-design-lab .basket-layout{grid-template-columns:1fr}#fabric-scanner-design-lab .command-deck{grid-template-columns:1fr 1fr}#fabric-scanner-design-lab .command-deck button{min-height:93px}#fabric-scanner-design-lab .physical-pair{gap:16px}#fabric-scanner-design-lab .physical-pair button{width:107px;min-height:100px;font-size:25px}#fabric-scanner-design-lab .physical-pair small{font-size:11px}#fabric-scanner-design-lab .hardware-simulator{padding:17px 10px}#fabric-scanner-design-lab .inventory-board{grid-template-columns:1fr}#fabric-scanner-design-lab .inventory-column .specimen-grid{grid-template-columns:repeat(5,minmax(0,1fr))}#fabric-scanner-design-lab .token-pair{grid-template-columns:1fr}#fabric-scanner-design-lab .pair-connector{font-size:20px}#fabric-scanner-design-lab .token-pair>section{padding:17px}#fabric-scanner-design-lab .tray-stack{grid-template-columns:1fr auto;gap:10px;padding:16px}#fabric-scanner-design-lab .tray-stack>button{grid-column:1/3}#fabric-scanner-design-lab .early-list{grid-template-columns:1fr}#fabric-scanner-design-lab .guard-panel{padding:15px}#fabric-scanner-design-lab .specimen-grid{gap:6px}#fabric-scanner-design-lab .specimen-choice{min-height:61px;padding-top:13px}#fabric-scanner-design-lab .specimen-choice b{font-size:17px}#fabric-scanner-design-lab .handheld .product-header{display:flex}#fabric-scanner-design-lab .handheld .connection{margin-top:0;max-width:90px}#fabric-scanner-design-lab .operator-lock{padding:16px}#fabric-scanner-design-lab .step-track{font-size:11px;gap:6px}}
+@media(prefers-reduced-motion:no-preference){#fabric-scanner-design-lab .scanner-product button{transition:background .12s,color .12s}}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('fabric-scanner-design-lab');
+  if (!root) return;
+  const designs = Array.from(root.querySelectorAll('.scanner-product'));
+  const options = { scenario: 'Routine' };
+  const states = new Map();
+  const groupA = Array.from({length:20}, (_,i) => ({id:`cotton-${i+1}`,number:i+1,group:'cotton',code:`UL1:P:00000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`}));
+  const groupB = Array.from({length:12}, (_,i) => ({id:`nylon-${i+1}`,number:i+1,group:'nylon',code:`UL1:P:11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`}));
+  const all = [...groupA,...groupB];
+  const sampleCode = groupA[2].code;
+  let serial = 0;
+  const escape = value => String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+  function initial(id) {
+    const s = {id,direction:['reset','physical','cards','pairing','scan-act','suggested','guided','console'].includes(id)?null:'IN',scope:['numbered','basket','inventory'].includes(id)?'selection':'stack',scanned:false,selected:[],tray:[],specimen:groupA[2].id,next:2,step:1,destination:null,operator:null,gate:null,pending:null,result:null,busy:false,revision:0,staleConsumed:false,entries:{},serverEntries:{},log:[]};
+    all.forEach(item => { s.entries[item.id] = {state:options.scenario==='Early exit'?'IN':options.scenario==='Mixed stack'&&item.number<=10?'IN':'OUT',hours:options.scenario==='Early exit'?6.5:26}; });
+    s.serverEntries = structuredClone(s.entries);
+    return s;
+  }
+  const say = (s,kind,title,text='') => {s.result={kind,title,text};};
+  const specimens = s => all.filter(item => s.selected.includes(item.id));
+  function selectedFor(s) {
+    if (s.id==='staging'&&s.scope!=='selection') return all.filter(item=>s.tray.includes(item.group)).map(item=>item.id);
+    if (['numbered','basket','inventory'].includes(s.id) || s.scope==='selection') return [...s.selected];
+    return s.scope==='specimen'?[s.specimen]:groupA.map(item=>item.id);
+  }
+  function reset(product) { states.set(product.dataset.design,initial(product.dataset.design)); render(product); }
+  function available(s) {
+    if (options.scenario==='Unavailable') {say(s,'error','NOT AVAILABLE','The simulated server is unreachable. No movement can be submitted.');return false;}
+    if (s.pending || s.busy) {say(s,'warning','Confirmation still pending','Reconcile the same request before starting another movement.');return false;}
+    return true;
+  }
+  function readLabel(s,code=sampleCode) {
+    if (!available(s)) return false;
+    const item = all.find(item=>item.code===code.trim()) || all.find(item=>item.id===code.trim());
+    if (options.scenario==='Unknown label' || !item) {say(s,'error','Label not registered','No specimens moved. Verify the label or return to specimen preparation.');return false;}
+    s.specimen=item.id;s.scanned=true;s.result=null;
+    return true;
+  }
+  function scan(s,code=sampleCode) {
+    if(s.id==='badge'&&!s.operator){say(s,'warning','Operator badge required','Identify the operator before recording a specimen movement.');return;}
+    if(s.id==='basket') {
+      if(!readLabel(s,code)) return;
+      if(s.selected.includes(s.specimen))say(s,'neutral','Already in the basket','The repeated label did not add another specimen.');
+      else {s.selected.push(s.specimen);say(s,'neutral','Specimen added to basket','Review the scanned specimens and confirm their movement.');}
+      return;
+    }
+    if(!readLabel(s,code))return;
+    if(s.id==='guided'){s.step=3;return;}
+    if(s.id==='inventory'){s.selected=groupA.map(item=>item.id);say(s,'neutral','Stack selected','Choose a direction. Mixed locations require an exact selection.');return;}
+    if(s.id==='numbered'){if(!s.selected.includes(s.specimen))s.selected.push(s.specimen);return;}
+    if(['scan-act','suggested','pairing','handheld'].includes(s.id))return;
+    commit(s);
+  }
+  function commit(s,acknowledged=false) {
+    if(!available(s))return;
+    if(options.scenario==='Unknown label'){say(s,'error','Label not registered','No movement can be recorded for this unknown simulated identity.');return;}
+    const direction=s.id==='pairing'?s.destination:s.direction;
+    if(!direction){say(s,'warning',s.id==='pairing'?'Scan a destination token':'Choose a movement direction','No specimens have moved.');return;}
+    if(!s.scanned&&!['numbered','staging','inventory'].includes(s.id)){say(s,'warning','Read a specimen label first','The movement needs a registered specimen identity.');return;}
+    if(s.id==='badge'&&!s.operator){say(s,'warning','Operator badge required');return;}
+    let ids=selectedFor(s);
+    if(!ids.length){say(s,'warning','Choose the specimens','Select at least one exact specimen or stage a stack.');return;}
+    const locations=new Set(ids.map(id=>s.entries[id].state));
+    if(s.scope==='stack'&&locations.size>1){s.scope='selection';s.selected=[];s.gate={kind:'selection',direction};say(s,'warning','This stack has mixed locations','Select the exact numbered specimens. No eligible subset is moved automatically.');return;}
+    if(locations.size>1){say(s,'error','Selected specimens have different locations','Choose specimens all entering or all leaving. This request made no partial changes.');return;}
+    if(options.scenario==='Stale selection'&&!s.staleConsumed){s.staleConsumed=true;s.revision++;s.selected=[];s.gate=null;say(s,'error','Selection changed while you reviewed it','The simulated server rejected every change. Review the current specimens and submit a new request.');return;}
+    if(ids.every(id=>s.entries[id].state===direction)){
+      s.gate=null;
+      if(['reset','physical'].includes(s.id))s.direction=null;
+      if(s.id==='guided')s.step=4;
+      if(['basket','inventory'].includes(s.id))s.selected=[];
+      if(s.id==='staging')s.tray=[];
+      if(s.id==='pairing'){s.destination=null;s.scanned=false;}
+      if(['handheld','suggested'].includes(s.id))s.scanned=false;
+      say(s,'neutral','Already recorded · no changes',`All ${ids.length} selected specimens are already ${direction}. Original entry times and session counts are preserved.`);return;
+    }
+    const early=direction==='OUT'?ids.filter(id=>s.entries[id].hours<24):[];
+    if(early.length&&!acknowledged){s.gate={kind:'early',direction,ids,early};say(s,'warning','Conditioning is incomplete','Removal requires acknowledgment for the listed specimens. Nothing has moved yet.');return;}
+    const request=`SIM-${String(++serial).padStart(4,'0')}`;
+    s.busy=true;s.gate=null;say(s,'neutral','Awaiting simulated server confirmation',`${request} · ${direction} · ${ids.length} specimens`);
+    const product=designs.find(product=>product.dataset.design===s.id);render(product);
+    setTimeout(()=>{
+      if(states.get(s.id)!==s)return;
+      ids.forEach(id=>{s.serverEntries[id]={state:direction,hours:direction==='IN'?0:s.entries[id].hours};});
+      s.busy=false;s.revision++;
+      if(options.scenario==='Response lost'){s.pending={request,direction,ids,acknowledged};say(s,'warning','Confirmation unknown',`${request} was submitted. Its response was lost; keep this request pending until checked.`);}
+      else finish(s,{request,direction,ids,acknowledged});
+      render(product);
+    },360);
+  }
+  function finish(s,receipt){
+    s.entries=structuredClone(s.serverEntries);s.pending=null;s.gate=null;
+    const actor=s.operator?` · ${s.operator}`:'';
+    say(s,'confirmed',`${receipt.direction} confirmed by simulated server`,`${receipt.ids.length} specimens · ${receipt.request}${actor}${receipt.acknowledged?' · Incomplete conditioning acknowledged':''}`);
+    s.log.push(`${receipt.request}: ${receipt.direction} ${receipt.ids.length} specimens confirmed`);
+    if(['reset','physical'].includes(s.id))s.direction=null;
+    if(s.id==='guided')s.step=4;
+    if(s.id==='basket')s.selected=[];
+    if(s.id==='inventory')s.selected=[];
+    if(s.id==='staging')s.tray=[];
+    if(s.id==='pairing'){s.destination=null;s.scanned=false;}
+    if(s.id==='handheld')s.scanned=false;
+    if(s.id==='suggested')s.scanned=false;
+    if(!['numbered','inventory','basket'].includes(s.id))s.scope='stack';
+  }
+  function reconcile(s){
+    if(!s.pending)return;
+    const receipt=s.pending;s.busy=true;say(s,'neutral','Checking the same simulated request',receipt.request);
+    setTimeout(()=>{if(states.get(s.id)!==s)return;s.busy=false;finish(s,receipt);render(designs.find(product=>product.dataset.design===s.id));},300);
+  }
+  function command(s,text){
+    const value=text.trim().toUpperCase();
+    if(value==='MODE:IN'||value==='MODE:OUT'){s.direction=value.slice(5);s.result=null;return;}
+    if(value==='SCOPE:ONE'||value==='SCOPE:STACK'){s.scope=value==='SCOPE:ONE'?'specimen':'stack';s.selected=[];return;}
+    if(value==='ACK:EARLY'||value==='ACK'){if(s.gate?.kind==='early'){s.selected=[...s.gate.ids];s.scope='selection';s.direction=s.gate.direction;commit(s,true);}else say(s,'warning','No early-exit acknowledgment is pending');return;}
+    if(value==='MOVE:SELECTED'){s.scope='selection';commit(s);return;}
+    if(value.startsWith('SPECIMEN:')){const number=Number(value.slice(9));const item=groupA.find(item=>item.number===number);if(item){s.scope='selection';s.scanned=true;if(!s.selected.includes(item.id))s.selected.push(item.id);say(s,'neutral',`Specimen #${String(number).padStart(2,'0')} selected`);}else say(s,'error','Unknown specimen number');return;}
+    if(value.startsWith('SELECT ')){const match=value.match(/^SELECT ([0-9, ]+) (IN|OUT)$/);if(!match){say(s,'error','Use SELECT 02,05 IN or SELECT 02,05 OUT');return;}s.direction=match[2];s.scope='selection';s.scanned=true;s.selected=groupA.filter(item=>match[1].split(',').map(Number).includes(item.number)).map(item=>item.id);s.gate=null;commit(s);return;}
+    const prefixed=text.trim().match(/^(IN|OUT)\s+(.+)$/i);
+    if(prefixed){s.direction=prefixed[1].toUpperCase();scan(s,prefixed[2]);return;}
+    scan(s,text);
+  }
+  function grid(s,items=groupA){return `<div class="specimen-grid">${items.map(item=>`<label class="specimen-choice cursor-interaction ${s.selected.includes(item.id)?'selected':''}"><input type="checkbox" data-action="select-specimen" data-value="${item.id}" data-testid="${s.id}-specimen-${item.group==='nylon'?'nylon-':''}${String(item.number).padStart(2,'0')}" ${s.selected.includes(item.id)?'checked':''} ${s.busy||s.pending?'disabled':''}><b>${String(item.number).padStart(2,'0')}</b><small>${item.group==='nylon'?'Nylon · ':''}${s.entries[item.id].state}</small></label>`).join('')}</div>`;}
+  function preview(s){if(!s.scanned)return '';const inCount=groupA.filter(item=>s.entries[item.id].state==='IN').length;return `<div class="stack-preview"><div><strong>00073-LAB / Cotton twill</strong><p>ASTM D5034 · AR · Scanned specimen #${String(all.find(item=>item.id===s.specimen)?.number||3).padStart(2,'0')}</p></div><span>20 registered<br>${inCount} IN · ${20-inCount} OUT</span></div>`;}
+  function gate(s){
+    if(s.pending)return `<div class="guard-panel"><h3>Resolve the pending request</h3><p>No new scan is accepted while the outcome is uncertain. The same request identity is checked again.</p><button class="primary" data-action="reconcile" data-testid="${s.id}-reconcile">Check same request ${s.pending.request}</button></div>`;
+    if(!s.gate)return '';
+    if(s.gate.kind==='selection'){
+      if(['cards','console'].includes(s.id))return `<div class="guard-panel"><h3>Select numbered specimens</h3><p>Scan selection command cards or type SELECT 02,05 ${s.gate.direction}.</p><div class="guard-actions"><button data-action="command" data-value="SPECIMEN:02" data-testid="${s.id}-select-02">SPECIMEN:02</button><button data-action="command" data-value="SPECIMEN:05" data-testid="${s.id}-select-05">SPECIMEN:05</button><button class="primary" data-action="command" data-value="MOVE:SELECTED" data-testid="${s.id}-selection-confirm">MOVE:SELECTED</button></div><p>Selected: ${specimens(s).map(item=>String(item.number).padStart(2,'0')).join(', ')||'none'}</p></div>`;
+      return `<div class="guard-panel"><h3>Which exact specimens move ${s.gate.direction}?</h3>${grid(s,s.id==='staging'?all.filter(item=>s.tray.includes(item.group)):groupA)}<div class="guard-actions"><button class="primary" data-action="selection-confirm" data-testid="${s.id}-selection-confirm">Move ${s.selected.length} selected ${s.gate.direction}</button><button data-action="cancel-gate">Cancel selection</button></div></div>`;
+    }
+    return `<div class="guard-panel early"><h3>These specimens have not completed 24h</h3><div class="early-list">${s.gate.early.map(id=>{const item=all.find(item=>item.id===id),hours=s.entries[id].hours,duration=`${Math.floor(hours)}h ${String(Math.round(hours%1*60)).padStart(2,'0')}m`;return `<span>#${String(item.number).padStart(2,'0')} ${item.group==='nylon'?'Nylon':'Cotton'} <b>${duration} / 24h</b></span>`;}).join('')}</div><p>Acknowledgment records an incomplete conditioning session for exactly these specimens.</p><div class="guard-actions"><button class="primary" data-action="acknowledge" data-testid="${s.id}-ack">${['cards','console'].includes(s.id)?'Simulate ACK:EARLY card':'Acknowledge & record OUT'}</button><button data-action="cancel-gate">Keep in room</button></div></div>`;
+  }
+  function render(product){
+    const s=states.get(product.dataset.design);if(!s)return;
+    const put=(slot,content)=>product.querySelectorAll(`[data-slot="${slot}"]`).forEach(element=>{element.innerHTML=content;});
+    const disconnected=options.scenario==='Unavailable';
+    const connection=product.querySelector('[data-slot="connection"]');connection.textContent=disconnected?'NOT AVAILABLE':'Simulated server';connection.classList.toggle('unavailable',disconnected);
+    put('scope',`<div class="scope-bar" aria-label="Movement scope"><button data-action="scope" data-value="stack" data-testid="${s.id}-scope-stack" aria-pressed="${s.scope==='stack'}">Whole stack · 20</button><button data-action="scope" data-value="specimen" data-testid="${s.id}-scope-specimen" aria-pressed="${s.scope==='specimen'}">Scanned specimen only</button></div>`);
+    put('preview',preview(s));put('grid',s.gate?'':grid(s));put('gate',gate(s));
+    put('intent',s.direction?`${s.direction} armed · ${s.scope==='stack'?'whole stack':s.scope==='specimen'?'one specimen':'exact selection'}`:'No direction armed · choose IN or OUT');
+    put('hardware-state',s.direction?`${s.direction} button signal received`:'No direction armed');
+    put('selection-count',s.id==='staging'?`${s.tray.length} stacks · ${selectedFor(s).length} specimens staged`:`${s.selected.length} exact specimens selected`);
+    put('result',s.result?`<div class="movement-result ${s.result.kind}" data-state="${s.result.kind}"><strong>${escape(s.result.title)}</strong><p>${escape(s.result.text)}</p></div>`:disconnected?'<div class="movement-result error" data-state="error"><strong>NOT AVAILABLE</strong><p>No scan can be recorded while the simulated server is unreachable.</p></div>':'');
+    product.querySelectorAll('[data-action="mode"],[data-action="physical-mode"]').forEach(button=>button.setAttribute('aria-pressed',String(s.direction===button.dataset.value)));
+    product.querySelectorAll('[data-panel]').forEach(panel=>{panel.hidden=Number(panel.dataset.panel)!==s.step;});
+    product.querySelectorAll('[data-step]').forEach(step=>step.classList.toggle('active',Number(step.dataset.step)===s.step));
+    const inCount=groupA.filter(item=>s.entries[item.id].state==='IN').length;
+    put('suggestion',s.scanned?`<div class="suggestion-panel"><div class="transition">${inCount===0?'Currently OUT → Proposed IN':inCount===20?'Currently IN → Proposed OUT':'Mixed locations → Choose exact specimens'}</div>${inCount===0||inCount===20?`<button class="primary" data-action="suggested-confirm" data-value="${inCount===0?'IN':'OUT'}" data-testid="suggested-confirm">Confirm proposed ${inCount===0?'IN':'OUT'}</button>`:'<div class="compact-modes"><button data-action="act" data-value="IN" data-testid="suggested-in">Choose IN</button><button data-action="act" data-value="OUT" data-testid="suggested-out">Choose OUT</button></div>'}</div>`:'');
+    put('board',['IN','OUT'].map(state=>{const items=groupA.filter(item=>s.entries[item.id].state===state);return `<section class="inventory-column"><h3>${state==='IN'?'Inside shared room':'Outside room'} <span>${items.length}</span></h3>${items.length?grid(s,items):'<p class="empty-message">No specimens here</p>'}</section>`;}).join(''));
+    put('basket',s.selected.length?specimens(s).map(item=>`<div class="basket-row"><span>Cotton #${String(item.number).padStart(2,'0')} · ${s.entries[item.id].state}</span><button data-action="remove-specimen" data-value="${item.id}" aria-label="Remove specimen ${item.number}">Remove</button></div>`).join(''):'<p class="empty-message">No specimens scanned yet</p>');
+    put('tray',s.tray.length?s.tray.map(group=>`<div class="tray-stack"><div><strong>${group==='cotton'?'Cotton twill':'Nylon ripstop'}</strong><small>00073-LAB · ASTM D5034 / AR</small></div><span class="quantity">${group==='cotton'?20:12}</span><button data-action="remove-stack" data-value="${group}">Remove stack</button></div>`).join(''):'<p class="empty-message">Scan each stack onto this staging tray.</p>');
+    put('destination',`<div class="pair-readout">${s.destination==='IN'?'Shared conditioning room':s.destination==='OUT'?'Outside conditioning room':'No token read'}<small>${s.destination?'Destination recorded locally':'Scan a destination token'}</small></div>`);
+    put('pair-label',`<div class="pair-readout">${s.scanned?'Cotton twill · #03':'No label read'}<small>${s.scanned?'00073-LAB · 20 registered':'Read a specimen label'}</small></div>`);
+    put('operator',`<div><strong>${s.operator?escape(s.operator):'Station locked'}</strong><small>${s.operator?'Movements will include this operator identity':'Scan an operator badge to unlock movement recording'}</small></div><i data-lucide="${s.operator?'user-check':'lock-keyhole'}" aria-hidden="true"></i>`);
+    put('console-log',s.log.slice(-4).map(line=>`<div>${escape(line)}</div>`).join('')||'<div>ready: waiting for explicit movement command</div>');
+    product.querySelectorAll('button,input').forEach(control=>{
+      if(control.tagName==='BUTTON'){
+        control.classList.add('cursor-interaction');
+        if(control.closest('form')&&!control.dataset.action){control.dataset.action='submit-code';control.type='button';}
+      }
+      const action=control.dataset.action;const exempt=['reset','cancel-gate','lock'].includes(action);
+      const isReconcile=action==='reconcile';
+      const gated=s.id==='badge'&&!s.operator&&(action==='scan'||control.closest('form')?.dataset.action==='scan-form');
+      control.disabled=exempt?false:isReconcile?s.busy||disconnected:s.busy||!!s.pending||disconnected||gated;
+    });
+    if(globalThis.lucide)lucide.createIcons({attrs:{width:18,height:18}});
+  }
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-action]');if(!button||!root.contains(button)||button.disabled)return;
+    const product=button.closest('.scanner-product');if(!product)return;
+    const s=states.get(product.dataset.design),action=button.dataset.action,value=button.dataset.value;
+    if(action==='reset'){reset(product);return;}
+    if(action==='mode'||action==='physical-mode'){s.direction=value;s.result=null;}
+    else if(action==='scope'){s.scope=value;s.selected=[];s.gate=null;}
+    else if(action==='scan'){const code=s.id==='basket'?groupA[s.next++%20].code:sampleCode;scan(s,code);}
+    else if(action==='act'){s.direction=value;commit(s);}
+    else if(action==='commit')commit(s);
+    else if(action==='lane-scan'){s.direction=value;scan(s);}
+    else if(action==='wizard-direction'){s.direction=value;s.step=2;s.result=null;}
+    else if(action==='wizard-back'){s.step=Math.max(1,s.step-1);s.gate=null;}
+    else if(action==='wizard-next'){s.step=1;s.scanned=false;s.direction=null;s.selected=[];s.gate=null;s.result=null;}
+    else if(action==='suggested-confirm'){s.direction=value;commit(s);}
+    else if(action==='select-all'){s.selected=groupA.map(item=>item.id);s.scope='selection';}
+    else if(action==='clear-selection')s.selected=[];
+    else if(action==='remove-specimen')s.selected=s.selected.filter(id=>id!==value);
+    else if(action==='tray-scan'){if(options.scenario==='Unknown label')say(s,'error','Stack label not registered');else if(!s.tray.includes(value)){s.tray.push(value);s.scanned=true;s.result=null;}else say(s,'neutral','Stack already staged','No second copy was added.');}
+    else if(action==='remove-stack')s.tray=s.tray.filter(group=>group!==value);
+    else if(action==='destination'){s.destination=value;s.result=null;}
+    else if(action==='console-scan'){s.direction=value;scan(s);}
+    else if(action==='command')command(s,value);
+    else if(action==='badge'){s.operator='Avery Chen';s.result=null;}
+    else if(action==='lock'){s.operator=null;s.result=null;}
+    else if(action==='selection-confirm'){s.scope='selection';s.direction=s.gate.direction;commit(s);}
+    else if(action==='acknowledge'){const gate=s.gate;s.selected=[...gate.ids];s.scope='selection';s.direction=gate.direction;commit(s,true);}
+    else if(action==='cancel-gate'){s.gate=null;s.selected=[];s.result=null;}
+    else if(action==='reconcile')reconcile(s);
+    else if(action==='submit-code'){submitCode(button.closest('form'));return;}
+    render(product);
+  });
+  root.addEventListener('change',event=>{
+    const input=event.target;
+    if(input.matches('[data-testid="scanner-scenario"]')){options.scenario=input.value;designs.forEach(reset);return;}
+    if(input.dataset.action!=='select-specimen')return;
+    const product=input.closest('.scanner-product'),s=states.get(product.dataset.design);
+    s.scope='selection';if(input.checked&&!s.selected.includes(input.dataset.value))s.selected.push(input.dataset.value);else if(!input.checked)s.selected=s.selected.filter(id=>id!==input.dataset.value);
+    render(product);
+  });
+  function submitCode(form){
+    if(!form?.dataset.action)return;
+    const product=form.closest('.scanner-product'),s=states.get(product.dataset.design),text=form.elements.code.value.trim();
+    if(s.busy||s.pending||options.scenario==='Unavailable')return;
+    if(form.dataset.action==='badge-form'){if(text==='OP:AVERY')s.operator='Avery Chen';else say(s,'error','Operator badge not recognized','Station remains locked.');}
+    else if(form.dataset.action==='command-form'||form.dataset.action==='console-form')command(s,text);
+    else {if(form.dataset.action==='lane-form')s.direction=form.dataset.direction;scan(s,text);}
+    render(product);
+  }
+  root.addEventListener('submit',event=>{event.preventDefault();submitCode(event.target);});
+  root.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&event.target.matches('.scanner-product input[name="code"]')){event.preventDefault();submitCode(event.target.closest('form'));}
+  });
+  designs.forEach(reset);
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:root.querySelector('.viz-controls'),onChange:()=>{root.querySelector('[data-testid="scanner-scenario"]').value=options.scenario;designs.forEach(reset);}});
+    tweak.addSelect(options,'scenario',{label:'Simulated situation',options:['Routine','Early exit','Mixed stack','Unavailable','Response lost','Unknown label','Stale selection']});
+  }
+})();
+</script>
+
+  </section>
+  <section role="tabpanel" id="explorer-correction-panel" aria-labelledby="explorer-correction-tab" style="margin-top:1rem" hidden>
+    <style>
+#correction-designs .ct-app{--ct-bg:light-dark(#f5f7f8,#171e23);--ct-surface:light-dark(#fff,#222b32);--ct-ink:light-dark(#182c36,#eaf0f3);--ct-muted:light-dark(#53646e,#b0c0ca);--ct-line:light-dark(#d9e1e6,#43525e);--ct-soft:light-dark(#eaf0f3,#2c3943);--ct-action:light-dark(#0b6278,#88d9e8);--ct-action-ink:light-dark(#fff,#102c34);--ct-good:light-dark(#22654b,#9ad7b5);--ct-warn:light-dark(#885512,#f0ca8a);--ct-bad:light-dark(#9c3540,#f7a5ad);--ct-shadow:light-dark(#10283312,#00000025);background:var(--ct-bg);color:var(--ct-ink);font:400 15px/1.5 system-ui,sans-serif;min-height:850px;border:1px solid var(--ct-line);border-radius:16px;overflow-wrap:anywhere;box-shadow:0 8px 24px var(--ct-shadow)}
+#correction-designs .ct-app *{box-sizing:border-box}
+#correction-designs .ct-app h2,#correction-designs .ct-app h3,#correction-designs .ct-app h4,#correction-designs .ct-app p{margin:0}
+#correction-designs .ct-app h2{font-size:26px;line-height:1.25;font-weight:600;letter-spacing:-.6px}
+#correction-designs .ct-app h3{font-size:18px;font-weight:600}
+#correction-designs .ct-app h4{font-size:15px;font-weight:600}
+#correction-designs .ct-chrome{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:18px 26px;border-bottom:1px solid var(--ct-line);background:var(--ct-surface);border-radius:16px 16px 0 0}
+#correction-designs .ct-brand{font-weight:700;letter-spacing:-.3px}
+#correction-designs .ct-brand span{font-weight:400;color:var(--ct-muted);margin-left:10px}
+#correction-designs .ct-nav{display:flex;gap:18px;color:var(--ct-muted);font-size:13px;flex-wrap:wrap}
+#correction-designs .ct-nav strong{font-weight:600;color:var(--ct-action)}
+#correction-designs .ct-body{padding:26px;display:grid;gap:22px}
+#correction-designs .ct-heading{display:flex;justify-content:space-between;align-items:start;gap:18px;flex-wrap:wrap}
+#correction-designs .ct-eyebrow{text-transform:uppercase;letter-spacing:1.5px;font-size:11px;font-weight:700;color:var(--ct-muted);margin-bottom:6px}
+#correction-designs .ct-subtitle{color:var(--ct-muted);margin-top:7px!important;max-width:65ch}
+#correction-designs .ct-reset{background:transparent!important;border-color:transparent!important;color:var(--ct-muted)!important}
+#correction-designs .ct-app button,#correction-designs .ct-app input,#correction-designs .ct-app select,#correction-designs .ct-app textarea{font:inherit;color:var(--ct-ink);border:1px solid var(--ct-line);border-radius:8px;background:var(--ct-surface);min-height:42px;max-width:100%;padding:10px 12px}
+#correction-designs .ct-app button{font-weight:600}
+#correction-designs .ct-app button:disabled{opacity:.55}
+#correction-designs .ct-app .ct-primary{background:var(--ct-action);color:var(--ct-action-ink);border-color:var(--ct-action)}
+#correction-designs .ct-app button[aria-pressed=true]{background:var(--ct-soft);border-color:var(--ct-action)}
+#correction-designs .ct-app label{display:grid;gap:6px;font-size:13px;font-weight:600;min-width:0}
+#correction-designs .ct-app input,#correction-designs .ct-app textarea,#correction-designs .ct-app select{width:100%;font-weight:400}
+#correction-designs .ct-app textarea{min-height:84px;resize:vertical}
+#correction-designs .ct-panel{background:var(--ct-surface);border:1px solid var(--ct-line);border-radius:12px;padding:22px;display:grid;gap:16px;align-content:start;min-width:0}
+#correction-designs .ct-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#correction-designs .ct-split{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:20px;align-items:start}
+#correction-designs .ct-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+#correction-designs .ct-field-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#correction-designs .ct-muted{color:var(--ct-muted);font-size:13px}
+#correction-designs .ct-pill{display:inline-block;font-size:12px;font-weight:600;background:var(--ct-soft);padding:4px 9px;border-radius:6px;max-width:100%}
+#correction-designs .ct-pill.ct-good{color:var(--ct-good)}
+#correction-designs .ct-pill.ct-warn{color:var(--ct-warn)}
+#correction-designs .ct-alert{padding:13px 15px;border-left:3px solid var(--ct-warn);background:var(--ct-soft);border-radius:6px;color:var(--ct-ink)}
+#correction-designs .ct-condition:empty,#correction-designs .ct-result:empty{display:none}
+#correction-designs .ct-result{border-left:3px solid var(--ct-good);padding:13px 15px;background:var(--ct-soft);border-radius:6px;font-size:14px;white-space:pre-line}
+#correction-designs .ct-result[data-error=true]{border-left-color:var(--ct-bad);color:var(--ct-bad)}
+#correction-designs .ct-result[data-phase=staged]{border-left-color:var(--ct-warn)}
+#correction-designs .ct-record{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:16px 0;border-top:1px solid var(--ct-line);border-bottom:1px solid var(--ct-line)}
+#correction-designs .ct-record small{display:block;color:var(--ct-muted);font-size:12px}
+#correction-designs .ct-number{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.8px}
+#correction-designs .ct-history{margin:0;padding:0;list-style:none;display:grid;gap:0;font-size:13px}
+#correction-designs .ct-history li{padding:12px 0;border-bottom:1px solid var(--ct-line)}
+#correction-designs .ct-history b{font-weight:600;display:block}
+#correction-designs .ct-history small{color:var(--ct-muted);display:block}
+#correction-designs .ct-app hr{border:0;border-top:1px solid var(--ct-line);width:100%;margin:0}
+#correction-designs .ct-timeline{list-style:none;padding:0;margin:0;display:grid;gap:0}
+#correction-designs .ct-timeline li{display:grid;grid-template-columns:70px minmax(0,1fr);gap:14px;padding:14px 0;border-bottom:1px solid var(--ct-line)}
+#correction-designs .ct-timeline time{font-weight:600;font-variant-numeric:tabular-nums}
+#correction-designs .ct-timeline small{display:block;color:var(--ct-muted)}
+#correction-designs .ct-specimens{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+#correction-designs .ct-specimens button{padding:9px 6px}
+#correction-designs .ct-app .ct-check{display:flex;gap:9px;align-items:center;font-weight:400}
+#correction-designs .ct-check input{width:18px;height:18px;min-height:18px;padding:0;flex-shrink:0;accent-color:var(--ct-action)}
+#correction-designs .ct-check span{min-width:0}
+#correction-designs .ct-ledger{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed}
+#correction-designs .ct-ledger td,#correction-designs .ct-ledger th{padding:12px 8px;border-bottom:1px solid var(--ct-line);text-align:left;font-weight:400;overflow-wrap:anywhere}
+#correction-designs .ct-ledger th{font-weight:600;color:var(--ct-muted)}
+#correction-designs .ct-ledger input{min-width:0;padding:7px;font-size:13px}
+#correction-designs .ct-steps{display:flex;gap:10px;flex-wrap:wrap;list-style:none;margin:0;padding:0}
+#correction-designs .ct-steps li{padding:8px 12px;background:var(--ct-soft);border-radius:7px;font-size:13px;color:var(--ct-muted)}
+#correction-designs .ct-steps li[data-current=true]{background:var(--ct-action);color:var(--ct-action-ink)}
+#correction-designs .ct-diff{padding:18px;background:var(--ct-soft);border-radius:8px;display:grid;gap:10px}
+#correction-designs .ct-diff del{color:var(--ct-muted)}
+#correction-designs .ct-diff ins{text-decoration:none;color:var(--ct-good);font-weight:600}
+#correction-designs .ct-inbox{display:grid;gap:8px}
+#correction-designs .ct-inbox button{display:grid;text-align:left;gap:4px;min-height:90px}
+#correction-designs .ct-inbox small{font-weight:400;color:var(--ct-muted)}
+#correction-designs .ct-impact{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+#correction-designs .ct-impact span{padding:9px 6px;background:var(--ct-soft);border-radius:7px;font-size:13px;text-align:center}
+#correction-designs .ct-impact .ct-blocked{color:var(--ct-bad)}
+#correction-designs .ct-room-list{padding:0;margin:0;list-style:none;display:grid;gap:8px}
+#correction-designs .ct-room-list li{background:var(--ct-soft);padding:10px;border-radius:6px;font-size:13px}
+#correction-designs .ct-ticket{padding:18px;border:1px dashed var(--ct-line);border-radius:8px;background:var(--ct-surface);display:grid;gap:12px}
+#correction-designs .ct-ticket .ct-code{font-family:ui-monospace,monospace;letter-spacing:1px;font-size:18px}
+#correction-designs .ct-phone{max-width:430px;margin:0 auto;border-left:1px solid var(--ct-line);border-right:1px solid var(--ct-line);background:var(--ct-surface);min-height:848px}
+#correction-designs .ct-phone .ct-body{padding:22px}
+#correction-designs .ct-phone .ct-chrome{padding:17px 22px}
+#correction-designs .ct-big-choices{display:grid;gap:10px}
+#correction-designs .ct-big-choices button{min-height:62px;text-align:left}
+#correction-designs .ct-command{font-family:ui-monospace,monospace!important;min-height:118px!important;background:var(--ct-bg)!important;font-size:16px!important}
+#correction-designs .ct-key{font-family:ui-monospace,monospace;font-size:12px;padding:2px 6px;background:var(--ct-soft);border:1px solid var(--ct-line);border-radius:4px}
+#correction-designs .ct-kiosk .ct-body{max-width:900px;margin:auto;gap:24px}
+#correction-designs .ct-kiosk h2{font-size:34px}
+#correction-designs .ct-kiosk .ct-primary{min-height:62px;font-size:18px;width:100%}
+#correction-designs .ct-evidence{display:grid;gap:10px}
+#correction-designs .ct-evidence label{padding:14px;border:1px solid var(--ct-line);border-radius:8px;background:var(--ct-soft)}
+#correction-designs .ct-tabs{display:flex;gap:8px;flex-wrap:wrap}
+#correction-designs .ct-tabs button{background:var(--ct-soft)}
+#correction-designs .ct-footnote{font-size:12px;color:var(--ct-muted)}
+#correction-designs .ct-app [hidden]{display:none!important}
+@media(max-width:700px){#correction-designs .ct-app{min-height:1260px}#correction-designs .ct-chrome{padding:17px}#correction-designs .ct-body{padding:18px}#correction-designs .ct-split,#correction-designs .ct-three{grid-template-columns:minmax(0,1fr)}#correction-designs .ct-field-pair{grid-template-columns:minmax(0,1fr)}#correction-designs .ct-record{grid-template-columns:minmax(0,1fr);gap:10px}#correction-designs .ct-app h2{font-size:23px}#correction-designs .ct-panel{padding:17px}#correction-designs .ct-phone{min-height:1258px}#correction-designs .ct-impact{grid-template-columns:repeat(3,minmax(0,1fr))}#correction-designs .ct-ledger td,#correction-designs .ct-ledger th{padding:9px 4px}#correction-designs .ct-ledger input{font-size:16px;padding:4px}#correction-designs .ct-nav{gap:12px}#correction-designs .ct-kiosk h2{font-size:28px}}
+@media(pointer:coarse){#correction-designs .ct-app button,#correction-designs .ct-app input,#correction-designs .ct-app select,#correction-designs .ct-app textarea{min-height:44px;font-size:16px}#correction-designs .ct-check input{min-height:18px}}
+@media(max-width:480px){#correction-designs .ct-ledger thead{display:none}#correction-designs .ct-ledger tbody{display:block}#correction-designs .ct-ledger tr{display:flex;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--ct-line)}#correction-designs .ct-ledger td{display:grid;gap:4px;width:50%;border:0;padding:7px 5px}#correction-designs .ct-ledger td::before{color:var(--ct-muted);font-size:12px}#correction-designs .ct-ledger td:nth-child(1)::before{content:'Specimen'}#correction-designs .ct-ledger td:nth-child(2)::before{content:'Observed IN'}#correction-designs .ct-ledger td:nth-child(3)::before{content:'Proposed IN'}#correction-designs .ct-ledger td:nth-child(4)::before{content:'Change'}}
+#correction-designs .ct-app{min-height:1100px}
+#correction-designs .ct-phone{min-height:1098px}
+@media(max-width:700px){#correction-designs .ct-app{min-height:2100px}#correction-designs .ct-phone{min-height:2098px}}
+</style>
+
+<div class="viz-controls" id="correction-scenario-controls" aria-label="Correction demo scenarios">
+  <label class="form-label">Demo scenario <select class="form-select" id="correction-scenario" data-testid="correction-scenario"><option>Wrong time</option><option>Missed IN</option><option>Wrong room</option><option>Intervening movement</option><option>Stale edit</option><option>Unavailable</option></select></label>
+  <button class="btn" type="button" id="correction-reset-all">Reset all designs</button>
+</div>
+
+<div class="viz-carousel" id="correction-designs" aria-label="Correction and after-the-fact workflow designs">
+  <section data-variant="Specimen timeline" aria-label="Specimen timeline editor">
+    <div class="ct-app" data-design="timeline">
+      <div class="ct-chrome"><div class="ct-brand">Conditioning<span>Supervisor</span></div><div class="ct-nav">Prep · Rooms · <strong>Specimen history</strong></div></div>
+      <div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · Cotton barrier · FLAME · AR</div><h2>Edit the session, keep the story.</h2><p class="ct-subtitle">Specimen 03 of 20 · Shared room · Continuous session</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div>
+        <div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><div class="ct-row"><h3>Specimen timeline</h3><span class="ct-pill">Current IN</span></div><div class="ct-specimens" aria-label="Choose specimen"><button type="button" data-action="specimen" aria-pressed="false">01</button><button type="button" data-action="specimen" aria-pressed="false">02</button><button type="button" data-action="specimen" aria-pressed="true">03</button><button type="button" data-action="specimen" aria-pressed="false">04</button><button type="button" data-action="specimen" aria-pressed="false">05</button></div><ol class="ct-timeline"><li><time>09:12</time><div><b>Original IN scan</b><small>shared-door · Recorded Oct 7 at 09:12 ET</small></div></li><li><time data-effective>08:45</time><div><b>Proposed effective entry</b><small>Claimed by technician · not yet committed</small></div></li><li><time>10:05</time><div><b>Correction recording time</b><small>Eva Morales · Supervisor</small></div></li></ol><h4>Immutable audit</h4><ol class="ct-history" data-history><li><b>09:12 · IN observed</b><small>shared-door · Specimens 01–20 · Original scan retained</small></li></ol></div><div class="ct-panel"><h3>Correct the selected specimen</h3><label>Effective entry time<input type="time" value="08:45" data-time aria-label="Effective entry time"></label><label>Effective exit, if closed<input type="time" data-exit aria-label="Effective exit time"></label><label>Reason<textarea data-reason data-testid="correction-reason" placeholder="Why should the effective time change?"></textarea></label><p class="ct-muted">The original 09:12 scan remains visible. A correction adds a new supervisor event.</p><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Save timestamp correction</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div></div>
+      </div>
+    </div>
+  </section>
+  <section data-variant="Staged spreadsheet ledger" aria-label="Spreadsheet ledger with staged edits" hidden>
+    <div class="ct-app" data-design="ledger"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Correction ledger</span></div><div class="ct-nav">0007-UL · 20 specimens · <strong>Review batch</strong></div></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Supervisor workspace</div><h2>Stage cells. Commit one reviewed batch.</h2><p class="ct-subtitle">Original scan columns are read-only. Four selected rows are ready to review.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-panel"><div class="ct-row"><span class="ct-pill">4 selected / 20</span><span class="ct-muted">Project 0007-UL · Cotton barrier · Shared room</span></div><table class="ct-ledger"><thead><tr><th>Specimen</th><th>Observed IN</th><th>Proposed IN</th><th>Change</th></tr></thead><tbody><tr><td>☑ 01</td><td>09:12</td><td><input type="time" value="08:45" data-time aria-label="Proposed time specimen 01"></td><td data-ledger-status>Draft</td></tr><tr><td>☑ 02</td><td>09:12</td><td><input type="time" value="08:45" data-time aria-label="Proposed time specimen 02"></td><td data-ledger-status>Draft</td></tr><tr><td>☑ 03</td><td>09:12</td><td><input type="time" value="08:45" data-time aria-label="Proposed time specimen 03"></td><td data-ledger-status>Draft</td></tr><tr><td>☑ 04</td><td>09:12</td><td><input type="time" value="08:45" data-time aria-label="Proposed time specimen 04"></td><td data-ledger-status>Draft</td></tr></tbody></table><div class="ct-field-pair"><label>Reason for this edit batch<textarea data-reason data-testid="correction-reason" placeholder="Apply the same reason to all four selected rows"></textarea></label><div><h4>Batch rules</h4><p class="ct-muted">All four edits commit together. A stale row rejects the entire batch. Observed scan times are never replaced.</p><div class="ct-record"><div><small>Claimed</small><b>08:45</b></div><div><small>Recorded</small><b>10:05 ET</b></div><div><small>Actor</small><b>Eva Morales</b></div></div></div></div><div class="ct-row"><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Stage 4 cell edits</button><span class="ct-pill" data-flow-state>Nothing committed</span></div><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div><div class="ct-panel"><h3>Batch audit</h3><ol class="ct-history" data-history><li><b>09:12 · Original stack IN scan</b><small>shared-door · 20 specimens · Immutable observation</small></li></ol></div></div></div>
+  </section>
+  <section data-variant="Guided correction wizard" aria-label="Guided correction wizard" hidden>
+    <div class="ct-app" data-design="wizard"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Guided correction</span></div><span class="ct-pill">Supervisor · Eva Morales</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · Specimen 03</div><h2>A correction in three clear steps.</h2><p class="ct-subtitle">One task at a time, with a final review before recording.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><ol class="ct-steps"><li data-step="0" data-current="true">Identify</li><li data-step="1">Review</li><li data-step="2">Record</li></ol><div class="ct-split"><div class="ct-panel"><div data-wizard-start><h3>What needs correcting?</h3><label>Correction type<select data-kind><option>Wrong entry time</option><option>Missed entry</option><option>Wrong room</option></select></label><div class="ct-field-pair"><label>Claimed entry<input type="time" value="08:45" data-time></label><label>Exit, if closed<input type="time" data-exit></label></div><label>Reason<textarea data-reason data-testid="correction-reason" placeholder="Explain the discrepancy"></textarea></label></div><div data-wizard-review hidden><h3>Review the proposed change</h3><div class="ct-diff"><del>Effective IN 09:12</del><ins>Effective IN <span data-effective>08:45</span></ins><span>Specimen 03 · Shared room · Original scan retained</span></div><p class="ct-muted">This changes the effective session time. It does not create a new physical scan.</p></div><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Review this correction</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div><div class="ct-panel"><h3>Record context</h3><div class="ct-record"><div><small>Original observation</small><b>09:12 ET</b></div><div><small>Recorded correction</small><b>10:05 ET</b></div><div><small>Affected</small><b>1 of 20</b></div></div><ol class="ct-history" data-history><li><b>09:12 · Original IN</b><small>shared-door · Stack 0007-UL · Immutable</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Before and after comparison" aria-label="Before and after comparison" hidden>
+    <div class="ct-app" data-design="comparison"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Compare session versions</span></div><div class="ct-nav"><strong>Change review</strong> · Version 7</div></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · Specimen 03 of 20</div><h2>See exactly what will change.</h2><p class="ct-subtitle">A readable comparison of the current record and proposed effective session.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><span class="ct-pill">Current effective record</span><h3>Observed IN</h3><div class="ct-number">09:12</div><p>Shared room · 23°C / 65% RH</p><div class="ct-record"><div><small>Source</small><b>USB scan</b></div><div><small>Recorded</small><b>09:12</b></div><div><small>Actor</small><b>shared-door</b></div></div><p class="ct-muted">This original observation is preserved as evidence.</p></div><div class="ct-panel"><span class="ct-pill ct-good">Proposed effective record</span><h3>Claimed IN</h3><label>Effective time<input type="time" value="08:45" data-time></label><p>Shared room · Session source: corrected</p><div class="ct-record"><div><small>Change</small><b>−27 minutes</b></div><div><small>Recorded</small><b>10:05</b></div><div><small>Actor</small><b>Eva Morales</b></div></div><label>Reason for the difference<textarea data-reason data-testid="correction-reason" placeholder="Explain why this proposal is supported"></textarea></label></div></div><div class="ct-panel"><div class="ct-row"><h3>One field changes</h3><span class="ct-pill">Membership stays 20 specimens</span></div><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Apply this reviewed difference</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><ol class="ct-history" data-history><li><b>09:12 · Original scan observation</b><small>shared-door · Preserved in both versions</small></li></ol></div></div></div>
+  </section>
+  <section data-variant="Exception triage inbox" aria-label="Exception triage inbox" hidden>
+    <div class="ct-app" data-design="inbox"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Exceptions</span></div><span class="ct-pill">3 unresolved</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Supervisor queue · Today</div><h2>Resolve the discrepancies first.</h2><p class="ct-subtitle">Operator reports arrive as actionable cases, separated from ordinary scan history.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-inbox"><button type="button" data-action="ticket" data-ticket="time" aria-pressed="true"><span>CT-104 · Wrong entry time</span><small>0007-UL · #03 · Reported by Sam Lee at 09:56</small><span data-ticket-status="time" class="ct-pill ct-warn">Needs review</span></button><button type="button" data-action="ticket" data-ticket="missing" aria-pressed="false"><span>CT-105 · Missing IN record</span><small>0007-UL · #17 · Prep log claims 08:45</small><span data-ticket-status="missing" class="ct-pill ct-warn">Needs review</span></button><button type="button" data-action="ticket" data-ticket="room" aria-pressed="false"><span>CT-106 · Location discrepancy</span><small>0007-UL · #20 · Shared / PPE mismatch</small><span data-ticket-status="room" class="ct-pill ct-warn">Needs review</span></button><div class="ct-panel"><h4>Intake context</h4><p class="ct-muted">Stack of 20 · Original stack scan at 09:12 · Review recording time 10:05 ET</p></div></div><div class="ct-panel"><span class="ct-pill" data-inbox-title>CT-104 · Specimen 03</span><h3 data-inbox-subtitle>Operator claims an earlier entry.</h3><div class="ct-diff"><del>Observed scan 09:12 · shared-door</del><ins>Claimed physical entry 08:45</ins></div><label>Effective entry<input type="time" value="08:45" data-time></label><label>Resolution reason<textarea data-reason data-testid="correction-reason" placeholder="Document how this case was resolved"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Resolve selected exception</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><ol class="ct-history" data-history><li><b>09:12 · Original stack IN</b><small>shared-door · History preserved while cases resolve</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Undo impact preview" aria-label="Undo impact preview with intervening movement protection" hidden>
+    <div class="ct-app" data-design="undo"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Undo review</span></div><span class="ct-pill">Original event IN-7A21</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · Stack movement</div><h2>Preview the full impact of undo.</h2><p class="ct-subtitle">An undo is a new audit event. The original scan remains visible.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><h3>Movement selected</h3><div class="ct-record"><div><small>Direction</small><b>IN</b></div><div><small>Observed</small><b>09:12</b></div><div><small>Affected</small><b>20</b></div></div><p>shared-door → Shared room</p><h4>Specimen eligibility</h4><div class="ct-impact" data-undo-impact><span>01 · Eligible</span><span>02 · Eligible</span><span data-undo-third>03 · Eligible</span><span>04 · Eligible</span><span>05 · Eligible</span><span>06 · Eligible</span><span>07 · Eligible</span><span>08 · Eligible</span><span>09–20 · Eligible</span></div><p class="ct-muted">Every affected specimen must still have this movement as its latest event.</p><ol class="ct-history" data-history><li><b>09:12 · Original IN-7A21</b><small>shared-door · 20 sessions opened · Immutable</small></li></ol></div><div class="ct-panel"><h3>Undo reason</h3><label>Why should this movement be reversed?<textarea data-reason data-testid="correction-reason" placeholder="For example: wrong stack scanned"></textarea></label><div class="ct-diff"><span>20 effective sessions → voided</span><span>20 specimens → OUT</span><span>Original IN observation → retained</span></div><p class="ct-muted">Recorded by Eva Morales at 10:05. A single intervening movement blocks the entire undo.</p><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Preview undo impact</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div></div></div></div>
+  </section>
+  <section data-variant="Missed entry reconstruction" aria-label="Missed entry reconstruction" hidden>
+    <div class="ct-app" data-design="reconstruction"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Reconstruct missed entry</span></div><span class="ct-pill ct-warn">No specimen IN record</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · Specimen 17 of 20</div><h2>Separate what happened from when it was recorded.</h2><p class="ct-subtitle">Create a claimed session from an operator account and supporting room context.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-three"><div class="ct-panel"><div class="ct-eyebrow">Physical account</div><h3>Claimed entry</h3><label>Claimed IN time<input type="time" value="08:45" data-time></label><label>Claimed exit, if removed<input type="time" data-exit></label><p class="ct-muted">Sam Lee: “Specimen 17 was placed with the rest of the stack.”</p></div><div class="ct-panel"><div class="ct-eyebrow">Observed evidence</div><h3>Stack seen at 09:12</h3><ol class="ct-timeline"><li><time>08:40</time><div>Prep count: 20<small>Prep worksheet</small></div></li><li><time>09:12</time><div>Stack scan observed<small>shared-door · Other specimens recorded</small></div></li><li><time>09:56</time><div>Missing entry reported<small>Sam Lee</small></div></li></ol></div><div class="ct-panel"><div class="ct-eyebrow">Recorded now</div><h3>10:05 ET</h3><p>Eva Morales · Supervisor</p><span class="ct-pill">Source: missed entry</span><p class="ct-muted">The claimed 08:45 time does not become a scanner observation.</p></div></div><div class="ct-panel"><label>Reason for reconstructing this session<textarea data-reason data-testid="correction-reason" placeholder="Describe the missed scan and the source of the claimed time"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Build reconstructed session</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><ol class="ct-history" data-history><li><b>09:12 · Original stack observation</b><small>No fabricated scan for specimen 17 · Existing evidence retained</small></li></ol></div></div></div>
+  </section>
+  <section data-variant="Atomic group time adjustment" aria-label="Atomic group time adjustment" hidden>
+    <div class="ct-app" data-design="bulk"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Group correction</span></div><span class="ct-pill">0007-UL · Shared room</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Fixed stack membership · 20 specimens</div><h2>Adjust a group as one reviewed transaction.</h2><p class="ct-subtitle">Select the specimens whose claimed entry was 27 minutes earlier.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><div class="ct-row"><h3>20 selected</h3><button type="button" data-action="select-all">Select all</button><button type="button" data-action="select-none">Clear selection</button></div><div class="ct-specimens" data-bulk-grid><button type="button" aria-pressed="true" data-action="bulk-specimen">01</button><button type="button" aria-pressed="true" data-action="bulk-specimen">02</button><button type="button" aria-pressed="true" data-action="bulk-specimen">03</button><button type="button" aria-pressed="true" data-action="bulk-specimen">04</button><button type="button" aria-pressed="true" data-action="bulk-specimen">05</button><button type="button" aria-pressed="true" data-action="bulk-specimen">06</button><button type="button" aria-pressed="true" data-action="bulk-specimen">07</button><button type="button" aria-pressed="true" data-action="bulk-specimen">08</button><button type="button" aria-pressed="true" data-action="bulk-specimen">09</button><button type="button" aria-pressed="true" data-action="bulk-specimen">10</button><button type="button" aria-pressed="true" data-action="bulk-specimen">11</button><button type="button" aria-pressed="true" data-action="bulk-specimen">12</button><button type="button" aria-pressed="true" data-action="bulk-specimen">13</button><button type="button" aria-pressed="true" data-action="bulk-specimen">14</button><button type="button" aria-pressed="true" data-action="bulk-specimen">15</button><button type="button" aria-pressed="true" data-action="bulk-specimen">16</button><button type="button" aria-pressed="true" data-action="bulk-specimen">17</button><button type="button" aria-pressed="true" data-action="bulk-specimen">18</button><button type="button" aria-pressed="true" data-action="bulk-specimen">19</button><button type="button" aria-pressed="true" data-action="bulk-specimen">20</button></div><div class="ct-diff"><span>Observed IN: 09:12 for all selected</span><ins>Claimed IN: <span data-effective>08:45</span> for the selected group</ins></div><p class="ct-muted">One stale specimen rejects every selected edit. No partial batch is saved.</p></div><div class="ct-panel"><label>New effective entry<input type="time" value="08:45" data-time></label><label>Shared reason<textarea data-reason data-testid="correction-reason" placeholder="Explain why these specimens need the same adjustment"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Preview 20 time adjustments</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><h4>Group audit</h4><ol class="ct-history" data-history><li><b>09:12 · Original stack IN</b><small>Specimens 01–20 · shared-door · Original retained</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Two person approval queue" aria-label="Two person approval queue concept" hidden>
+    <div class="ct-app" data-design="approval"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Approval queue</span></div><span class="ct-pill ct-warn">Policy concept · Two reviewers</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">CT-104 · 0007-UL · Specimen 03</div><h2>Two people review one consequential change.</h2><p class="ct-subtitle">The proposed 08:45 effective entry stays pending until both reviewers approve.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-three"><div class="ct-panel"><h3>Proposed change</h3><div class="ct-diff"><del>Current effective IN 09:12</del><ins>Claimed IN 08:45</ins></div><p class="ct-muted">Submitted by Sam Lee at 09:56 · Shared room</p><label>Effective entry<input type="time" value="08:45" data-time></label></div><div class="ct-panel"><h3>Eva Morales</h3><span class="ct-pill" data-reviewer-one>Awaiting first approval</span><p class="ct-muted">Supervisor review · Required approval 1 of 2</p><div class="ct-record"><div><small>Review time</small><b>10:05</b></div><div><small>Scope</small><b>1 specimen</b></div></div></div><div class="ct-panel"><h3>Noah Chen</h3><span class="ct-pill" data-reviewer-two>Waiting for Eva</span><p class="ct-muted">Independent review · Required approval 2 of 2</p><div class="ct-record"><div><small>Approval time</small><b>10:11</b></div><div><small>Effective time</small><b>08:45</b></div></div></div></div><div class="ct-panel"><label>Reviewer rationale<textarea data-reason data-testid="correction-reason" placeholder="Record the basis for approval"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Approve as Eva Morales</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><ol class="ct-history" data-history><li><b>09:12 · Original scanner observation</b><small>shared-door · Unchanged during pending approvals</small></li></ol></div></div></div>
+  </section>
+  <section data-variant="Operator request and supervisor review" aria-label="Operator request and supervisor review concept" hidden>
+    <div class="ct-app" data-design="request"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Correction requests</span></div><span class="ct-pill" data-role-label>Operator · Sam Lee</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · Specimen 03 of 20</div><h2>Capture the request before changing the record.</h2><p class="ct-subtitle">A request has its own recording time. Supervisor approval creates the correction later.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><h3 data-request-heading>Operator correction request</h3><div class="ct-record"><div><small>Observed IN</small><b>09:12</b></div><div><small>Claimed IN</small><b>08:45</b></div><div><small>Request recorded</small><b>10:05</b></div></div><label>Claimed physical entry<input type="time" value="08:45" data-time></label><label>Operator account / review rationale<textarea data-reason data-testid="correction-reason" placeholder="Explain the discrepancy for the supervisor"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Submit correction request</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div><div class="ct-panel"><h3>Request lifecycle</h3><ol class="ct-timeline"><li><time>09:12</time><div>Original IN observed<small>shared-door · Immutable</small></div></li><li><time>10:05</time><div data-request-status>Request not submitted<small>Sam Lee · Operator</small></div></li><li><time>10:11</time><div data-approval-status>Supervisor review pending<small>Eva Morales · Correction not yet recorded</small></div></li></ol><ol class="ct-history" data-history><li><b>09:12 · Original IN</b><small>Effective time remains 09:12 until approval</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Room reconciliation worksheet" aria-label="Room reconciliation worksheet" hidden>
+    <div class="ct-app" data-design="reconciliation"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Room reconciliation</span></div><span class="ct-pill">Inventory check · 10:05 ET</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">0007-UL · 20 registered specimens</div><h2>Reconcile the shelf with the record.</h2><p class="ct-subtitle">A physical room check identifies location discrepancies before correcting them.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-three"><div class="ct-panel"><h3>Shared</h3><span class="ct-pill">Record: 20 · Physical: 18</span><ul class="ct-room-list"><li>01–16 · Found and matched</li><li>17–18 · Found and matched</li><li>19–20 · Not on shelf</li></ul></div><div class="ct-panel"><h3>PPE</h3><span class="ct-pill ct-warn">Physical: #19</span><ul class="ct-room-list"><li>#19 Cotton barrier · Found here</li><li>Database says: Shared</li><li>Original scan: Shared 09:12</li></ul></div><div class="ct-panel"><h3>Footwear</h3><span class="ct-pill ct-warn">Physical: #20</span><ul class="ct-room-list"><li>#20 Cotton barrier · Found here</li><li>Database says: Shared</li><li>Original scan: Shared 09:12</li></ul></div></div><div class="ct-split"><div class="ct-panel"><h3>Verified mismatch · Specimen 19</h3><label class="ct-check"><input type="checkbox" data-verified><span>I physically verified specimen 19 in PPE.</span></label><label>Confirmed room<select data-room><option>PPE</option><option>Footwear</option><option>Shared</option></select></label><label>Claimed entry in that room<input type="time" value="08:45" data-time></label></div><div class="ct-panel"><label>Reason for reconciling the room record<textarea data-reason data-testid="correction-reason" placeholder="Describe the verification and the room discrepancy"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Review verified room mismatch</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><ol class="ct-history" data-history><li><b>09:12 · Shared room observed</b><small>shared-door · Original room and time preserved</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Project case workbench" aria-label="Project case workbench" hidden>
+    <div class="ct-app" data-design="workbench"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Project case</span></div><div class="ct-nav"><strong>0007-UL</strong> · Cotton barrier · FLAME</div></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Case CT-104 · Owner Eva Morales</div><h2>Keep the correction in its project context.</h2><p class="ct-subtitle">Chronology, operator notes, and reviewed actions share one case workspace.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><div class="ct-tabs" aria-label="Case sections"><button type="button" data-action="case-tab" data-tab="chronology" aria-pressed="true">Chronology</button><button type="button" data-action="case-tab" data-tab="notes" aria-pressed="false">Operator notes</button><button type="button" data-action="case-tab" data-tab="actions" aria-pressed="false">Case actions</button></div><div data-case-panel="chronology"><ol class="ct-timeline"><li><time>08:40</time><div>Prep signed off<small>20 specimens · Sam Lee</small></div></li><li><time>08:45</time><div>Entry claimed<small>Technician account · not a scan</small></div></li><li><time>09:12</time><div>IN scan recorded<small>shared-door · all 20</small></div><li><time>09:56</time><div>Correction requested<small>#03 entry discrepancy</small></div></li></ol></div><div data-case-panel="notes" hidden><h3>Sam Lee · 09:56</h3><p>“The specimens were placed in Shared at 08:45. I scanned the stack after finishing prep.”</p><p class="ct-muted">This account is evidence for review, not an observed timestamp.</p></div><div data-case-panel="actions" hidden><h3>Reviewed actions</h3><p data-case-action-state>No correction attached yet.</p></div><h4>Project audit</h4><ol class="ct-history" data-history><li><b>09:12 · Original stack IN</b><small>0007-UL · shared-door · Immutable observation</small></li></ol></div><div class="ct-panel"><span class="ct-pill">Case remains open</span><h3>Add a reviewed correction</h3><label>Affected specimen<select><option>03 · Cotton barrier</option><option>17 · Cotton barrier</option></select></label><label>Effective entry<input type="time" value="08:45" data-time></label><label>Case rationale<textarea data-reason data-testid="correction-reason" placeholder="Connect this change to the case evidence"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Record correction in this case</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div></div></div></div>
+  </section>
+  <section data-variant="Handheld incident capture" aria-label="Handheld incident capture concept" hidden>
+    <div class="ct-app" data-design="handheld"><div class="ct-phone"><div class="ct-chrome"><div class="ct-brand">Conditioning</div><span class="ct-pill">Sam · Operator</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Report from the room</div><h2>Capture it while it is fresh.</h2></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><label>Scanned specimen<input value="UL1:P:0007-03" data-scan aria-label="Incident specimen code"></label><p class="ct-muted">0007-UL · Specimen 03 / 20 · Shared room</p><div class="ct-big-choices" aria-label="Incident kind"><button type="button" data-action="incident" aria-pressed="true">Wrong entry time</button><button type="button" data-action="incident" aria-pressed="false">Missed IN scan</button><button type="button" data-action="incident" aria-pressed="false">Wrong room</button></div><label>Claimed entry<input type="time" value="08:45" data-time></label><label>What happened?<textarea data-reason data-testid="correction-reason" placeholder="A short account for the supervisor"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Capture incident for review</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div><ol class="ct-history" data-history><li><b>Observed IN 09:12 · Unchanged</b><small>Request recorded at 10:05 · Approval happens separately</small></li></ol></div></div></div>
+  </section>
+  <section data-variant="Keyboard command palette" aria-label="Keyboard correction command palette" hidden>
+    <div class="ct-app" data-design="command"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Command desk</span></div><span class="ct-pill">Eva Morales · Supervisor</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Keyboard workflow · 0007-UL</div><h2>Type the intent. Review the effect.</h2><p class="ct-subtitle">Commands become a readable preview before they can modify a session.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-panel"><label>Correction command<textarea class="ct-command" data-command aria-label="Correction command">correct #03 entered 08:45</textarea></label><div class="ct-row"><span class="ct-key">Ctrl + Enter</span><span class="ct-muted">Review, then execute · No command runs immediately</span></div><div class="ct-row"><button type="button" data-action="command-example" data-command-value="correct #03 entered 08:45">Wrong time</button><button type="button" data-action="command-example" data-command-value="missed #17 entered 08:45">Missed IN</button><button type="button" data-action="command-example" data-command-value="undo IN-7A21">Undo last movement</button></div><label>Reason attached to this command<textarea data-reason data-testid="correction-reason" placeholder="Explain the command before reviewing it"></textarea></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Dry-run this command</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div><div class="ct-split"><div class="ct-panel"><h3>Command scope</h3><div class="ct-record"><div><small>Project</small><b>0007-UL</b></div><div><small>Stack</small><b>20 specimens</b></div><div><small>Original IN</small><b>09:12</b></div></div><p class="ct-muted">A failed or stale command changes zero specimens.</p></div><div class="ct-panel"><h3>Execution log</h3><ol class="ct-history" data-history><li><b>09:12 · IN observed</b><small>shared-door · Original remains in the log</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Read only kiosk handoff" aria-label="Read only kiosk correction handoff concept" hidden>
+    <div class="ct-app ct-kiosk" data-design="handoff"><div class="ct-chrome"><div class="ct-brand">Shared room<span>Operator station</span></div><span class="ct-pill">Correction request only</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Scanner and large touch controls</div><h2>Send a review ticket from the station.</h2><p class="ct-subtitle">This station can capture a discrepancy. A supervisor changes the effective record.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><label>Scan specimen to identify the request<input value="UL1:P:0007-03" data-scan aria-label="Handoff specimen code"></label><div class="ct-record"><div><small>Project</small><b>0007-UL</b></div><div><small>Specimen</small><b>03 / 20</b></div><div><small>Observed IN</small><b>09:12</b></div></div><label>Reason category<select data-reason data-testid="correction-reason"><option value="">Choose a reason</option><option>Scanned later than physical entry</option><option>Wrong specimen scanned</option><option>Found in another room</option><option>Missing scan</option></select></label><label>Claimed entry<input type="time" value="08:45" data-time></label><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Create supervisor handoff ticket</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div><div class="ct-panel"><h3>Handoff ticket</h3><div class="ct-ticket"><span class="ct-code" data-ticket-code>NOT ISSUED</span><p>Observed: Shared IN at 09:12</p><p>Claimed: physical entry at 08:45</p><p>Request recorded: 10:05 ET</p><p class="ct-muted">Scan records stay unchanged until supervisor review.</p></div><ol class="ct-history" data-history><li><b>09:12 · Original scan</b><small>shared-door · Read-only at this station</small></li></ol></div></div></div></div>
+  </section>
+  <section data-variant="Evidence backed correction case" aria-label="Evidence backed correction case" hidden>
+    <div class="ct-app" data-design="evidence"><div class="ct-chrome"><div class="ct-brand">Conditioning<span>Evidence review</span></div><span class="ct-pill">Case CT-104 · 0007-UL</span></div><div class="ct-body"><div class="ct-heading"><div><div class="ct-eyebrow">Specimen 03 / 20 · Shared room</div><h2>Make the basis of the correction visible.</h2><p class="ct-subtitle">Choose the records supporting the claimed time before recording the correction.</p></div><button type="button" class="ct-reset" data-action="reset">Reset demo</button></div><div class="ct-condition ct-alert"></div><div class="ct-split"><div class="ct-panel"><h3>Available evidence</h3><div class="ct-evidence"><label class="ct-check"><input type="checkbox" checked data-evidence="Prep log"><span><b>Prep log · 08:45</b><br>Sam Lee · 20 specimens placed in Shared</span></label><label class="ct-check"><input type="checkbox" checked data-evidence="Original scan"><span><b>Original scanner observation · 09:12</b><br>shared-door · Always retained</span></label><label class="ct-check"><input type="checkbox" data-evidence="Room check"><span><b>Room check · 09:00</b><br>Supervisor observed the prepared stack</span></label></div><button type="button" data-action="add-evidence">Attach simulated operator note</button><p class="ct-footnote">Sample evidence only. No files are uploaded.</p><h4>Original history</h4><ol class="ct-history" data-history><li><b>09:12 · Original IN observation</b><small>shared-door · Read-only evidence</small></li></ol></div><div class="ct-panel"><h3>Evidence-supported proposal</h3><label>Claimed entry time<input type="time" value="08:45" data-time></label><label>Reason and interpretation<textarea data-reason data-testid="correction-reason" placeholder="Explain how the selected evidence supports this time"></textarea></label><div class="ct-diff"><span>Observed IN: 09:12</span><ins>Proposed effective IN: <span data-effective>08:45</span></ins><span>Correction recorded: 10:05 by Eva Morales</span></div><button type="button" class="ct-primary" data-primary data-testid="correction-primary">Link evidence and review</button><div class="ct-result" aria-live="polite" data-result data-testid="correction-result"></div></div></div></div></div>
+  </section>
+</div>
+
+<script>
+(()=>{
+  const root=document.getElementById('correction-designs');
+  const scenarioSelect=document.getElementById('correction-scenario');
+  if(!root||!scenarioSelect)return;
+  const settings={scenario:'Wrong time'};
+  const states=new Map();
+  const templates=new Map();
+  const apps=Array.from(root.querySelectorAll('.ct-app'));
+  const staged=new Set(['ledger','wizard','undo','reconstruction','bulk','reconciliation','command','evidence']);
+  const requestOnly=new Set(['handheld','handoff']);
+  const titles={ledger:'Commit 4 staged edits',wizard:'Confirm reviewed correction',undo:'Confirm undo of 20 sessions',reconstruction:'Record reconstructed session',bulk:'Commit selected time adjustments',reconciliation:'Record verified room correction',command:'Execute reviewed command',evidence:'Record supported correction'};
+  const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  function stateFor(app){return states.get(app.dataset.design)}
+  function result(app,message,error=false,phase=''){const el=app.querySelector('[data-result]');el.textContent=message;el.dataset.error=String(error);el.dataset.phase=phase;el.setAttribute('role',error?'alert':'status')}
+  function appendHistory(app,label,detail){const list=app.querySelector('[data-history]');const row=document.createElement('li');row.innerHTML='<b>'+escape(label)+'</b><small>'+escape(detail)+'</small>';list.appendChild(row)}
+  function selectedCount(app){return app.dataset.design==='bulk'?app.querySelectorAll('[data-action="bulk-specimen"][aria-pressed="true"]').length:app.dataset.design==='ledger'?4:app.dataset.design==='undo'?20:1}
+  function claimedTime(app){if(app.dataset.design==='command'){const command=app.querySelector('[data-command]').value;const match=command.match(/entered\s+(\d{2}:\d{2})/i);return match?match[1]:'08:45'}return app.querySelector('[data-time]')?.value||'08:45'}
+  function showScenario(){scenarioSelect.value=settings.scenario;apps.forEach(app=>{const note=app.querySelector('.ct-condition');const st=stateFor(app);note.textContent=settings.scenario==='Wrong time'?'':settings.scenario==='Missed IN'?'Demo case: a physical entry is claimed at 08:45; the missing specimen scan must not be fabricated.':settings.scenario==='Wrong room'?'Demo case: the original observation says Shared; the verified location is PPE.':settings.scenario==='Intervening movement'?'Intervening event: specimen 03 was scanned OUT at 09:40. The original stack movement cannot be undone.':settings.scenario==='Stale edit'?'Another operator advanced the stack from version 7 to version 8. A commit must reject every proposed change.':'NOT AVAILABLE · The central record service is unreachable. No correction or request can be recorded.';const third=app.querySelector('[data-undo-third]');if(third){third.textContent=settings.scenario==='Intervening movement'?'03 · Blocked (09:40 OUT)':'03 · Eligible';third.classList.toggle('ct-blocked',settings.scenario==='Intervening movement')}if(st&&st.phase!==0&&settings.scenario==='Stale edit')result(app,'The preview is now stale. Commit will reject the entire edit batch; original observations remain unchanged.',false,'staged')})}
+  function validate(app){const reason=(app.querySelector('[data-reason]')?.value||'').trim();if(!reason){result(app,'A reason is required. Zero records changed.',true);return null}if(settings.scenario==='Unavailable'){result(app,'NOT AVAILABLE. Nothing was recorded; original 09:12 observations remain unchanged.',true);return null}const times=Array.from(app.querySelectorAll('[data-time]')).map(el=>el.value);times.push(claimedTime(app));if(times.some(time=>!/^\d{2}:\d{2}$/.test(time))){result(app,'Enter a valid claimed time. Zero records changed.',true);return null}if(times.some(time=>time>'10:05')){result(app,'Future time rejected. Claimed entry cannot be later than the current recording time, 10:05 ET. Zero records changed.',true);return null}const exit=app.querySelector('[data-exit]')?.value;if(exit&&exit<claimedTime(app)){result(app,'Chronology rejected: exit precedes entry. Zero records changed.',true);return null}if(exit&&exit>'10:05'){result(app,'Future exit time rejected. Zero records changed.',true);return null}if(app.dataset.design==='bulk'&&!selectedCount(app)){result(app,'Select at least one specimen. Zero records changed.',true);return null}if(app.dataset.design==='reconciliation'&&!app.querySelector('[data-verified]').checked){result(app,'Verify the physical room before reviewing this mismatch. Zero records changed.',true);return null}if(app.dataset.design==='evidence'&&!app.querySelector('[data-evidence]:checked')){result(app,'Choose at least one supporting evidence record. Zero records changed.',true);return null}if(app.dataset.design==='command'&&!/^(correct|missed)\s+#\d{2}\s+entered\s+\d{2}:\d{2}$|^undo\s+IN-7A21$/i.test(app.querySelector('[data-command]').value.trim())){result(app,'Command not recognized. Use “correct #03 entered 08:45”, “missed #17 entered 08:45”, or “undo IN-7A21”. Zero records changed.',true);return null}if((app.dataset.design==='handheld'||app.dataset.design==='handoff')&&!/^UL1:P:0007-\d{2}$/.test(app.querySelector('[data-scan]').value)){result(app,'Scan a recognized demo specimen code, such as UL1:P:0007-03. No request captured.',true);return null}return {reason,time:claimedTime(app)}}
+  function commitGuard(app){if(settings.scenario==='Stale edit'){result(app,'STALE VERSION · Expected 7, current 8. Entire change rejected atomically: 0 specimens changed. Original 09:12 observations are intact.',true);return false}if(settings.scenario==='Intervening movement'&&(app.dataset.design==='undo'||(app.dataset.design==='command'&&app.querySelector('[data-command]').value.startsWith('undo')))){result(app,'UNDO BLOCKED · Specimen 03 has an intervening OUT at 09:40. The entire 20-specimen undo was rejected. Original IN and later OUT remain intact.',true);return false}return true}
+  function finalCommit(app,proposal,override){if(!commitGuard(app))return;const st=stateFor(app);const count=selectedCount(app);let label=override||'10:05 · Correction recorded by Eva Morales';let detail='Claimed IN '+proposal.time+' · Original observed IN 09:12 retained · Reason: '+proposal.reason;let message=count+' specimen'+(count===1?'':'s')+' corrected. Effective entry '+proposal.time+'; correction recorded 10:05 ET by Eva Morales.\nOriginal 09:12 scan preserved. Reason: '+proposal.reason;if(app.dataset.design==='undo'||(app.dataset.design==='command'&&app.querySelector('[data-command]').value.startsWith('undo'))){label='10:05 · Undo recorded by Eva Morales';message='20 effective sessions voided atomically; specimens are OUT.\nOriginal IN at 09:12 remains in immutable history. Reason: '+proposal.reason;detail='Original IN-7A21 retained · 20 sessions voided · Reason: '+proposal.reason}if(app.dataset.design==='reconstruction'){message='Missed session recorded: claimed IN '+proposal.time+', source “missed entry”.\nRecorded at 10:05 by Eva Morales. The 09:12 stack observation is retained; no scanner event was invented.';detail='Source: missed entry · Claimed '+proposal.time+' · Recorded 10:05 · Reason: '+proposal.reason}if(app.dataset.design==='reconciliation'||settings.scenario==='Wrong room'){const room=app.querySelector('[data-room]')?.value||'PPE';message='Verified room correction recorded: '+room+' · claimed entry '+proposal.time+'.\nOriginal Shared-room observation at 09:12 retained. Recorded 10:05 by Eva Morales.';detail='Effective room '+room+' · Original Shared / 09:12 retained · Reason: '+proposal.reason}if(app.dataset.design==='approval'){message='Both reviewers approved. Effective entry '+proposal.time+' recorded at 10:11 ET by Noah Chen.\nEva’s approval at 10:05 and original scan 09:12 are retained.';detail='Eva 10:05 + Noah 10:11 · Claimed '+proposal.time+' · Original 09:12 retained · Reason: '+proposal.reason;label='10:11 · Second approval and correction recorded'}if(app.dataset.design==='request'){message='Supervisor correction approved at 10:11 by Eva Morales. Effective IN '+proposal.time+'.\nOperator request recorded at 10:05 and original IN at 09:12 remain separate.';label='10:11 · Supervisor approved request CT-104';detail='Request recorded 10:05 by Sam Lee · Claimed '+proposal.time+' · Original 09:12 retained · Reason: '+proposal.reason}if(app.dataset.design==='evidence'){const evidence=Array.from(app.querySelectorAll('[data-evidence]:checked')).map(el=>el.dataset.evidence).join(', ');detail+=' · Evidence: '+evidence;message+='\nLinked evidence: '+evidence}appendHistory(app,label,detail);result(app,message);st.phase=3;st.saved=true;app.querySelector('[data-primary]').textContent='Recorded · reset to explore again';app.querySelector('[data-primary]').disabled=true;app.querySelectorAll('[data-effective]').forEach(el=>el.textContent=proposal.time);app.querySelectorAll('[data-ledger-status]').forEach(el=>el.textContent='Committed');const flow=app.querySelector('[data-flow-state]');if(flow)flow.textContent='4 edits committed together';const step2=app.querySelector('[data-step="2"]');if(step2){app.querySelectorAll('[data-step]').forEach(el=>el.dataset.current='false');step2.dataset.current='true'}const actionState=app.querySelector('[data-case-action-state]');if(actionState)actionState.textContent='Timestamp correction recorded at 10:05 by Eva Morales; original 09:12 retained.';const second=app.querySelector('[data-reviewer-two]');if(second)second.textContent='Approved by Noah · 10:11';const approval=app.querySelector('[data-approval-status]');if(approval)approval.textContent='Approved 10:11 · Effective IN '+proposal.time;if(app.dataset.design==='inbox'){app.querySelector('[data-ticket-status="'+st.ticket+'"]').textContent='Resolved at 10:05'}}
+  function primary(app){const proposal=validate(app);if(!proposal)return;const st=stateFor(app);const name=app.dataset.design;if(requestOnly.has(name)){if(!commitGuard(app))return;appendHistory(app,'10:05 · Review request captured by Sam Lee','Claimed '+proposal.time+' · Original IN 09:12 unchanged · Reason: '+proposal.reason);result(app,'Request CT-104 captured at 10:05 ET. Claimed entry '+proposal.time+'.\nOriginal effective entry remains 09:12; supervisor approval is pending.');const code=app.querySelector('[data-ticket-code]');if(code)code.textContent='CT-104 · REVIEW';st.saved=true;app.querySelector('[data-primary]').disabled=true;app.querySelector('[data-primary]').textContent='Request captured';return}if(name==='approval'&&st.phase===0){if(!commitGuard(app))return;appendHistory(app,'10:05 · First approval by Eva Morales','Pending second reviewer · Effective IN still 09:12 · Reason: '+proposal.reason);app.querySelector('[data-reviewer-one]').textContent='Approved by Eva · 10:05';app.querySelector('[data-reviewer-two]').textContent='Ready for Noah’s review';result(app,'Eva approved at 10:05. A second independent reviewer is still required.\nNo effective session time has changed. Original observed IN remains 09:12.',false,'staged');app.querySelector('[data-primary]').textContent='Approve independently as Noah Chen';st.phase=1;return}if(name==='request'&&st.phase===0){if(!commitGuard(app))return;appendHistory(app,'10:05 · Operator request submitted','Sam Lee · Claimed '+proposal.time+' · Effective IN remains 09:12 · Reason: '+proposal.reason);app.querySelector('[data-request-status]').textContent='Request CT-104 recorded 10:05 · Sam Lee';app.querySelector('[data-role-label]').textContent='Supervisor · Eva Morales';app.querySelector('[data-request-heading]').textContent='Supervisor review of CT-104';app.querySelector('[data-primary]').textContent='Approve request as supervisor';result(app,'Request recorded at 10:05. Now reviewing as Eva Morales.\nThe original 09:12 record is unchanged until this review is approved.',false,'staged');st.phase=1;return}if(staged.has(name)&&st.phase===0){if((name==='undo'||name==='command')&&!commitGuard(app))return;st.phase=1;app.querySelector('[data-primary]').textContent=titles[name];const count=selectedCount(app);const messages={ledger:'4 edited cells staged. None committed. Review the batch, then commit all four together.',wizard:'Review ready: specimen 03, effective IN '+proposal.time+', original scan 09:12 preserved. Confirm to record.',undo:'Undo preview: 20 eligible specimens; 20 effective sessions will be voided. Original IN at 09:12 remains in history.',reconstruction:'Reconstructed session preview: claimed IN '+proposal.time+'; recorded now at 10:05; source missed entry. No scanner observation will be fabricated.',bulk:count+' selected time adjustments ready. Entire group will commit together or every edit will be rejected.',reconciliation:'Verified mismatch reviewed: specimen 19 in '+app.querySelector('[data-room]')?.value+'. Original Shared observation at 09:12 will remain.',command:'Dry-run accepted: '+app.querySelector('[data-command]')?.value+'. Original observation 09:12 will remain. Execute only after review.',evidence:'Evidence linked for review. Claimed IN '+proposal.time+' is a proposal; original scanner observation 09:12 remains unchanged.'};result(app,messages[name],false,'staged');app.querySelectorAll('[data-ledger-status]').forEach(el=>el.textContent='Staged');const flow=app.querySelector('[data-flow-state]');if(flow)flow.textContent='4 edits staged · 0 committed';if(name==='wizard'){app.querySelector('[data-wizard-start]').hidden=true;app.querySelector('[data-wizard-review]').hidden=false;app.querySelector('[data-step="0"]').dataset.current='false';app.querySelector('[data-step="1"]').dataset.current='true'}return}finalCommit(app,proposal)}
+  function reset(app){app.innerHTML=templates.get(app.dataset.design);states.set(app.dataset.design,{phase:0,saved:false,ticket:'time'});bind(app);showScenario()}
+  function bind(app){app.addEventListener('click',clickHandler);app.addEventListener('input',inputHandler);app.addEventListener('keydown',keyHandler);if(app.dataset.design==='handoff'&&!app.querySelector('.ct-scanner-help')){const hint=document.createElement('p');hint.className='ct-muted ct-scanner-help';hint.textContent='Scanner-only path: scan the specimen, then a reason card (WHY:LATE, WHY:ROOM or WHY:MISS), then SEND. Each scan ends with Enter.';app.querySelector('[data-scan]').closest('label').after(hint)}}
+  function inputHandler(event){const app=event.currentTarget;const st=stateFor(app);if(st.saved)return;if(event.target.matches('[data-time],[data-exit],[data-command],[data-reason]')&&st.phase===1&&!['approval','request'].includes(app.dataset.design)){st.phase=0;app.querySelector('[data-primary]').textContent=templates.get(app.dataset.design).match(/data-testid="correction-primary">([^<]+)/)?.[1]||'Review correction';result(app,'Proposal changed. Review it again before committing.',false,'staged');if(app.dataset.design==='wizard'){app.querySelector('[data-wizard-start]').hidden=false;app.querySelector('[data-wizard-review]').hidden=true}}app.querySelectorAll('[data-effective]').forEach(el=>el.textContent=claimedTime(app))}
+  function keyHandler(event){if(event.ctrlKey&&event.key==='Enter'&&event.currentTarget.dataset.design==='command'){event.preventDefault();primary(event.currentTarget)}if(event.key==='Enter'&&event.target.matches('[data-scan]')){event.preventDefault();primary(event.currentTarget)}}
+  function clickHandler(event){const button=event.target.closest('button');if(!button||!event.currentTarget.contains(button))return;const app=event.currentTarget;const st=stateFor(app);const action=button.dataset.action;if(button.hasAttribute('data-primary')){primary(app);return}if(action==='reset'){app.removeEventListener('click',clickHandler);app.removeEventListener('input',inputHandler);app.removeEventListener('keydown',keyHandler);reset(app);return}if(action==='specimen'){app.querySelectorAll('[data-action="specimen"]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));result(app,'Selected specimen '+button.textContent+'. Original observed IN 09:12; proposal '+claimedTime(app)+'.')}if(action==='bulk-specimen'){button.setAttribute('aria-pressed',String(button.getAttribute('aria-pressed')!=='true'));st.phase=0;updateBulk(app)}if(action==='select-all'||action==='select-none'){app.querySelectorAll('[data-action="bulk-specimen"]').forEach(el=>el.setAttribute('aria-pressed',String(action==='select-all')));st.phase=0;updateBulk(app)}if(action==='ticket'){st.ticket=button.dataset.ticket;st.phase=0;st.saved=false;app.querySelectorAll('[data-action="ticket"]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));const labels={time:['CT-104 · Specimen 03','Operator claims an earlier entry.'],missing:['CT-105 · Specimen 17','A physical entry is claimed but its IN scan is missing.'],room:['CT-106 · Specimen 20','Physical location does not match the recorded room.']};app.querySelector('[data-inbox-title]').textContent=labels[st.ticket][0];app.querySelector('[data-inbox-subtitle]').textContent=labels[st.ticket][1];app.querySelector('[data-primary]').disabled=false;app.querySelector('[data-primary]').textContent='Resolve selected exception';result(app,'Selected '+labels[st.ticket][0]+'. Review its evidence and resolution reason.')}if(action==='case-tab'){app.querySelectorAll('[data-action="case-tab"]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));app.querySelectorAll('[data-case-panel]').forEach(el=>el.hidden=el.dataset.casePanel!==button.dataset.tab)}if(action==='incident'){app.querySelectorAll('[data-action="incident"]').forEach(el=>el.setAttribute('aria-pressed',String(el===button)));result(app,'Incident type selected: '+button.textContent+'. The original scan remains unchanged.')}if(action==='command-example'){app.querySelector('[data-command]').value=button.dataset.commandValue;st.phase=0;app.querySelector('[data-primary]').textContent='Dry-run this command';result(app,'Command prepared. Add a reason, then dry-run before execution.')}if(action==='add-evidence'){if(app.querySelector('[data-evidence="Operator note"]')){result(app,'Operator note already attached to this simulated case.');return}const label=document.createElement('label');label.className='ct-check';label.innerHTML='<input type="checkbox" checked data-evidence="Operator note"><span><b>Operator note · 09:56</b><br>Sam Lee: physical entry at 08:45</span>';app.querySelector('.ct-evidence').appendChild(label);st.phase=0;result(app,'Simulated operator note attached. Review the proposal with this evidence before recording.')}}
+  function updateBulk(app){const count=selectedCount(app);app.querySelector('.ct-panel h3').textContent=count+' selected';app.querySelector('[data-primary]').textContent='Preview '+count+' time adjustments';result(app,count+' specimens selected. No records have changed.')}
+  const basePrimary=primary;
+  const baseKeyHandler=keyHandler;
+  keyHandler=function(event){
+    const app=event.currentTarget;
+    if(app.dataset.design!=='handoff'||event.key!=='Enter'||!event.target.matches('[data-scan]')){baseKeyHandler(event);return}
+    event.preventDefault();
+    const input=app.querySelector('[data-scan]');
+    const value=input.value.trim();
+    const st=stateFor(app);
+    if(st.saved){result(app,'Request already captured. Reset the demo to start another ticket.');return}
+    if(/^UL1:P:0007-\d{2}$/.test(value)){
+      st.scannedCode=value;
+      if(app.querySelector('[data-reason]').value){primary(app)}
+      else result(app,'Specimen '+value.split('-').pop()+' identified. Scan a reason card next: WHY:LATE, WHY:ROOM or WHY:MISS. No request has been recorded.');
+      input.select();return;
+    }
+    const reasons={'WHY:LATE':'Scanned later than physical entry','WHY:ROOM':'Found in another room','WHY:MISS':'Missing scan'};
+    if(reasons[value]){
+      if(!st.scannedCode){result(app,'Scan the specimen label first. No request has been captured.',true);input.select();return}
+      app.querySelector('[data-reason]').value=reasons[value];input.value=st.scannedCode;
+      result(app,'Reason card accepted: '+reasons[value]+'. Scan SEND to capture a review ticket. Original 09:12 entry is unchanged.');input.select();return;
+    }
+    if(value==='SEND'){
+      if(!st.scannedCode){result(app,'Scan the specimen label first. No request has been captured.',true);input.select();return}
+      input.value=st.scannedCode;primary(app);input.select();return;
+    }
+    result(app,'Unrecognized demo scan. Use a specimen label, WHY:LATE / WHY:ROOM / WHY:MISS, or SEND. No request captured.',true);input.select();
+  };
+  primary=function(app){
+    basePrimary(app);
+    const st=stateFor(app);
+    const name=app.dataset.design;
+    const output=app.querySelector('[data-result]');
+    if(output.dataset.error==='true')return;
+    if(st.phase===1&&(name==='approval'||name==='request'))app.querySelectorAll('[data-time]').forEach(input=>input.disabled=true);
+    if(!st.saved)return;
+    const reason=app.querySelector('[data-reason]').value.trim();
+    const last=app.querySelector('[data-history] li:last-child small');
+    if(name==='timeline'){
+      const specimen=app.querySelector('[data-action="specimen"][aria-pressed="true"]').textContent;
+      output.textContent='Specimen '+specimen+' corrected: effective IN '+claimedTime(app)+'. Recorded at 10:05 by Eva Morales.\nOriginal 09:12 observation retained. Reason: '+reason;
+      last.textContent+=' · Affected specimen '+specimen;
+    }
+    if(name==='ledger'){
+      const changes=Array.from(app.querySelectorAll('[data-time]')).map((input,index)=>String(index+1).padStart(2,'0')+' → '+input.value).join('; ');
+      output.textContent='4 cell edits committed together: '+changes+'.\nRecorded at 10:05 by Eva Morales. Every original 09:12 observation remains in immutable history.';
+      last.textContent+=' · Per-row effective times: '+changes;
+    }
+    if(name==='inbox'&&st.ticket==='missing'){
+      output.textContent='CT-105 resolved: specimen 17 has a reconstructed missed-entry session, claimed IN '+claimedTime(app)+', recorded 10:05.\nThe original 09:12 stack observation is retained. No specimen scan was fabricated.';
+      last.textContent='Source: missed entry · Claimed '+claimedTime(app)+' · Recorded 10:05 · Original stack scan 09:12 retained · Reason: '+reason;
+    }
+    if(name==='inbox'&&st.ticket==='room'){
+      output.textContent='CT-106 resolved: specimen 20’s verified room is PPE. Correction recorded at 10:05 by Eva Morales.\nOriginal Shared-room observation at 09:12 retained. Reason: '+reason;
+      last.textContent='Effective room: PPE · Original room: Shared · Original scan 09:12 retained · Reason: '+reason;
+    }
+    if(name==='handheld'||name==='handoff'){
+      const specimen=app.querySelector('[data-scan]').value.split('-').pop();
+      output.textContent+='\nAffected specimen: '+specimen+' of 20.';
+      last.textContent+=' · Specimen '+specimen;
+    }
+  };
+  apps.forEach(app=>{templates.set(app.dataset.design,app.innerHTML);states.set(app.dataset.design,{phase:0,saved:false,ticket:'time'});bind(app)});
+  scenarioSelect.addEventListener('change',()=>{settings.scenario=scenarioSelect.value;showScenario()});
+  document.getElementById('correction-reset-all').addEventListener('click',()=>{settings.scenario='Wrong time';apps.forEach(app=>{app.removeEventListener('click',clickHandler);app.removeEventListener('input',inputHandler);app.removeEventListener('keydown',keyHandler);reset(app)});showScenario()});
+  showScenario();
+  if(globalThis.Tweak){const tweak=new Tweak({container:document.getElementById('correction-scenario-controls'),onChange:showScenario});tweak.addSelect(settings,'scenario',{label:'Audit scenario',options:['Wrong time','Missed IN','Wrong room','Intervening movement','Stale edit','Unavailable']})}
+})();
+</script>
+
+  </section>
+  <section role="tabpanel" id="explorer-landscape-panel" aria-labelledby="explorer-landscape-tab" style="margin-top:1rem" hidden>
+    <div id="interface-landscape-explorer" aria-label="Application and device arrangements">
+  <div class="viz-controls">
+    <label class="form-label">Arrangement
+      <select class="form-select" id="landscape-arrangement">
+        <option value="unified-workspace">Unified web workspace</option>
+        <option value="role-web-apps">Three role-specific web apps</option>
+        <option value="pi-portal">Local Pi kiosk + staff portal</option>
+        <option value="headless-appliances">Headless scanners + supervisor console</option>
+        <option value="native-print">Native print utility + web tools</option>
+        <option value="handheld-desktop">Managed handheld + desktop review</option>
+        <option value="request-approval">Operator requests + approval portal</option>
+        <option value="site-hybrid">Site server + central reporting</option>
+      </select>
+    </label>
+    <label class="form-label">Failure scenario
+      <select class="form-select" id="landscape-scenario">
+        <option value="healthy">Everything available</option>
+        <option value="client">Scan client unavailable</option>
+        <option value="network">Network link down</option>
+        <option value="backend">Authoritative API unavailable</option>
+        <option value="database">Authoritative database unavailable</option>
+      </select>
+    </label>
+  </div>
+  <div class="viz-row landscape-heading">
+    <h2 id="landscape-title">Unified web workspace</h2>
+    <span class="viz-badge">Exploration · no live writes</span>
+  </div>
+  <div id="landscape-difference" class="text-small">One shared workstation exposes every role's screens.</div>
+  <div class="landscape-diagram" role="group" aria-label="Selected arrangement's clients and authoritative records">
+    <section aria-label="People and devices">
+      <h3>People &amp; devices</h3>
+      <div id="landscape-clients" class="landscape-clients"></div>
+      <div id="landscape-printer" class="landscape-printer">
+        <span>Registered label file → staff printer</span><span class="text-small">Same IDs on every reprint</span>
+      </div>
+    </section>
+    <div class="landscape-link" id="landscape-link" aria-live="polite">↓ API requests · no client database credentials</div>
+    <section aria-label="Authoritative service">
+      <div class="landscape-authority-header"><h3 id="landscape-service-title">Canonical central service</h3><span id="landscape-service-state" class="text-small">Available</span></div>
+      <div class="landscape-services">
+        <div class="landscape-service" data-stage="labels"><span>Identity &amp; labels</span><span class="text-small">Register once · render/reprint</span></div>
+        <div class="landscape-service" data-stage="movement"><span>Movements &amp; corrections</span><span class="text-small">Exact specimens · one commit</span></div>
+        <div class="landscape-service" data-stage="reports"><span>Audit reports</span><span class="text-small">Traceable observations &amp; revisions</span></div>
+      </div>
+      <div class="landscape-link landscape-db-link">↓ Authoritative record</div>
+      <div id="landscape-database" class="landscape-database">
+        <div class="landscape-authority-header"><span id="landscape-database-title">One authoritative database</span><span id="landscape-database-state" class="text-small">Available</span></div>
+        <div class="text-small">Specimen IDs · room configuration · conditioning sessions · original scans · corrections</div>
+      </div>
+    </section>
+    <section id="landscape-central" class="landscape-central" aria-label="Read-only central reporting copy" hidden>
+      <div id="landscape-central-link" class="landscape-link">↓ One-way reporting delivery</div>
+      <div class="landscape-authority-header"><h3>Central reporting copy</h3><span id="landscape-central-state" class="text-small">Fresh delivered history</span></div>
+      <div class="text-small">Read-only · provenance and delivery time · no movement writes</div>
+    </section>
+  </div>
+  <label class="form-check landscape-extension">
+    <input class="form-check-input" id="landscape-offline" type="checkbox" disabled>
+    <span class="form-check-label">Explore an optional unconfirmed local-capture extension</span>
+  </label>
+  <div id="landscape-extension-note" class="text-small">Requires a durable installed scan client; current policy is NOT AVAILABLE.</div>
+  <div class="viz-row landscape-actions" aria-label="Preview a task">
+    <button class="btn" type="button" data-action="print">Preview label printing</button>
+    <button class="btn btn-primary" type="button" data-action="scan">Preview scan recording</button>
+    <button class="btn" type="button" data-action="correct">Preview correction</button>
+    <button class="btn" type="button" data-action="report">Preview audit report</button>
+    <span id="landscape-approve-wrapper" hidden><button class="btn" id="landscape-approve" type="button">Approve pending request</button></span>
+  </div>
+  <div class="landscape-result" aria-live="polite">
+    <output id="landscape-outcome">Choose a task to trace its route.</output>
+    <div id="landscape-route" class="text-small"></div>
+  </div>
+  <div class="landscape-key text-small">Highlighted = selected route · Unavailable = cannot perform that step · A loaded view is not a confirmed recording</div>
+</div>
+<style>
+  #interface-landscape-explorer { width:100%; color:var(--foreground); }
+  #interface-landscape-explorer .landscape-heading { margin-top:1rem; justify-content:space-between; padding-inline-end:90px; }
+  #interface-landscape-explorer .landscape-heading h2 { margin:0; }
+  #interface-landscape-explorer .landscape-diagram { margin:1rem 0; }
+  #interface-landscape-explorer .landscape-clients { display:flex; gap:1rem; flex-wrap:wrap; }
+  #interface-landscape-explorer .landscape-client { flex:1 1 180px; min-width:0; padding:.65rem 0; border-bottom:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-client > span { display:block; overflow-wrap:anywhere; }
+  #interface-landscape-explorer .landscape-client .landscape-functions { display:flex; flex-wrap:wrap; gap:.5rem; margin:.5rem 0; }
+  #interface-landscape-explorer .landscape-function { padding:.15rem .4rem; background:var(--muted); color:var(--muted-foreground); }
+  #interface-landscape-explorer .landscape-function[data-route="true"] { background:color-mix(in srgb,var(--viz-series-1) 16%,transparent); color:var(--foreground); }
+  #interface-landscape-explorer .landscape-client[data-active="true"],
+  #interface-landscape-explorer .landscape-service[data-active="true"],
+  #interface-landscape-explorer .landscape-database[data-active="true"],
+  #interface-landscape-explorer .landscape-printer[data-active="true"],
+  #interface-landscape-explorer .landscape-central[data-active="true"] { background:color-mix(in srgb,var(--viz-series-1) 10%,transparent); }
+  #interface-landscape-explorer [data-unavailable="true"] { color:var(--muted-foreground); }
+  #interface-landscape-explorer .landscape-printer { margin-top:.6rem; display:flex; flex-wrap:wrap; justify-content:space-between; gap:.4rem 1rem; padding:.6rem 0; }
+  #interface-landscape-explorer .landscape-link { text-align:center; margin:.6rem 0; color:var(--muted-foreground); }
+  #interface-landscape-explorer .landscape-authority-header { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:.3rem 1rem; }
+  #interface-landscape-explorer .landscape-authority-header h3 { margin:.5rem 0; }
+  #interface-landscape-explorer .landscape-services { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+  #interface-landscape-explorer .landscape-service { padding:.6rem 0; border-bottom:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-service > span { display:block; overflow-wrap:anywhere; }
+  #interface-landscape-explorer .landscape-database { padding:.6rem 0; border-bottom:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-database .landscape-authority-header { margin-bottom:.35rem; }
+  #interface-landscape-explorer .landscape-central { padding:.4rem 0; }
+  #interface-landscape-explorer .landscape-extension { margin-top:.8rem; }
+  #interface-landscape-explorer .landscape-actions { margin:1rem 0 .7rem; }
+  #interface-landscape-explorer .landscape-result { min-height:3rem; padding:.7rem 0; border-top:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-result output { display:block; font-weight:500; }
+  #interface-landscape-explorer .landscape-key { margin-top:.4rem; }
+  @media (max-width:560px) {
+    #interface-landscape-explorer .landscape-heading { padding-inline-end:0; }
+    #interface-landscape-explorer .landscape-services { grid-template-columns:1fr; gap:.15rem; }
+    #interface-landscape-explorer .landscape-clients { gap:.15rem; }
+    #interface-landscape-explorer .landscape-client { flex-basis:100%; }
+    #interface-landscape-explorer .landscape-printer { display:block; }
+    #interface-landscape-explorer .landscape-printer > span { display:block; }
+  }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('interface-landscape-explorer');
+  const $ = selector => root.querySelector(selector);
+  const functionNames = { prep:'Prep', print:'Print', scan:'Scan', correct:'Correct', request:'Request correction', approve:'Approve', report:'Report' };
+  const options = {
+    'unified-workspace': {
+      name:'Unified web workspace', difference:"One shared workstation exposes every role's screens.", durable:false,
+      clients:[{name:'Shared workspace',device:'Desktop or touchscreen browser',functions:['prep','print','scan','correct','report'],scanner:true,local:false}]
+    },
+    'role-web-apps': {
+      name:'Three role-specific web apps', difference:'Three focused applications share the same authoritative records.',durable:false,
+      clients:[{name:'Prep & labels app',device:'Staff desktop browser',functions:['prep','print'],local:false},{name:'Room scan app',device:'Touchscreen browser',functions:['scan'],scanner:true,local:false},{name:'Audit app',device:'Supervisor desktop browser',functions:['correct','report'],local:false}]
+    },
+    'pi-portal': {
+      name:'Local Pi kiosk + staff portal', difference:'The local room screen can start without the central service.',durable:true,
+      clients:[{name:'Staff portal',device:'Desktop browser',functions:['prep','print','correct','report'],local:false},{name:'Room kiosk',device:'Local Pi interface + USB scanner',functions:['scan'],scanner:true,local:true}]
+    },
+    'headless-appliances': {
+      name:'Headless scanners + supervisor console',difference:'Physical scan controls at the door; detailed exceptions at the console.',durable:true,
+      clients:[{name:'Prep station',device:'Staff desktop',functions:['prep','print'],local:false},{name:'Scanner appliance',device:'Reader + IN/OUT controls + indicator',functions:['scan'],scanner:true,local:true,headless:true},{name:'Supervisor console',device:'Desktop interface',functions:['correct','report'],local:false}]
+    },
+    'native-print': {
+      name:'Native print utility + web tools',difference:'Native printer integration; scanning and audit remain separate web tools.',durable:false,
+      clients:[{name:'Prep & print utility',device:'Installed staff PC app',functions:['prep','print'],local:true,cachedLabels:true},{name:'Room scan app',device:'Touchscreen browser',functions:['scan'],scanner:true,local:false},{name:'Audit portal',device:'Staff desktop browser',functions:['correct','report'],local:false}]
+    },
+    'handheld-desktop': {
+      name:'Managed handheld + desktop review',difference:'Movement capture travels to the rack; printing and review stay on the desktop.',durable:true,
+      clients:[{name:'Staff review workspace',device:'Desktop app',functions:['prep','print','correct','report'],local:false},{name:'Managed scanner app',device:'Installed handheld',functions:['scan'],scanner:true,local:true}]
+    },
+    'request-approval': {
+      name:'Operator requests + approval portal',difference:'Operators describe a mistake; only an approved request changes the record.',durable:false,
+      clients:[{name:'Prep app',device:'Staff desktop',functions:['prep','print'],local:false},{name:'Operator room app',device:'Touchscreen browser',functions:['scan','request'],scanner:true,local:false},{name:'Approval portal',device:'Supervisor desktop',functions:['approve','report'],local:false}]
+    },
+    'site-hybrid': {
+      name:'Site server + central reporting',difference:'Site writes remain authoritative; the central reporting copy is read-only.',durable:true,hybrid:true,
+      clients:[{name:'Site staff workspace',device:'Site desktop browser',functions:['prep','print','correct'],local:false},{name:'Room kiosk',device:'Locally installed interface',functions:['scan'],scanner:true,local:true},{name:'Central report portal',device:'Read-only desktop browser',functions:['report'],local:false,central:true}]
+    }
+  };
+  const scenarioNames = ['healthy','client','network','backend','database'];
+  const state = { arrangement:'unified-workspace', scenario:'healthy', offline:false, action:null, pendingApproval:false, approved:false };
+  const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function restore(snapshot) {
+    const saved = snapshot?.privateContent;
+    if (!saved || !options[saved.arrangement]) return;
+    state.arrangement = saved.arrangement;
+    state.scenario = scenarioNames.includes(saved.scenario) ? saved.scenario : 'healthy';
+    state.offline = !!saved.offline;
+    state.action = ['print','scan','correct','report'].includes(saved.action) ? saved.action : null;
+    state.pendingApproval = !!saved.pendingApproval;
+    state.approved = !!saved.approved;
+  }
+  restore(window.openai?.widgetState);
+  function save() {
+    if (!window.openai?.setWidgetState) return;
+    const modelContent = { architecture:options[state.arrangement].name, failure_scenario:state.scenario, optional_unconfirmed_capture:state.offline, explored_task:state.action };
+    Promise.resolve(window.openai.setWidgetState({modelContent,privateContent:{...state}})).catch(() => {});
+  }
+  function apiAvailable(arch) { return !['backend','database'].includes(state.scenario) && !(state.scenario === 'network' && !arch.hybrid); }
+  function clientAvailable(client) { return !(state.scenario === 'client' && client.scanner); }
+  function clientStatus(client, arch) {
+    if (!clientAvailable(client)) return 'Client unavailable';
+    if (client.central && ['network','backend','database'].includes(state.scenario)) return 'Historical report copy available';
+    if (!apiAvailable(arch)) {
+      if (client.headless) return 'Indicator available · recording unavailable';
+      if (client.local) return 'Local screen available · recording unavailable';
+      return 'Loaded screen only · no fresh records';
+    }
+    return client.headless ? 'Controls available · API connected' : 'Interface available · API connected';
+  }
+  function taskClient(arch, action) {
+    const role = action === 'correct' && state.arrangement === 'request-approval' ? (state.approved ? 'approve' : 'request') : action;
+    return arch.clients.find(c => c.functions.includes(role));
+  }
+  function outcome(arch) {
+    if (!state.action) return ['Choose a task to trace its route.',''];
+    const action = state.action;
+    const client = taskClient(arch,action);
+    const chain = (end) => `${client.name} → ${arch.hybrid ? 'site API' : 'canonical API'} → ${end}`;
+    if (!clientAvailable(client)) return ['Unavailable · this client cannot perform the task.', `${client.name} is unavailable; separate clients remain independent.`];
+    if (action === 'report' && arch.hybrid) {
+      const historical = ['network','backend','database'].includes(state.scenario);
+      return [historical ? 'Historical report available · live site status is unavailable.' : 'Delivered audit history available · read-only.', 'Central report portal → reporting copy · delivery time and provenance shown'];
+    }
+    if (!apiAvailable(arch)) {
+      if (action === 'print' && client.cachedLabels) return ['Saved registered labels can reprint · no new identities created.', 'Saved label artifact → native print utility → staff printer'];
+      if (action === 'scan' && state.offline && arch.durable) return ['Captured locally · UNCONFIRMED; no green receipt.', `${client.name} → durable local outbox · asserted device time; later reconciliation required`];
+      const ending = action === 'report' ? 'A loaded view is not a fresh audit report.' : 'No movement or correction is confirmed.';
+      return ['NOT AVAILABLE · task cannot complete.', `${chain(state.scenario === 'database' ? 'database unavailable' : 'service unreachable')}. ${ending}`];
+    }
+    if (action === 'print') return ['Registered labels reach the printer · existing IDs preserved.', `${client.name} → identity/label API → registered artifact → staff printer`];
+    if (action === 'scan') return ['Preview outcome: confirmed movement · green receipt permitted.', chain('atomic specimen/session update + audit event → confirmed response')];
+    if (action === 'correct') {
+      if (state.arrangement === 'request-approval' && !state.approved) return ['Correction request submitted · specimen records unchanged.', chain('pending request → supervisor approval required')];
+      return ['Preview outcome: correction committed · original observation retained.', chain('authorized revision + reason + immutable correction history')];
+    }
+    return ['Live audit report available · recorded history and corrections.', chain('authoritative sessions + audit history → report')];
+  }
+  function render() {
+    const arch = options[state.arrangement];
+    if (!arch.durable) state.offline = false;
+    $('#landscape-arrangement').value = state.arrangement;
+    $('#landscape-scenario').value = state.scenario;
+    $('#landscape-title').textContent = arch.name;
+    $('#landscape-difference').textContent = arch.difference;
+    const activeClient = state.action ? taskClient(arch,state.action) : null;
+    const cachedPrint = state.action === 'print' && !apiAvailable(arch) && activeClient?.cachedLabels;
+    const queuedScan = state.action === 'scan' && !apiAvailable(arch) && state.offline && arch.durable && clientAvailable(activeClient);
+    const bypassesAuthority = cachedPrint || queuedScan || (arch.hybrid && state.action === 'report');
+    $('#landscape-clients').innerHTML = arch.clients.map(c => {
+      const active = activeClient === c;
+      const role = state.action === 'correct' && state.arrangement === 'request-approval' ? (state.approved ? 'approve' : 'request') : state.action;
+      return `<div class="landscape-client" data-active="${active}" data-unavailable="${!clientAvailable(c)}"><span>${escape(c.name)}</span><span class="text-small">${escape(c.device)}</span><div class="landscape-functions">${c.functions.map(f => `<span class="landscape-function text-small" data-route="${active && f === role}">${functionNames[f]}</span>`).join('')}</div><span class="text-small">${escape(clientStatus(c,arch))}</span></div>`;
+    }).join('');
+    const serviceDown = ['backend','database'].includes(state.scenario);
+    $('#landscape-service-title').textContent = arch.hybrid ? 'Canonical site service' : 'Canonical central service';
+    $('#landscape-service-state').textContent = state.scenario === 'backend' ? 'API unavailable' : state.scenario === 'database' ? 'Reachable · database unavailable' : 'Available';
+    const link = $('#landscape-link');
+    const networkDown = state.scenario === 'network' && !arch.hybrid;
+    link.textContent = networkDown ? '↓ Client-to-service link DOWN · fresh reads and writes unavailable' : '↓ API requests · no client database credentials';
+    link.dataset.unavailable = String(networkDown);
+    root.querySelectorAll('.landscape-service').forEach(el => {
+      const target = state.action === 'print' ? 'labels' : state.action === 'report' ? 'reports' : state.action ? 'movement' : null;
+      el.dataset.active = String(el.dataset.stage === target && !bypassesAuthority);
+      el.dataset.unavailable = String(serviceDown);
+    });
+    const db = $('#landscape-database');
+    db.dataset.active = String(!!state.action && !bypassesAuthority);
+    db.dataset.unavailable = String(state.scenario === 'database');
+    $('#landscape-database-title').textContent = arch.hybrid ? 'One site-authoritative database' : 'One authoritative database';
+    $('#landscape-database-state').textContent = state.scenario === 'database' ? 'Unavailable' : 'Available';
+    $('#landscape-printer').dataset.active = String(state.action === 'print');
+    $('#landscape-central').hidden = !arch.hybrid;
+    $('#landscape-central').dataset.active = String(state.action === 'report');
+    $('#landscape-central-link').textContent = state.scenario === 'network' ? '↓ Site-to-central link DOWN · delivery paused' : serviceDown ? '↓ No fresh site delivery · previous copy retained' : '↓ One-way reporting delivery';
+    $('#landscape-central-state').textContent = ['network','backend','database'].includes(state.scenario) ? 'Historical delivered copy' : 'Fresh delivered history';
+    const offline = $('#landscape-offline');
+    offline.disabled = !arch.durable;
+    offline.checked = state.offline;
+    $('#landscape-extension-note').textContent = arch.durable ? 'Optional design extension only: local capture is UNCONFIRMED until authoritative reconciliation.' : 'Requires a durable installed scan client; current policy is NOT AVAILABLE.';
+    $('#landscape-approve-wrapper').hidden = !(state.arrangement === 'request-approval' && state.pendingApproval && !state.approved);
+    const [result, route] = outcome(arch);
+    $('#landscape-outcome').textContent = result;
+    $('#landscape-route').textContent = route;
+  }
+  $('#landscape-arrangement').addEventListener('change', event => { state.arrangement = event.target.value; state.action = null; state.pendingApproval = false; state.approved = false; render(); save(); });
+  $('#landscape-scenario').addEventListener('change', event => { state.scenario = event.target.value; render(); save(); });
+  $('#landscape-offline').addEventListener('change', event => { state.offline = event.target.checked; render(); save(); });
+  root.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => {
+    state.action = button.dataset.action;
+    if (state.action === 'correct' && state.arrangement === 'request-approval') {
+      state.approved = false;
+      state.pendingApproval = apiAvailable(options[state.arrangement]) && clientAvailable(taskClient(options[state.arrangement],'correct'));
+    }
+    render(); save();
+  }));
+  $('#landscape-approve').addEventListener('click', () => {
+    state.action = 'correct';
+    if (apiAvailable(options[state.arrangement])) { state.approved = true; state.pendingApproval = false; }
+    render(); save();
+  });
+  window.addEventListener('openai:set_globals', event => {
+    const snapshot = event.detail?.globals?.widgetState;
+    if (snapshot) { restore(snapshot); render(); }
+  });
+  render();
+})();
+</script>
+
+  </section>
+</div>

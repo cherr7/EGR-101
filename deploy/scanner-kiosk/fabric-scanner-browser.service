@@ -1,0 +1,11 @@
+[Unit]
+Description=Fabric scanner kiosk browser
+PartOf=fabric-scanner.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=KIOSK_URL=http://127.0.0.1:8080/station.html
+ExecStart=/opt/fabric-scanner/bin/browser.sh
+Restart=always
+RestartSec=3

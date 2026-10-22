@@ -1,0 +1,284 @@
+<div id="interface-landscape-explorer" aria-label="Application and device arrangements">
+  <div class="viz-controls">
+    <label class="form-label">Arrangement
+      <select class="form-select" id="landscape-arrangement">
+        <option value="unified-workspace">Unified web workspace</option>
+        <option value="role-web-apps">Three role-specific web apps</option>
+        <option value="pi-portal">Local Pi kiosk + staff portal</option>
+        <option value="headless-appliances">Headless scanners + supervisor console</option>
+        <option value="native-print">Native print utility + web tools</option>
+        <option value="handheld-desktop">Managed handheld + desktop review</option>
+        <option value="request-approval">Operator requests + approval portal</option>
+        <option value="site-hybrid">Site server + central reporting</option>
+      </select>
+    </label>
+    <label class="form-label">Failure scenario
+      <select class="form-select" id="landscape-scenario">
+        <option value="healthy">Everything available</option>
+        <option value="client">Scan client unavailable</option>
+        <option value="network">Network link down</option>
+        <option value="backend">Authoritative API unavailable</option>
+        <option value="database">Authoritative database unavailable</option>
+      </select>
+    </label>
+  </div>
+  <div class="viz-row landscape-heading">
+    <h2 id="landscape-title">Unified web workspace</h2>
+    <span class="viz-badge">Exploration · no live writes</span>
+  </div>
+  <div id="landscape-difference" class="text-small">One shared workstation exposes every role's screens.</div>
+  <div class="landscape-diagram" role="group" aria-label="Selected arrangement's clients and authoritative records">
+    <section aria-label="People and devices">
+      <h3>People &amp; devices</h3>
+      <div id="landscape-clients" class="landscape-clients"></div>
+      <div id="landscape-printer" class="landscape-printer">
+        <span>Registered label file → staff printer</span><span class="text-small">Same IDs on every reprint</span>
+      </div>
+    </section>
+    <div class="landscape-link" id="landscape-link" aria-live="polite">↓ API requests · no client database credentials</div>
+    <section aria-label="Authoritative service">
+      <div class="landscape-authority-header"><h3 id="landscape-service-title">Canonical central service</h3><span id="landscape-service-state" class="text-small">Available</span></div>
+      <div class="landscape-services">
+        <div class="landscape-service" data-stage="labels"><span>Identity &amp; labels</span><span class="text-small">Register once · render/reprint</span></div>
+        <div class="landscape-service" data-stage="movement"><span>Movements &amp; corrections</span><span class="text-small">Exact specimens · one commit</span></div>
+        <div class="landscape-service" data-stage="reports"><span>Audit reports</span><span class="text-small">Traceable observations &amp; revisions</span></div>
+      </div>
+      <div class="landscape-link landscape-db-link">↓ Authoritative record</div>
+      <div id="landscape-database" class="landscape-database">
+        <div class="landscape-authority-header"><span id="landscape-database-title">One authoritative database</span><span id="landscape-database-state" class="text-small">Available</span></div>
+        <div class="text-small">Specimen IDs · room configuration · conditioning sessions · original scans · corrections</div>
+      </div>
+    </section>
+    <section id="landscape-central" class="landscape-central" aria-label="Read-only central reporting copy" hidden>
+      <div id="landscape-central-link" class="landscape-link">↓ One-way reporting delivery</div>
+      <div class="landscape-authority-header"><h3>Central reporting copy</h3><span id="landscape-central-state" class="text-small">Fresh delivered history</span></div>
+      <div class="text-small">Read-only · provenance and delivery time · no movement writes</div>
+    </section>
+  </div>
+  <label class="form-check landscape-extension">
+    <input class="form-check-input" id="landscape-offline" type="checkbox" disabled>
+    <span class="form-check-label">Explore an optional unconfirmed local-capture extension</span>
+  </label>
+  <div id="landscape-extension-note" class="text-small">Requires a durable installed scan client; current policy is NOT AVAILABLE.</div>
+  <div class="viz-row landscape-actions" aria-label="Preview a task">
+    <button class="btn" type="button" data-action="print">Preview label printing</button>
+    <button class="btn btn-primary" type="button" data-action="scan">Preview scan recording</button>
+    <button class="btn" type="button" data-action="correct">Preview correction</button>
+    <button class="btn" type="button" data-action="report">Preview audit report</button>
+    <span id="landscape-approve-wrapper" hidden><button class="btn" id="landscape-approve" type="button">Approve pending request</button></span>
+  </div>
+  <div class="landscape-result" aria-live="polite">
+    <output id="landscape-outcome">Choose a task to trace its route.</output>
+    <div id="landscape-route" class="text-small"></div>
+  </div>
+  <div class="landscape-key text-small">Highlighted = selected route · Unavailable = cannot perform that step · A loaded view is not a confirmed recording</div>
+</div>
+<style>
+  #interface-landscape-explorer { width:100%; color:var(--foreground); }
+  #interface-landscape-explorer .landscape-heading { margin-top:1rem; justify-content:space-between; padding-inline-end:90px; }
+  #interface-landscape-explorer .landscape-heading h2 { margin:0; }
+  #interface-landscape-explorer .landscape-diagram { margin:1rem 0; }
+  #interface-landscape-explorer .landscape-clients { display:flex; gap:1rem; flex-wrap:wrap; }
+  #interface-landscape-explorer .landscape-client { flex:1 1 180px; min-width:0; padding:.65rem 0; border-bottom:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-client > span { display:block; overflow-wrap:anywhere; }
+  #interface-landscape-explorer .landscape-client .landscape-functions { display:flex; flex-wrap:wrap; gap:.5rem; margin:.5rem 0; }
+  #interface-landscape-explorer .landscape-function { padding:.15rem .4rem; background:var(--muted); color:var(--muted-foreground); }
+  #interface-landscape-explorer .landscape-function[data-route="true"] { background:color-mix(in srgb,var(--viz-series-1) 16%,transparent); color:var(--foreground); }
+  #interface-landscape-explorer .landscape-client[data-active="true"],
+  #interface-landscape-explorer .landscape-service[data-active="true"],
+  #interface-landscape-explorer .landscape-database[data-active="true"],
+  #interface-landscape-explorer .landscape-printer[data-active="true"],
+  #interface-landscape-explorer .landscape-central[data-active="true"] { background:color-mix(in srgb,var(--viz-series-1) 10%,transparent); }
+  #interface-landscape-explorer [data-unavailable="true"] { color:var(--muted-foreground); }
+  #interface-landscape-explorer .landscape-printer { margin-top:.6rem; display:flex; flex-wrap:wrap; justify-content:space-between; gap:.4rem 1rem; padding:.6rem 0; }
+  #interface-landscape-explorer .landscape-link { text-align:center; margin:.6rem 0; color:var(--muted-foreground); }
+  #interface-landscape-explorer .landscape-authority-header { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:.3rem 1rem; }
+  #interface-landscape-explorer .landscape-authority-header h3 { margin:.5rem 0; }
+  #interface-landscape-explorer .landscape-services { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+  #interface-landscape-explorer .landscape-service { padding:.6rem 0; border-bottom:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-service > span { display:block; overflow-wrap:anywhere; }
+  #interface-landscape-explorer .landscape-database { padding:.6rem 0; border-bottom:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-database .landscape-authority-header { margin-bottom:.35rem; }
+  #interface-landscape-explorer .landscape-central { padding:.4rem 0; }
+  #interface-landscape-explorer .landscape-extension { margin-top:.8rem; }
+  #interface-landscape-explorer .landscape-actions { margin:1rem 0 .7rem; }
+  #interface-landscape-explorer .landscape-result { min-height:3rem; padding:.7rem 0; border-top:1px solid var(--border); }
+  #interface-landscape-explorer .landscape-result output { display:block; font-weight:500; }
+  #interface-landscape-explorer .landscape-key { margin-top:.4rem; }
+  @media (max-width:560px) {
+    #interface-landscape-explorer .landscape-heading { padding-inline-end:0; }
+    #interface-landscape-explorer .landscape-services { grid-template-columns:1fr; gap:.15rem; }
+    #interface-landscape-explorer .landscape-clients { gap:.15rem; }
+    #interface-landscape-explorer .landscape-client { flex-basis:100%; }
+    #interface-landscape-explorer .landscape-printer { display:block; }
+    #interface-landscape-explorer .landscape-printer > span { display:block; }
+  }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('interface-landscape-explorer');
+  const $ = selector => root.querySelector(selector);
+  const functionNames = { prep:'Prep', print:'Print', scan:'Scan', correct:'Correct', request:'Request correction', approve:'Approve', report:'Report' };
+  const options = {
+    'unified-workspace': {
+      name:'Unified web workspace', difference:"One shared workstation exposes every role's screens.", durable:false,
+      clients:[{name:'Shared workspace',device:'Desktop or touchscreen browser',functions:['prep','print','scan','correct','report'],scanner:true,local:false}]
+    },
+    'role-web-apps': {
+      name:'Three role-specific web apps', difference:'Three focused applications share the same authoritative records.',durable:false,
+      clients:[{name:'Prep & labels app',device:'Staff desktop browser',functions:['prep','print'],local:false},{name:'Room scan app',device:'Touchscreen browser',functions:['scan'],scanner:true,local:false},{name:'Audit app',device:'Supervisor desktop browser',functions:['correct','report'],local:false}]
+    },
+    'pi-portal': {
+      name:'Local Pi kiosk + staff portal', difference:'The local room screen can start without the central service.',durable:true,
+      clients:[{name:'Staff portal',device:'Desktop browser',functions:['prep','print','correct','report'],local:false},{name:'Room kiosk',device:'Local Pi interface + USB scanner',functions:['scan'],scanner:true,local:true}]
+    },
+    'headless-appliances': {
+      name:'Headless scanners + supervisor console',difference:'Physical scan controls at the door; detailed exceptions at the console.',durable:true,
+      clients:[{name:'Prep station',device:'Staff desktop',functions:['prep','print'],local:false},{name:'Scanner appliance',device:'Reader + IN/OUT controls + indicator',functions:['scan'],scanner:true,local:true,headless:true},{name:'Supervisor console',device:'Desktop interface',functions:['correct','report'],local:false}]
+    },
+    'native-print': {
+      name:'Native print utility + web tools',difference:'Native printer integration; scanning and audit remain separate web tools.',durable:false,
+      clients:[{name:'Prep & print utility',device:'Installed staff PC app',functions:['prep','print'],local:true,cachedLabels:true},{name:'Room scan app',device:'Touchscreen browser',functions:['scan'],scanner:true,local:false},{name:'Audit portal',device:'Staff desktop browser',functions:['correct','report'],local:false}]
+    },
+    'handheld-desktop': {
+      name:'Managed handheld + desktop review',difference:'Movement capture travels to the rack; printing and review stay on the desktop.',durable:true,
+      clients:[{name:'Staff review workspace',device:'Desktop app',functions:['prep','print','correct','report'],local:false},{name:'Managed scanner app',device:'Installed handheld',functions:['scan'],scanner:true,local:true}]
+    },
+    'request-approval': {
+      name:'Operator requests + approval portal',difference:'Operators describe a mistake; only an approved request changes the record.',durable:false,
+      clients:[{name:'Prep app',device:'Staff desktop',functions:['prep','print'],local:false},{name:'Operator room app',device:'Touchscreen browser',functions:['scan','request'],scanner:true,local:false},{name:'Approval portal',device:'Supervisor desktop',functions:['approve','report'],local:false}]
+    },
+    'site-hybrid': {
+      name:'Site server + central reporting',difference:'Site writes remain authoritative; the central reporting copy is read-only.',durable:true,hybrid:true,
+      clients:[{name:'Site staff workspace',device:'Site desktop browser',functions:['prep','print','correct'],local:false},{name:'Room kiosk',device:'Locally installed interface',functions:['scan'],scanner:true,local:true},{name:'Central report portal',device:'Read-only desktop browser',functions:['report'],local:false,central:true}]
+    }
+  };
+  const scenarioNames = ['healthy','client','network','backend','database'];
+  const state = { arrangement:'unified-workspace', scenario:'healthy', offline:false, action:null, pendingApproval:false, approved:false };
+  const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function restore(snapshot) {
+    const saved = snapshot?.privateContent;
+    if (!saved || !options[saved.arrangement]) return;
+    state.arrangement = saved.arrangement;
+    state.scenario = scenarioNames.includes(saved.scenario) ? saved.scenario : 'healthy';
+    state.offline = !!saved.offline;
+    state.action = ['print','scan','correct','report'].includes(saved.action) ? saved.action : null;
+    state.pendingApproval = !!saved.pendingApproval;
+    state.approved = !!saved.approved;
+  }
+  restore(window.openai?.widgetState);
+  function save() {
+    if (!window.openai?.setWidgetState) return;
+    const modelContent = { architecture:options[state.arrangement].name, failure_scenario:state.scenario, optional_unconfirmed_capture:state.offline, explored_task:state.action };
+    Promise.resolve(window.openai.setWidgetState({modelContent,privateContent:{...state}})).catch(() => {});
+  }
+  function apiAvailable(arch) { return !['backend','database'].includes(state.scenario) && !(state.scenario === 'network' && !arch.hybrid); }
+  function clientAvailable(client) { return !(state.scenario === 'client' && client.scanner); }
+  function clientStatus(client, arch) {
+    if (!clientAvailable(client)) return 'Client unavailable';
+    if (client.central && ['network','backend','database'].includes(state.scenario)) return 'Historical report copy available';
+    if (!apiAvailable(arch)) {
+      if (client.headless) return 'Indicator available · recording unavailable';
+      if (client.local) return 'Local screen available · recording unavailable';
+      return 'Loaded screen only · no fresh records';
+    }
+    return client.headless ? 'Controls available · API connected' : 'Interface available · API connected';
+  }
+  function taskClient(arch, action) {
+    const role = action === 'correct' && state.arrangement === 'request-approval' ? (state.approved ? 'approve' : 'request') : action;
+    return arch.clients.find(c => c.functions.includes(role));
+  }
+  function outcome(arch) {
+    if (!state.action) return ['Choose a task to trace its route.',''];
+    const action = state.action;
+    const client = taskClient(arch,action);
+    const chain = (end) => `${client.name} → ${arch.hybrid ? 'site API' : 'canonical API'} → ${end}`;
+    if (!clientAvailable(client)) return ['Unavailable · this client cannot perform the task.', `${client.name} is unavailable; separate clients remain independent.`];
+    if (action === 'report' && arch.hybrid) {
+      const historical = ['network','backend','database'].includes(state.scenario);
+      return [historical ? 'Historical report available · live site status is unavailable.' : 'Delivered audit history available · read-only.', 'Central report portal → reporting copy · delivery time and provenance shown'];
+    }
+    if (!apiAvailable(arch)) {
+      if (action === 'print' && client.cachedLabels) return ['Saved registered labels can reprint · no new identities created.', 'Saved label artifact → native print utility → staff printer'];
+      if (action === 'scan' && state.offline && arch.durable) return ['Captured locally · UNCONFIRMED; no green receipt.', `${client.name} → durable local outbox · asserted device time; later reconciliation required`];
+      const ending = action === 'report' ? 'A loaded view is not a fresh audit report.' : 'No movement or correction is confirmed.';
+      return ['NOT AVAILABLE · task cannot complete.', `${chain(state.scenario === 'database' ? 'database unavailable' : 'service unreachable')}. ${ending}`];
+    }
+    if (action === 'print') return ['Registered labels reach the printer · existing IDs preserved.', `${client.name} → identity/label API → registered artifact → staff printer`];
+    if (action === 'scan') return ['Preview outcome: confirmed movement · green receipt permitted.', chain('atomic specimen/session update + audit event → confirmed response')];
+    if (action === 'correct') {
+      if (state.arrangement === 'request-approval' && !state.approved) return ['Correction request submitted · specimen records unchanged.', chain('pending request → supervisor approval required')];
+      return ['Preview outcome: correction committed · original observation retained.', chain('authorized revision + reason + immutable correction history')];
+    }
+    return ['Live audit report available · recorded history and corrections.', chain('authoritative sessions + audit history → report')];
+  }
+  function render() {
+    const arch = options[state.arrangement];
+    if (!arch.durable) state.offline = false;
+    $('#landscape-arrangement').value = state.arrangement;
+    $('#landscape-scenario').value = state.scenario;
+    $('#landscape-title').textContent = arch.name;
+    $('#landscape-difference').textContent = arch.difference;
+    const activeClient = state.action ? taskClient(arch,state.action) : null;
+    const cachedPrint = state.action === 'print' && !apiAvailable(arch) && activeClient?.cachedLabels;
+    const queuedScan = state.action === 'scan' && !apiAvailable(arch) && state.offline && arch.durable && clientAvailable(activeClient);
+    const bypassesAuthority = cachedPrint || queuedScan || (arch.hybrid && state.action === 'report');
+    $('#landscape-clients').innerHTML = arch.clients.map(c => {
+      const active = activeClient === c;
+      const role = state.action === 'correct' && state.arrangement === 'request-approval' ? (state.approved ? 'approve' : 'request') : state.action;
+      return `<div class="landscape-client" data-active="${active}" data-unavailable="${!clientAvailable(c)}"><span>${escape(c.name)}</span><span class="text-small">${escape(c.device)}</span><div class="landscape-functions">${c.functions.map(f => `<span class="landscape-function text-small" data-route="${active && f === role}">${functionNames[f]}</span>`).join('')}</div><span class="text-small">${escape(clientStatus(c,arch))}</span></div>`;
+    }).join('');
+    const serviceDown = ['backend','database'].includes(state.scenario);
+    $('#landscape-service-title').textContent = arch.hybrid ? 'Canonical site service' : 'Canonical central service';
+    $('#landscape-service-state').textContent = state.scenario === 'backend' ? 'API unavailable' : state.scenario === 'database' ? 'Reachable · database unavailable' : 'Available';
+    const link = $('#landscape-link');
+    const networkDown = state.scenario === 'network' && !arch.hybrid;
+    link.textContent = networkDown ? '↓ Client-to-service link DOWN · fresh reads and writes unavailable' : '↓ API requests · no client database credentials';
+    link.dataset.unavailable = String(networkDown);
+    root.querySelectorAll('.landscape-service').forEach(el => {
+      const target = state.action === 'print' ? 'labels' : state.action === 'report' ? 'reports' : state.action ? 'movement' : null;
+      el.dataset.active = String(el.dataset.stage === target && !bypassesAuthority);
+      el.dataset.unavailable = String(serviceDown);
+    });
+    const db = $('#landscape-database');
+    db.dataset.active = String(!!state.action && !bypassesAuthority);
+    db.dataset.unavailable = String(state.scenario === 'database');
+    $('#landscape-database-title').textContent = arch.hybrid ? 'One site-authoritative database' : 'One authoritative database';
+    $('#landscape-database-state').textContent = state.scenario === 'database' ? 'Unavailable' : 'Available';
+    $('#landscape-printer').dataset.active = String(state.action === 'print');
+    $('#landscape-central').hidden = !arch.hybrid;
+    $('#landscape-central').dataset.active = String(state.action === 'report');
+    $('#landscape-central-link').textContent = state.scenario === 'network' ? '↓ Site-to-central link DOWN · delivery paused' : serviceDown ? '↓ No fresh site delivery · previous copy retained' : '↓ One-way reporting delivery';
+    $('#landscape-central-state').textContent = ['network','backend','database'].includes(state.scenario) ? 'Historical delivered copy' : 'Fresh delivered history';
+    const offline = $('#landscape-offline');
+    offline.disabled = !arch.durable;
+    offline.checked = state.offline;
+    $('#landscape-extension-note').textContent = arch.durable ? 'Optional design extension only: local capture is UNCONFIRMED until authoritative reconciliation.' : 'Requires a durable installed scan client; current policy is NOT AVAILABLE.';
+    $('#landscape-approve-wrapper').hidden = !(state.arrangement === 'request-approval' && state.pendingApproval && !state.approved);
+    const [result, route] = outcome(arch);
+    $('#landscape-outcome').textContent = result;
+    $('#landscape-route').textContent = route;
+  }
+  $('#landscape-arrangement').addEventListener('change', event => { state.arrangement = event.target.value; state.action = null; state.pendingApproval = false; state.approved = false; render(); save(); });
+  $('#landscape-scenario').addEventListener('change', event => { state.scenario = event.target.value; render(); save(); });
+  $('#landscape-offline').addEventListener('change', event => { state.offline = event.target.checked; render(); save(); });
+  root.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => {
+    state.action = button.dataset.action;
+    if (state.action === 'correct' && state.arrangement === 'request-approval') {
+      state.approved = false;
+      state.pendingApproval = apiAvailable(options[state.arrangement]) && clientAvailable(taskClient(options[state.arrangement],'correct'));
+    }
+    render(); save();
+  }));
+  $('#landscape-approve').addEventListener('click', () => {
+    state.action = 'correct';
+    if (apiAvailable(options[state.arrangement])) { state.approved = true; state.pendingApproval = false; }
+    render(); save();
+  });
+  window.addEventListener('openai:set_globals', event => {
+    const snapshot = event.detail?.globals?.widgetState;
+    if (snapshot) { restore(snapshot); render(); }
+  });
+  render();
+})();
+</script>

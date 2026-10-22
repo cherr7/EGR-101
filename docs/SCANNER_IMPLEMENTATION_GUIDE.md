@@ -9,7 +9,9 @@ The core behavior is: choose persistent IN or OUT, scan a registered specimen la
 | Component | Implementation |
 | --- | --- |
 | Scanner page and movement/recovery state | frontend/src/Kiosk.tsx |
-| Page-wide keyboard capture | frontend/src/scannerCapture.ts |
+| Direct scanner/NFC reading on the Pi | deploy/scanner-kiosk/input-bridge.py and nfc_tags.py |
+| Page side of that stream | frontend/src/inputBridge.ts |
+| Page-wide keyboard capture (hosted kiosks, bridge fallback) | frontend/src/scannerCapture.ts |
 | HTTP adapter and timeout handling | frontend/src/api.ts |
 | Central database/movement rules | backend/app/movements.py and services.py |
 | Local station package builder | scripts/build-station.py |
@@ -28,6 +30,19 @@ Each physical specimen has its own permanent 128-bit UUID linked to a stack. App
 Decimal text is the agreed production format. Data Matrix does not mean binary keyboard output. Raw USB bytes and WebHID access are unnecessary for a scanner configured as a keyboard. Verify the device's real output in an editor before installing it on a room station. See [barcode and printer details](BARCODE_AND_PRINTER.md).
 
 The generated code carries no URL or prep information. Scanning a member's ID lets the API resolve the whole stack and current eligibility. Keep IDs as strings across HTTP/JSON and in JavaScript; use BigInt for conversion if required, never Number or JavaScript bitwise arithmetic for a 128-bit value.
+
+## Direct scanner reading on the Pi
+
+Kiosk mode does not guarantee that Chromium keeps OS keyboard focus. A system dialog, notification, or browser restart can take it, and a keyboard-wedge scan typed into another window is simply lost. Installed Pi stations therefore read the scanner directly:
+
+- `input-bridge.py` opens the scanner's evdev device with an exclusive grab and decodes US-layout keystrokes into frames. It applies the same 350 ms gap and 132-character rules as the page.
+- It streams each completed scan to the page as a server-sent event, through local nginx at `/station/input/events`.
+- The page validates and gates the scan exactly as it would a keyboard frame.
+- The optional PN532 NFC hat feeds the same stream.
+
+Nothing is queued or replayed, and scans older than 3 seconds are ignored. The station header shows whether the scanner is detected.
+
+If the bridge stops, its grab is released and the scanner types into the page again, where the keyboard listener below still captures it. Hosted kiosks opened from a staff computer use only the keyboard listener.
 
 ## Capture without an input box
 
@@ -93,7 +108,7 @@ Raspberry Pi's official kiosk tutorial documents the 64-bit desktop, labwc autos
 Install the required packages on the Pi:
 
     sudo apt update
-    sudo apt install nginx chromium python3
+    sudo apt install nginx chromium python3 python3-evdev python3-venv
 
 Run the project's installer with the transferred package, Mac API origin, desktop username, a reachable LAN DNS resolver, and fixed station ID:
 
@@ -107,7 +122,7 @@ For read-only validation on the Mac or Pi before installation, run the same argu
 
 The API origin is only a scheme/host/port, with no /api path or credentials. Prefer a reserved Mac LAN address or a hostname resolvable by the configured LAN DNS. If the network does not resolve .local names through that resolver, use the reserved IP rather than relying on browser-side mDNS behavior.
 
-The installer places the UI under /opt/fabric-scanner/ui, configures nginx on local port 8080, installs browser/watchdog user services, and adds a marked block to the chosen account's labwc autostart. Where raspi-config exists, it also sets Desktop Autologin for that account and disables screen blanking. Add --nfc to also install the optional PN532 NFC tag bridge (see deploy/scanner-kiosk/README.md). Follow its output, confirm the autologin and blanking settings took effect, then reboot the Pi.
+The installer places the UI under /opt/fabric-scanner/ui, configures nginx on local port 8080, installs browser/watchdog/input-bridge user services, and adds a marked block to the chosen account's labwc autostart. Where raspi-config exists, it also sets Desktop Autologin for that account and disables screen blanking. Add --nfc to also read a PN532 NFC hat through the input bridge (see deploy/scanner-kiosk/README.md). Follow its output, confirm the autologin and blanking settings took effect, then reboot the Pi.
 
 ## Boot and recovery sequence
 
@@ -149,6 +164,8 @@ Verify each station with the actual scanner, screen, printer stock, and lab netw
 - Boot while the Mac/API is unavailable: the local page loads, shows NOT AVAILABLE, and records nothing.
 - Reconnect the Mac: health recovers without an offline scan queue.
 - Touch direction/scope controls, then scan without focusing an input.
+- With the input bridge running, open another window over Chromium (or kill Chromium briefly) and confirm scans are either recorded once the page is back or visibly rejected, never typed elsewhere.
+- Unplug the scanner: the header shows Scanner not detected; replug: Scanner ready returns without a restart.
 - Ordinary scan records automatically; selection/early-checkout popups require touch confirmation, and scanner Enter cannot activate their buttons.
 - Check out 3 of 10, then use whole-stack OUT for only the remaining 7.
 - Verify repeat scans preserve entry/exit times and Undo restores precisely its transaction.

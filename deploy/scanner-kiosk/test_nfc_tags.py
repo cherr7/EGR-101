@@ -1,8 +1,6 @@
 import importlib.util
 from pathlib import Path
-import types
 import unittest
-from unittest import mock
 from uuid import UUID
 
 
@@ -13,7 +11,7 @@ def load(name, path):
     return module
 
 
-bridge = load("nfc_bridge", Path(__file__).with_name("nfc-bridge.py"))
+bridge = load("nfc_tags", Path(__file__).with_name("nfc_tags.py"))
 NTAG_UID = bytes(range(1, 8))
 SPECIMEN = "4d2a1c3b-0000-4000-8000-00000000002a"
 
@@ -40,17 +38,6 @@ class FakeTag:
         if not self.taps:
             raise StopIteration
         return self.taps.pop(0)
-
-
-class FakeUInput:
-    def __init__(self):
-        self.events = []
-
-    def write(self, kind, code, value):
-        self.events.append((code, value))
-
-    def syn(self):
-        pass
 
 
 class IdentifierTests(unittest.TestCase):
@@ -108,17 +95,6 @@ class TagTests(unittest.TestCase):
         self.assertEqual(results[0], (NTAG_UID, payload, None))
         self.assertEqual(results[1][:2], (bytes(4), None))
         self.assertEqual(len(results), 2)
-
-
-class KeyboardTests(unittest.TestCase):
-    def test_types_digits_then_enter_like_the_scanner(self):
-        codes = {f"KEY_{d}": 2 + d for d in range(10)} | {"KEY_ENTER": 28, "EV_KEY": 1}
-        evdev = types.SimpleNamespace(UInput=None, ecodes=types.SimpleNamespace(**codes))
-        device = FakeUInput()
-        with mock.patch.dict("sys.modules", {"evdev": evdev}), mock.patch.object(bridge.time, "sleep"):
-            bridge.Keyboard(device).type_line("0912")
-        self.assertEqual(device.events, [(2, 1), (2, 0), (11, 1), (11, 0), (3, 1), (3, 0),
-                                         (4, 1), (4, 0), (28, 1), (28, 0)])
 
 
 if __name__ == "__main__":

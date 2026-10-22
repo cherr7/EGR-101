@@ -42,7 +42,7 @@ Registration allows 1–500 specimens per stack; 20 is typical rather than a har
 
 Open **http://MACBOOK-HOSTNAME.local:8120/kiosk?station=shared-door** for a hosted station, or deploy the locally served Pi package described in the [scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md).
 
-The production station targets the **1280 × 720 landscape Touch Display 2** and Eyoyo EYH2 USB keyboard scanner. It needs no visible input box. Choose persistent IN or OUT and scan a Data Matrix: an ordinary whole-stack movement records automatically. There is no routine Submit step.
+The production station targets the **1280 × 720 landscape Touch Display 2** and Eyoyo EYH2 USB keyboard scanner. It needs no visible input box. On installed Pis, a local input bridge reads the scanner directly, so scans do not depend on browser focus. Choose persistent IN or OUT and scan a Data Matrix: an ordinary whole-stack movement records automatically. There is no routine Submit step.
 
 - Whole-stack IN includes members awaiting their first entry; scanning any member identifies the stack.
 - Whole-stack OUT includes only members still inside. If 3 of 10 have left, the next whole-stack OUT moves the remaining 7.

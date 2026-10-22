@@ -1,0 +1,13 @@
+[Unit]
+Description=Fabric scanner input bridge (USB scanner and optional NFC)
+PartOf=fabric-scanner.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=-/opt/fabric-scanner/input.env
+EnvironmentFile=-/opt/fabric-scanner/scanner.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/input-bridge.py
+Restart=always
+RestartSec=3

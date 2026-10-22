@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Type specimen IDs read from NFC tags into the kiosk, exactly as the barcode scanner would.
+"""Read and write specimen IDs on NTAG21x tags with a PN532 NFC hat (SPI).
 
-A PN532 hat (SPI) reads the NDEF text record on an NTAG21x tag. When that text is a
-specimen ID, the bridge types it through a virtual keyboard (/dev/uinput) as 39 decimal
-digits followed by Enter: the same keystrokes as a scanned Data Matrix label. The kiosk's
-page-wide capture listener therefore handles NFC taps with no frontend changes, and all
-movement rules, health checks, and confirmations stay in the React app and API.
+input-bridge.py imports this module when NFC is enabled: each tap's NDEF text record is
+validated as a specimen ID and streamed to the kiosk page like a barcode scan. Tags that
+hold anything else are reported as rejected scans, never as IDs.
 
-    nfc-bridge.py              run the bridge (fabric-scanner-nfc.service)
-    nfc-bridge.py read         print each tapped tag's ID without typing it
-    nfc-bridge.py write ID     write a specimen ID (39 digits or UUID) to one NTAG tag
+    nfc_tags.py read          print each tapped tag's ID (stop fabric-scanner.target first)
+    nfc_tags.py write ID      write a specimen ID (39 digits or UUID) to one NTAG tag
 
 Hat wiring: I1=H, I0=L, RSTPDN->D20, DIP 1-4 (SCK/MISO/MOSI/D4) ON, 5-8 (SCL/SDA/TX/RX) OFF.
 """
@@ -18,9 +15,8 @@ import time
 from uuid import UUID
 
 POLL_TIMEOUT = 0.1    # seconds per detection attempt
-REARM_AFTER = 0.75    # a tag must be off the coil this long before it types again
+REARM_AFTER = 0.75    # a tag must be off the coil this long before it reports again
 RETRY_DELAY = 2.0     # seconds before reconnecting a hat that failed
-KEY_DELAY = 0.004     # seconds between key events; the kiosk rejects gaps over 350 ms
 ID_DIGITS = 39
 
 
@@ -179,30 +175,6 @@ def connect():
     return pn532
 
 
-class Keyboard:
-    """A virtual keyboard that only types digits and Enter."""
-
-    def __init__(self, device=None):
-        from evdev import UInput, ecodes
-        self.ecodes = ecodes
-        self.keys = {str(d): getattr(ecodes, f"KEY_{d}") for d in range(10)}
-        self.device = device or UInput({ecodes.EV_KEY: [*self.keys.values(), ecodes.KEY_ENTER]},
-                                       name="fabric-scanner-nfc")
-        if device is None:
-            time.sleep(1)  # give the compositor time to adopt the new input device
-
-    def press(self, code):
-        for value in (1, 0):  # key down, key up
-            self.device.write(self.ecodes.EV_KEY, code, value)
-            self.device.syn()
-            time.sleep(KEY_DELAY)
-
-    def type_line(self, digits):
-        for ch in digits:
-            self.press(self.keys[ch])
-        self.press(self.ecodes.KEY_ENTER)
-
-
 def log(message):
     print(message, flush=True)
 
@@ -226,22 +198,11 @@ def taps(pn532, tag_filter=None, clock=time.monotonic):
             yield uid, None, str(error)
 
 
-def run(type_ids=True):
-    keyboard = Keyboard() if type_ids else None
-    while True:
-        try:
-            pn532 = connect()
-            log("Waiting for NFC tags...")
-            for uid, specimen_id, error in taps(pn532):
-                if error:
-                    log(f"{uid.hex(':')}  ignored: {error}")
-                    continue
-                log(f"{uid.hex(':')}  {specimen_id}")
-                if keyboard:
-                    keyboard.type_line(specimen_id)
-        except Exception as error:  # SPI/hat failure: report, then reconnect
-            log(f"NFC reader: {error}; retrying")
-            time.sleep(RETRY_DELAY)
+def watch():
+    pn532 = connect()
+    log("Waiting for NFC tags...")
+    for uid, specimen_id, error in taps(pn532):
+        log(f"{uid.hex(':')}  {specimen_id or 'ignored: ' + error}")
 
 
 def write(identifier):
@@ -254,10 +215,8 @@ def write(identifier):
 
 def main(argv):
     try:
-        if not argv:
-            run()
-        elif argv == ["read"]:
-            run(type_ids=False)
+        if argv == ["read"]:
+            watch()
         elif len(argv) == 2 and argv[0] == "write":
             write(argv[1])
         else:

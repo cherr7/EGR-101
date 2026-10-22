@@ -19,8 +19,13 @@ class Health:
         fields = ("focused", "visible", "capture_ready")
         if not isinstance(payload, dict) or any(type(payload.get(key)) is not bool for key in fields):
             raise ValueError("Expected boolean focus, visibility, and capture state.")
+        bridged = payload.get("input_bridge", False)
+        if type(bridged) is not bool:
+            raise ValueError("Expected a boolean input bridge state.")
         with self.lock:
-            if all(payload[key] for key in fields):
+            # With input-bridge.py connected, scans reach the page without browser focus,
+            # so only a hidden page or missing capture calls for a restart.
+            if payload["visible"] and payload["capture_ready"] and (payload["focused"] or bridged):
                 self.last_healthy = now
 
     def restart_reason(self, now):

@@ -7,7 +7,8 @@
       body:JSON.stringify({
         focused:document.hasFocus(),
         visible:document.visibilityState==='visible',
-        capture_ready:window.location.hash==='#kiosk'&&window.fabricScannerCaptureReady===true
+        capture_ready:window.location.hash==='#kiosk'&&window.fabricScannerCaptureReady===true,
+        input_bridge:window.fabricInputBridgeConnected===true
       }),signal:controller.signal
     }).catch(()=>{}).finally(()=>clearTimeout(timer));
   }

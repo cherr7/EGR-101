@@ -1,7 +1,7 @@
 #!/bin/sh
 # Usage: sudo install.sh [--nfc] LIVE_UI_PACKAGE API_ORIGIN DESKTOP_USER LAN_DNS_IPV4 [STATION_ID]
 # Add --check first for a read-only preflight, including on the development Mac.
-# --nfc also installs the optional PN532 NFC bridge (see README).
+# --nfc also streams NFC tag taps from a PN532 hat through the input bridge (see README).
 set -eu
 check_only=false
 with_nfc=false
@@ -22,12 +22,11 @@ kiosk_user=$3
 dns_resolver=$4
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 station_id=$(python3 "$source_dir/validate-package.py" "$ui_source" "$api_origin" "$dns_resolver" "${5:-}")
-if [ "$with_nfc" = true ]; then
-    for name in nfc-bridge.py nfc-requirements.txt fabric-scanner-nfc.service; do
-        [ -f "$source_dir/$name" ] || { echo "Missing NFC bridge file: $source_dir/$name" >&2; exit 1; }
-    done
-    python3 -m py_compile "$source_dir/nfc-bridge.py"
-fi
+for name in input-bridge.py nfc_tags.py nfc-requirements.txt fabric-scanner-input.service; do
+    [ -f "$source_dir/$name" ] || { echo "Missing input bridge file: $source_dir/$name" >&2; exit 1; }
+done
+python3 -c 'import ast, sys; [ast.parse(open(path).read(), path) for path in sys.argv[1:]]' \
+    "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py"
 if [ "$check_only" = true ]; then
     echo "Live React station package validated for $station_id. No system changes made."
     exit 0
@@ -36,6 +35,7 @@ if [ "$(id -u)" -ne 0 ]; then echo "Installation requires root; use --check for 
 for executable in nginx chromium python3 systemctl getent; do
     command -v "$executable" >/dev/null || { echo "Install prerequisite: $executable" >&2; exit 1; }
 done
+python3 -c "import evdev, ensurepip" 2>/dev/null || { echo "Install prerequisites: python3-evdev python3-venv" >&2; exit 1; }
 kiosk_home=$(getent passwd "$kiosk_user" | cut -d: -f6)
 if [ -z "$kiosk_home" ] || [ ! -d "$kiosk_home" ]; then
     echo "Unknown desktop user: $kiosk_user" >&2
@@ -48,12 +48,13 @@ fi
 kiosk_group=$(id -gn "$kiosk_user")
 install -d /opt/fabric-scanner/ui /opt/fabric-scanner/bin
 cp -R "$ui_source/." /opt/fabric-scanner/ui/
-install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" /opt/fabric-scanner/bin/
-python3 - "$station_id" <<'PY'
+install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" "$source_dir/input-bridge.py" /opt/fabric-scanner/bin/
+install -m 0644 "$source_dir/nfc_tags.py" /opt/fabric-scanner/bin/
+python3 - "$station_id" "$with_nfc" <<'PY'
 from pathlib import Path
 import json
 import sys
-station = sys.argv[1]
+station, with_nfc = sys.argv[1], sys.argv[2] == "true"
 rooms = {"shared-door": ("shared", "Shared conditioning room"),
          "ppe-door": ("ppe", "PPE conditioning room"),
          "footwear-door": ("footwear", "Footwear conditioning room")}
@@ -61,9 +62,18 @@ room_id, room_name = rooms.get(station, (station, "Conditioning station " + stat
 Path("/opt/fabric-scanner/ui/station-config.js").write_text(
     "window.fabricStationConfig = " + json.dumps({"stationId": station, "stationName": room_name + " door",
                                                "roomId": room_id, "roomName": room_name, "fixed": True,
-                                               "targetWidth": 1280, "targetHeight": 720}) + ";\n")
+                                               "targetWidth": 1280, "targetHeight": 720,
+                                               "inputBridge": True}) + ";\n")
 Path("/opt/fabric-scanner/station.env").write_text(
     "KIOSK_URL=http://127.0.0.1:8080/station.html?station=" + station + "#kiosk\n")
+Path("/opt/fabric-scanner/input.env").write_text("NFC=" + ("1" if with_nfc else "0") + "\n")
+# scanner.env is the operator's: written once, never overwritten by a reinstall.
+scanner_env = Path("/opt/fabric-scanner/scanner.env")
+if not scanner_env.exists():
+    scanner_env.write_text("# Pin the scanner by its stable path if auto-detection picks the wrong device:\n"
+                           "# SCANNER_DEVICE=/dev/input/by-id/usb-...-event-kbd\n"
+                           "# Or change the device-name fragments auto-detection looks for:\n"
+                           "# SCANNER_MATCH=barcode,scanner,hidkeyboard,eyoyo\n")
 PY
 chmod -R a+rX /opt/fabric-scanner/ui
 sed -e "s|__API_ORIGIN__|$api_origin|g" -e "s|__DNS_RESOLVER__|$dns_resolver|g" \
@@ -74,34 +84,27 @@ systemctl enable nginx
 systemctl restart nginx
 install -d -o "$kiosk_user" -g "$kiosk_group" \
     "$kiosk_home/.config/systemd/user" "$kiosk_home/.config/labwc"
-for name in fabric-scanner.target fabric-scanner-browser.service fabric-scanner-watchdog.service; do
+for name in fabric-scanner.target fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service; do
     install -m 0644 -o "$kiosk_user" -g "$kiosk_group" "$source_dir/$name" "$kiosk_home/.config/systemd/user/$name"
 done
-# The NFC bridge joins fabric-scanner.target only when installed with --nfc; rerunning without it detaches it.
-nfc_wants="$kiosk_home/.config/systemd/user/fabric-scanner.target.wants"
-rm -f "$nfc_wants/fabric-scanner-nfc.service"
+# Remove the earlier keystroke-typing NFC bridge; NFC now goes through the input bridge.
+rm -f "$kiosk_home/.config/systemd/user/fabric-scanner.target.wants/fabric-scanner-nfc.service" \
+    "$kiosk_home/.config/systemd/user/fabric-scanner-nfc.service" /opt/fabric-scanner/bin/nfc-bridge.py \
+    /etc/modules-load.d/fabric-scanner-uinput.conf /etc/udev/rules.d/60-fabric-scanner-uinput.rules
+rm -rf /opt/fabric-scanner/nfc-env
+# System site packages let apt's python3-evdev serve the bridge without a compiler or network.
+[ -x /opt/fabric-scanner/input-env/bin/python ] || python3 -m venv --system-site-packages /opt/fabric-scanner/input-env
 if [ "$with_nfc" = true ]; then
-    install -m 0755 "$source_dir/nfc-bridge.py" /opt/fabric-scanner/bin/
-    # System site packages let apt's python3-evdev satisfy the evdev requirement without a compiler.
-    [ -x /opt/fabric-scanner/nfc-env/bin/python ] || python3 -m venv --system-site-packages /opt/fabric-scanner/nfc-env
-    /opt/fabric-scanner/nfc-env/bin/pip install --quiet -r "$source_dir/nfc-requirements.txt"
-    /opt/fabric-scanner/nfc-env/bin/python -c "import evdev, adafruit_pn532"
-    # Typed IDs go through a virtual keyboard (/dev/uinput); the PN532 hat uses SPI and GPIO.
-    echo uinput > /etc/modules-load.d/fabric-scanner-uinput.conf
-    echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' \
-        > /etc/udev/rules.d/60-fabric-scanner-uinput.rules
-    modprobe uinput
-    udevadm control --reload-rules
-    udevadm trigger --subsystem-match=misc --sysname-match=uinput
-    for group in input spi gpio; do
-        if getent group "$group" >/dev/null; then usermod -aG "$group" "$kiosk_user"; fi
-    done
-    install -m 0644 -o "$kiosk_user" -g "$kiosk_group" "$source_dir/fabric-scanner-nfc.service" \
-        "$kiosk_home/.config/systemd/user/fabric-scanner-nfc.service"
-    install -d -o "$kiosk_user" -g "$kiosk_group" "$nfc_wants"
-    ln -sf ../fabric-scanner-nfc.service "$nfc_wants/fabric-scanner-nfc.service"
-    chown -h "$kiosk_user:$kiosk_group" "$nfc_wants/fabric-scanner-nfc.service"
+    /opt/fabric-scanner/input-env/bin/pip install --quiet -r "$source_dir/nfc-requirements.txt"
+    /opt/fabric-scanner/input-env/bin/python -c "import adafruit_pn532"
 fi
+/opt/fabric-scanner/input-env/bin/python -c "import evdev"
+# Reading /dev/input needs the input group; the PN532 hat also needs spi and gpio.
+groups=input
+if [ "$with_nfc" = true ]; then groups="input spi gpio"; fi
+for group in $groups; do
+    if getent group "$group" >/dev/null; then usermod -aG "$group" "$kiosk_user"; fi
+done
 autostart="$kiosk_home/.config/labwc/autostart"
 if [ ! -e "$autostart" ]; then
     if [ -f /etc/xdg/labwc/autostart ]; then cp /etc/xdg/labwc/autostart "$autostart"; else touch "$autostart"; fi

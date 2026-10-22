@@ -29,7 +29,7 @@ This validates package integrity and argument formats. It does not prove API rea
 2. Install prerequisites:
 
        sudo apt update
-       sudo apt install nginx chromium python3 ca-certificates
+       sudo apt install nginx chromium python3 python3-evdev python3-venv ca-certificates
 
 3. Copy `output/station-ui/` and `deploy/scanner-kiosk/` to the Pi, then install with the Mac's actual LAN origin and the Pi's actual LAN DNS resolver:
 
@@ -40,50 +40,73 @@ The fifth argument is optional; omitting it keeps the station ID stored in the p
 
 If the older `deploy/pi` service occupies port 8080, stop its user service and disable its nginx site before installing this deployment. Run only one kiosk deployment. The installer detects that conflict and stops with instructions.
 
+## Scanner input bridge
+
+Chromium only receives a keyboard-wedge scanner's keystrokes while it has OS keyboard focus, and kiosk mode does not guarantee that: system dialogs, notifications, or a browser restart can take focus away. On the Pi, `input-bridge.py` therefore reads the scanner directly through Linux evdev. It takes an exclusive grab, so scans arrive whatever window has focus and are never typed into anything else.
+
+Each completed scan goes to the kiosk page as a server-sent event on `/station/input/events`, which local nginx proxies to the bridge on 127.0.0.1:8766. The page applies exactly the same rules as keyboard capture:
+
+- payload validation;
+- database-health gating;
+- rejection, not queuing, while a popup or pending request is open;
+- the normal lookup → movement → green confirmation.
+
+The bridge only delivers to pages connected at that moment and never replays scans. The page also ignores any scan more than 3 seconds old. The header shows **Scanner ready**, **Scanner not detected** (unplugged, or not found by name), or **Scanner service offline**.
+
+If the bridge service stops, its grab is released and the scanner types into Chromium again. The page's keyboard listener remains attached as that fallback. While the bridge is connected, the watchdog no longer restarts Chromium merely for lost focus; it still does so for a hidden page or a missing capture listener.
+
+The bridge runs as `fabric-scanner-input.service` under `fabric-scanner.target`. It auto-detects the first input device whose name contains `barcode`, `scanner`, `hidkeyboard` or `eyoyo` and that can send Enter. If that picks the wrong device, pin the scanner by its stable path in `/opt/fabric-scanner/scanner.env`; reinstalling never overwrites that file:
+
+    /opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/input-bridge.py list
+    ls -l /dev/input/by-id/
+    echo 'SCANNER_DEVICE=/dev/input/by-id/usb-…-event-kbd' | sudo tee -a /opt/fabric-scanner/scanner.env
+    systemctl --user restart fabric-scanner-input.service
+
+`curl http://127.0.0.1:8766/status` shows the detected scanner, NFC state, and how many kiosk pages are connected.
+
 ## Optional NFC tags
 
-A station with a PN532 NFC hat (SPI mode) can accept NTAG21x tags as well as Data Matrix labels. Install it with `--nfc` before the other arguments, after installing the extra prerequisites:
+A station with a PN532 NFC hat (SPI mode) can also accept NTAG21x tags. Add `--nfc` before the other installer arguments:
 
-       sudo apt install python3-venv python3-evdev
        sudo sh ~/scanner-kiosk/install.sh --nfc ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
 
-`nfc-bridge.py` reads the tag's NDEF text record and types the specimen ID through a virtual keyboard (`/dev/uinput`), as 39 decimal digits and then Enter. Those are the same keystrokes the barcode scanner sends, so the React capture listener, health check and movement rules treat a tap like a scan. Tags that hold anything other than a specimen ID are logged and never typed. The bridge runs as `fabric-scanner-nfc.service` under `fabric-scanner.target`, so stopping the target for maintenance stops it too. With `--nfc`, the installer:
+The input bridge then reads each tag's NDEF text record and sends the specimen ID through the same event stream as a barcode scan. Tags holding anything else appear on the kiosk as rejected scans. With `--nfc`, the installer:
 
-- creates `/opt/fabric-scanner/nfc-env` from `nfc-requirements.txt` (this needs network access);
-- loads `uinput` and makes it writable by the `input` group;
-- adds the kiosk user to `input`, `spi` and `gpio`;
-- enables SPI through `raspi-config`.
+- installs `nfc-requirements.txt` into `/opt/fabric-scanner/input-env` (this needs network access);
+- adds the kiosk user to `spi` and `gpio`;
+- enables SPI through `raspi-config`;
+- sets `NFC=1` in `/opt/fabric-scanner/input.env`.
 
-Rerunning without `--nfc` detaches the bridge from the target.
+Rerunning without `--nfc` turns NFC off again.
 
 Hat wiring: I1=H, I0=L, RSTPDN→D20, DIP 1–4 (SCK/MISO/MOSI/D4) ON, 5–8 OFF. To write a specimen ID onto a tag, stop the target and hold the tag on the coil:
 
        systemctl --user stop fabric-scanner.target
-       /opt/fabric-scanner/nfc-env/bin/python /opt/fabric-scanner/bin/nfc-bridge.py write 4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15
-       /opt/fabric-scanner/nfc-env/bin/python /opt/fabric-scanner/bin/nfc-bridge.py read
+       /opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py write 4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15
+       /opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py read
        systemctl --user start fabric-scanner.target
 
 The ID can be the UUID or its 39-digit payload. The command verifies the tag by reading it back. The PN532 is 13.56 MHz HF/NFC and needs a tap within a few centimetres; it is not the passive UHF RFID considered in the design memo.
 
 ## Startup and recovery
 
-Desktop autologin runs the labwc autostart entry. It imports the Wayland environment and starts fabric-scanner.target, which starts the supervised browser and watchdog. The browser waits only for local nginx, then opens the dedicated station page. Chromium's persistent profile retains station preferences and pending-request IDs across restarts.
+Desktop autologin runs the labwc autostart entry. It imports the Wayland environment and starts fabric-scanner.target, which starts the supervised browser, watchdog, and input bridge. The browser waits only for local nginx, then opens the dedicated station page. Chromium's persistent profile retains station preferences and pending-request IDs across restarts.
 
-Every two seconds, the page reports focus, visibility, and whether the React scan listener is attached. No specimen data or database-health status appears in that heartbeat. After a 45-second startup grace period, more than 15 seconds without a healthy page triggers a browser restart. Database failure therefore leaves NOT AVAILABLE visible instead of restarting the browser repeatedly.
+Every two seconds, the page reports focus, visibility, whether the React scan listener is attached, and whether the input bridge stream is connected. No specimen data or database-health status appears in that heartbeat. After a 45-second startup grace period, more than 15 seconds without a healthy page triggers a browser restart. Database failure therefore leaves NOT AVAILABLE visible instead of restarting the browser repeatedly.
 
-The installed URL is `http://127.0.0.1:8080/station.html?station=ppe-door#kiosk`. Local nginx and the watchdog bind to loopback. The browser must be the active application to receive USB keyboard events; the watchdog attempts recovery after persistent focus loss. Physical validation is still required for the actual Pi desktop/compositor.
+The installed URL is `http://127.0.0.1:8080/station.html?station=ppe-door#kiosk`. Local nginx and the watchdog bind to loopback. With the input bridge running, scans reach the page without browser focus. If the bridge is down, the browser must be the active application to receive the scanner's keyboard events, and the watchdog attempts recovery after persistent focus loss. Physical validation is still required for the actual Pi desktop/compositor.
 
-Normal scanning is automatic in the persistent IN/OUT direction. No visible input box or ordinary Submit is required. Partial selection and early-checkout override use explicit popup actions. Scanner Enter is consumed by the capture listener and cannot activate those buttons. The printed Data Matrix payload is the specimen's 128-bit ID represented as 39 decimal characters, with Enter supplied separately by the scanner setting.
+Normal scanning is automatic in the persistent IN/OUT direction. No visible input box or ordinary Submit is required. Partial selection and early-checkout override use explicit popup actions. Scanner Enter never reaches those buttons: the bridge grabs the device, and the fallback keyboard listener consumes Enter. The printed Data Matrix payload is the specimen's 128-bit ID represented as 39 decimal characters, with Enter supplied separately by the scanner setting.
 
 ## Maintenance
 
 From the kiosk user's graphical session:
 
     systemctl --user status fabric-scanner.target
-    systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service
+    systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service
     journalctl --user -u fabric-scanner-browser.service -n 50
     journalctl --user -u fabric-scanner-watchdog.service -n 50
-    journalctl --user -u fabric-scanner-nfc.service -n 50
+    journalctl --user -u fabric-scanner-input.service -n 50
     sudo nginx -t
 
 Stop the entire target during maintenance so the watchdog cannot reopen Chromium:
@@ -104,4 +127,4 @@ Local checks:
 
 The last command serves the generated local package on an ephemeral loopback port and opens headless Chromium. It checks dedicated routing, fixed station identity, offline readiness, heartbeat, local assets, reload, and zero offline movement submissions; it requires the frontend's installed Playwright dependency.
 
-Physical acceptance remains: repeated cold boots, API-unavailable boot, focus loss, frozen/closed browser, USB unplug/replug, exact Data Matrix decoding from printed stock, popup scan rejection, interrupted-response recovery, and measured scan-to-confirmation latency. These provisioning files have not been run on a physical Pi.
+Physical acceptance remains: repeated cold boots, scanner detection by the input bridge (scanning while another window has focus), API-unavailable boot, focus loss, frozen/closed browser, USB unplug/replug, exact Data Matrix decoding from printed stock, popup scan rejection, interrupted-response recovery, and measured scan-to-confirmation latency. These provisioning files have not been run on a physical Pi.

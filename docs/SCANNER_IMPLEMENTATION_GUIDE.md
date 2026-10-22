@@ -107,7 +107,7 @@ For read-only validation on the Mac or Pi before installation, run the same argu
 
 The API origin is only a scheme/host/port, with no /api path or credentials. Prefer a reserved Mac LAN address or a hostname resolvable by the configured LAN DNS. If the network does not resolve .local names through that resolver, use the reserved IP rather than relying on browser-side mDNS behavior.
 
-The installer places the UI under /opt/fabric-scanner/ui, configures nginx on local port 8080, installs browser/watchdog user services, and adds a marked block to the chosen account's labwc autostart. Follow its output, confirm desktop autologin and blanking settings, then reboot the Pi.
+The installer places the UI under /opt/fabric-scanner/ui, configures nginx on local port 8080, installs browser/watchdog user services, and adds a marked block to the chosen account's labwc autostart. Where raspi-config exists, it also sets Desktop Autologin for that account and disables screen blanking. Add --nfc to also install the optional PN532 NFC tag bridge (see deploy/scanner-kiosk/README.md). Follow its output, confirm the autologin and blanking settings took effect, then reboot the Pi.
 
 ## Boot and recovery sequence
 

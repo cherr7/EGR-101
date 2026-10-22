@@ -56,6 +56,14 @@ class StationPackageTests(unittest.TestCase):
         self.assertIn("footwear-door", result.stdout)
         self.assertEqual(before, {str(path): path.read_bytes() for path in self.output.rglob("*") if path.is_file()})
 
+    def test_read_only_installer_check_accepts_nfc_option(self):
+        builder.build(self.source, self.output)
+        result = subprocess.run(["sh", str(Path(__file__).with_name("install.sh")), "--check", "--nfc",
+                                 str(self.output), "http://192.168.1.50:8120", "kiosk", "192.168.1.1"],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("shared-door", result.stdout)
+
     def test_changed_or_missing_assets_fail_before_installation(self):
         builder.build(self.source, self.output)
         (self.output / "assets/app.js").write_text("changed")

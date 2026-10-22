@@ -36,9 +36,34 @@ This validates package integrity and argument formats. It does not prove API rea
        sudo sh ~/scanner-kiosk/install.sh ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
        sudo reboot
 
-The fifth argument is optional; omitting it keeps the station ID stored in the package. Repeat with the appropriate station ID for all three Pis. The installer writes the fixed station configuration and a systemd environment file. It validates file checksums and host settings before making changes.
+The fifth argument is optional; omitting it keeps the station ID stored in the package. Repeat with the appropriate station ID for all three Pis. When `raspi-config` is present, the installer also sets Desktop Autologin for the kiosk user (`do_boot_behaviour B4`) and turns off screen blanking (`do_blanking 1`). Otherwise it prints those steps for you to do by hand. The installer writes the fixed station configuration and a systemd environment file. It validates file checksums and host settings before making changes.
 
 If the older `deploy/pi` service occupies port 8080, stop its user service and disable its nginx site before installing this deployment. Run only one kiosk deployment. The installer detects that conflict and stops with instructions.
+
+## Optional NFC tags
+
+A station with a PN532 NFC hat (SPI mode) can accept NTAG21x tags as well as Data Matrix labels. Install it with `--nfc` before the other arguments, after installing the extra prerequisites:
+
+       sudo apt install python3-venv python3-evdev
+       sudo sh ~/scanner-kiosk/install.sh --nfc ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
+
+`nfc-bridge.py` reads the tag's NDEF text record and types the specimen ID through a virtual keyboard (`/dev/uinput`), as 39 decimal digits and then Enter. Those are the same keystrokes the barcode scanner sends, so the React capture listener, health check and movement rules treat a tap like a scan. Tags that hold anything other than a specimen ID are logged and never typed. The bridge runs as `fabric-scanner-nfc.service` under `fabric-scanner.target`, so stopping the target for maintenance stops it too. With `--nfc`, the installer:
+
+- creates `/opt/fabric-scanner/nfc-env` from `nfc-requirements.txt` (this needs network access);
+- loads `uinput` and makes it writable by the `input` group;
+- adds the kiosk user to `input`, `spi` and `gpio`;
+- enables SPI through `raspi-config`.
+
+Rerunning without `--nfc` detaches the bridge from the target.
+
+Hat wiring: I1=H, I0=L, RSTPDN→D20, DIP 1–4 (SCK/MISO/MOSI/D4) ON, 5–8 OFF. To write a specimen ID onto a tag, stop the target and hold the tag on the coil:
+
+       systemctl --user stop fabric-scanner.target
+       /opt/fabric-scanner/nfc-env/bin/python /opt/fabric-scanner/bin/nfc-bridge.py write 4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15
+       /opt/fabric-scanner/nfc-env/bin/python /opt/fabric-scanner/bin/nfc-bridge.py read
+       systemctl --user start fabric-scanner.target
+
+The ID can be the UUID or its 39-digit payload. The command verifies the tag by reading it back. The PN532 is 13.56 MHz HF/NFC and needs a tap within a few centimetres; it is not the passive UHF RFID considered in the design memo.
 
 ## Startup and recovery
 
@@ -58,6 +83,7 @@ From the kiosk user's graphical session:
     systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service
     journalctl --user -u fabric-scanner-browser.service -n 50
     journalctl --user -u fabric-scanner-watchdog.service -n 50
+    journalctl --user -u fabric-scanner-nfc.service -n 50
     sudo nginx -t
 
 Stop the entire target during maintenance so the watchdog cannot reopen Chromium:

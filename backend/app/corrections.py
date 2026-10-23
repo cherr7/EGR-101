@@ -84,7 +84,8 @@ def process_correction(db, body, username):
                     s.voided = values["voided"]
         kind = "undo"
     else:
-        if body.exited_at is not None and body.exited_at < body.entered_at:
+        exit_at = (body.exited_at if "exited_at" in body.model_fields_set else session.exited_at) if body.kind == "edit_session" else body.exited_at
+        if exit_at is not None and exit_at < body.entered_at:
             raise HTTPException(422, "Exit must be at or after entry.")
         room_id = body.room_id or session.room_id
         room = db.get(Room, room_id)
@@ -92,7 +93,7 @@ def process_correction(db, body, username):
             raise HTTPException(422, "Unknown room.")
         if body.kind == "edit_session":
             session.entered_at = body.entered_at.astimezone(timezone.utc)
-            session.exited_at = body.exited_at.astimezone(timezone.utc) if body.exited_at else None
+            session.exited_at = exit_at.astimezone(timezone.utc) if exit_at else None
             session.room_id = room_id
             session.room = room
             session.corrected = True
@@ -119,6 +120,7 @@ def process_correction(db, body, username):
     event = AuditEvent(id=uuid_str(), stack_id=stack_id, kind=kind, actor=username, reason=body.reason,
                        recorded_at=now, specimen_ids=ids,
                        payload={"correction_kind": body.kind, "event_id": target.id if target else None,
+                                "room_id": room_id, "occurred_at": iso(body.entered_at),
                                 "before": before, "after": snapshot(db, specimens)})
     db.add(event)
     for specimen in specimens:
@@ -160,6 +162,7 @@ def _restore(db, specimen, values):
             session.entered_at = datetime.fromisoformat(value["entered_at"])
             session.exited_at = datetime.fromisoformat(value["exited_at"]) if value["exited_at"] else None
             session.room_id = value["room_id"]
+            session.room = db.get(Room, value["room_id"])
             session.corrected = value["corrected"]
             session.incomplete = value["incomplete"]
             session.early_exit_acknowledged = value.get("early_exit_acknowledged", False)
@@ -193,6 +196,7 @@ def undo_transaction(db, event_id, body, username="project-staff"):
                        actor=username, reason=body.note or None, recorded_at=now,
                        specimen_ids=[p.id for p in specimens],
                        payload={"event_id": target.id, "correction_kind": "undo", "before": before,
+                                "room_id": effective["room_id"], "station_id": target.payload.get("station_id"),
                                 "after": snapshot(db, specimens), "occurred_at": iso(now)})
     return _finish_transaction_change(db, stack, specimens, event)
 
@@ -251,10 +255,13 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     for specimen in specimens:
         validate_timeline(db, specimen, now)
     updated = {"specimen_ids": ids, "occurred_at": iso(occurred_at), "room_id": room_id, "note": body.note}
+    note = body.note if "note" in body.model_fields_set else effective["note"]
+    updated["note"] = note
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="modification", direction=target.direction,
-                       actor=username, reason=body.note or None, recorded_at=now,
+                       actor=username, reason=note or None, recorded_at=now,
                        specimen_ids=[p.id for p in specimens],
                        payload={"event_id": target.id, "effective_movement": updated, "base_before": base_before,
+                                "room_id": room_id, "station_id": target.payload.get("station_id"),
                                 "before": before, "after": snapshot(db, specimens), "occurred_at": iso(occurred_at)})
     return _finish_transaction_change(db, stack, specimens, event)
 

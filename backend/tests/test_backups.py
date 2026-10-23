@@ -33,7 +33,7 @@ def test_snapshot_download_and_checked_staged_restore(client, stack_factory, mon
     current = client.get(f'/api/stacks/{stack["id"]}').json()
     assert [s["id"] for s in current["specimens"]] == [s["id"] for s in stack["specimens"]]
     assert all(s["ENTRY"] and not s["EXIT"] for s in current["specimens"])
-    assert client.post(f'/api/backups/imports/{stage["id"]}/restore', json={"confirmation": "RESTORE"}).status_code == 409
+    assert client.post(f'/api/backups/imports/{stage["id"]}/restore', json={"confirmation": "RESTORE"}).json() == restored.json()
 
 
 def test_corrupt_backup_cannot_stage_or_download(client, stack_factory, monkeypatch, tmp_path):

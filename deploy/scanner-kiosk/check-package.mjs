@@ -52,9 +52,12 @@ try {
   const station = await page.evaluate(() => window.fabricStationConfig);
   assert.equal(new URL(page.url()).hash, '#kiosk');
   assert.equal(new URL(page.url()).searchParams.get('station'), station.stationId);
-  assert.equal(station.fixed, true);
+  assert.equal(station.fixed, false);
   assert.ok((await page.locator('.kiosk-header h1').innerText()).includes(station.roomName));
-  assert.equal(await page.getByLabel('Station', { exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('navigation', { name: 'Conditioning room' }).getByRole('button').count(), 3);
+  await page.getByRole('button', { name: 'PPE', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.ok((await page.locator('.kiosk-header h1').innerText()).includes('PPE'));
   assert.equal(await page.locator('.sidebar').count(), 0);
   assert.ok(await page.locator('.kiosk-dock').isVisible());
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.kiosk-shell').scrollHeight <= innerHeight));
@@ -68,11 +71,12 @@ try {
   await page.waitForFunction(() => location.hash === '#kiosk');
   await page.reload();
   await page.waitForFunction(() => window.fabricScannerCaptureReady === true && document.querySelector('.readiness-area')?.textContent?.includes('NOT AVAILABLE'));
-  assert.equal(new URL(page.url()).searchParams.get('station'), station.stationId);
+  assert.equal(new URL(page.url()).searchParams.get('station'), 'ppe-door');
+  assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.readiness-area.confirmed').count(), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(failures, []);
-  console.log(JSON.stringify({ status: 'passed', display: '1280x720', fixed_station: station.stationId,
+  console.log(JSON.stringify({ status: 'passed', display: '1280x720', default_station: station.stationId, configurable_room: true,
     local_assets: true, api_unavailable: true, capture_ready_offline: true, watchdog_heartbeat: true,
     automatic_scanner_route: true, reload: true, offline_movements: 0, page_errors: 0 }, null, 2));
 } finally {

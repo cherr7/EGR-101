@@ -2,9 +2,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+from datetime import time as clock_time
 import hashlib
 import io
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -29,6 +31,7 @@ LOCK = threading.RLock()
 LIMIT = 64 * 1024 * 1024
 EXPANDED_LIMIT = 256 * 1024 * 1024
 SCHEMA = 1
+LOGGER = logging.getLogger(__name__)
 
 
 def folder():
@@ -49,7 +52,15 @@ def settings():
     path = folder() / "settings.json"
     value = {"destination": None, "retention_days": 30, "daily_hour": 2, "enabled": True}
     if path.exists():
-        value.update(json.loads(path.read_text()))
+        try:
+            loaded = json.loads(path.read_text())
+            if not isinstance(loaded, dict):
+                raise ValueError("Expected backup settings object")
+            BackupSettings.model_validate(loaded)
+            value.update(loaded)
+        except (OSError, ValueError, TypeError):
+            LOGGER.exception("Backup settings could not be read")
+            value.update(enabled=False, last_error="Backup settings could not be read. Save the backup settings again to resume scheduled snapshots.")
     return value
 
 
@@ -117,6 +128,7 @@ def make_backup():
         save_json(info_path, info)
         config["last_day"] = utcnow().astimezone(ZoneInfo("America/New_York")).date().isoformat()
         config["last_backup_id"] = identifier
+        config["last_success_at"] = created
         config["last_error"] = None
         save_json(folder() / "settings.json", config)
         if info["cloud_copy_state"] != "copy_failed":
@@ -134,23 +146,28 @@ def read_archive(content):
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
             if set(archive.namelist()) != {"manifest.json", "snapshot.json"} or len(archive.infolist()) != 2:
                 raise ValueError("Expected only manifest.json and snapshot.json.")
-            if any(item.file_size > EXPANDED_LIMIT or item.flag_bits & 1 for item in archive.infolist()):
+            if sum(item.file_size for item in archive.infolist()) > EXPANDED_LIMIT or any(item.flag_bits & 1 for item in archive.infolist()):
                 raise ValueError("Archive is too large or encrypted.")
             manifest = json.loads(archive.read("manifest.json"))
             raw = archive.read("snapshot.json")
-        if manifest.get("format") != "fabric-conditioning" or manifest.get("version") != SCHEMA:
+        if not isinstance(manifest, dict) or manifest.get("format") != "fabric-conditioning" or manifest.get("version") != SCHEMA:
             raise ValueError("Unsupported backup format.")
         if hashlib.sha256(raw).hexdigest() != manifest.get("sha256"):
             raise ValueError("Snapshot checksum failed.")
         snapshot = json.loads(raw)
+        if not isinstance(snapshot, dict) or not isinstance(snapshot.get("tables"), dict) or not isinstance(manifest.get("counts"), dict):
+            raise ValueError("Expected a snapshot table map and count manifest.")
         known = {table.name for table in Base.metadata.sorted_tables}
         if set(snapshot["tables"]) != known or set(manifest["counts"]) != known:
             raise ValueError("Snapshot table set differs from this app version.")
         for name, records in snapshot["tables"].items():
-            if not isinstance(records, list) or len(records) != manifest["counts"][name]:
+            count = manifest["counts"][name]
+            if not isinstance(records, list) or type(count) is not int or count < 0 or len(records) != count:
                 raise ValueError("Snapshot row counts do not match its manifest.")
+            if any(not isinstance(record, dict) for record in records):
+                raise ValueError("Expected database row objects.")
         return manifest, snapshot
-    except (zipfile.BadZipFile, KeyError, ValueError, TypeError, RuntimeError) as error:
+    except (zipfile.BadZipFile, KeyError, ValueError, TypeError, RuntimeError, RecursionError, NotImplementedError) as error:
         raise HTTPException(422, "Invalid backup: " + str(error))
 
 
@@ -207,12 +224,43 @@ def create_staging(content):
         admin.dispose()
 
 
-def apply_staging(identifier):
+def restore_result(record):
+    return {"id": record["id"], "status": "restored", "counts": record["counts"],
+            "pre_restore_backup": record["pre_restore_backup"], "previous_database_retained": True}
+
+
+def staged_record(identifier):
     item_paths(identifier)  # Validate the opaque identifier before constructing a path.
     path = folder() / (identifier + ".staged.json")
     if not path.exists():
         raise HTTPException(404, "Validated restore not found.")
     record = json.loads(path.read_text())
+    if record["status"] == "applying":
+        admin = admin_engine()
+        try:
+            with admin.connect() as connection:
+                committed = connection.execute(text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_database "
+                    "WHERE shobj_description(oid, 'pg_database') = :marker)"
+                ), {"marker": "fabric-conditioning:restore:" + identifier}).scalar()
+            # This marker commits in the same transaction as both database
+            # renames. A later restore may retain that database under another
+            # name, so its marker remains evidence even after it stops being
+            # active. It resolves a lost response or failed journal write.
+            record["status"] = "restored" if committed else "validated"
+            try:
+                save_json(path, record)
+            except OSError:
+                LOGGER.exception("Could not persist recovered restore status")
+        finally:
+            admin.dispose()
+    return path, record
+
+
+def apply_staging(identifier):
+    path, record = staged_record(identifier)
+    if record["status"] == "restored":
+        return restore_result(record)
     if record["status"] != "validated":
         raise HTTPException(409, "This restore has already been used.")
     if utcnow() - datetime.fromisoformat(record["created_at"]) > timedelta(days=1):
@@ -225,35 +273,37 @@ def apply_staging(identifier):
     with LOCK:
         # Keep both a downloadable pre-restore checkpoint and the whole previous database.
         checkpoint = make_backup()
+        record.update(status="applying", previous_database=previous, pre_restore_backup=checkpoint["id"])
+        save_json(path, record)  # Durable intent must succeed before changing database names.
         engine.dispose()
         admin = admin_engine()
-        renamed = False
-        promoted = False
         try:
-            with admin.connect() as connection:
-                for name in [active, stage]:
-                    connection.exec_driver_sql('ALTER DATABASE "' + name + '" ALLOW_CONNECTIONS false')
-                    connection.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=:name"), {"name": name})
-                connection.exec_driver_sql('ALTER DATABASE "' + active + '" RENAME TO "' + previous + '"')
-                renamed = True
-                connection.exec_driver_sql('ALTER DATABASE "' + stage + '" RENAME TO "' + active + '"')
-                promoted = True
-                connection.exec_driver_sql('ALTER DATABASE "' + active + '" ALLOW_CONNECTIONS true')
+            # Database renames are transactional (unlike CREATE DATABASE). A
+            # failure or process loss cannot leave the active name missing
+            # between two separately committed renames.
+            with admin.connect().execution_options(isolation_level="READ COMMITTED") as connection:
+                with connection.begin():
+                    for name in [active, stage]:
+                        connection.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=:name"), {"name": name})
+                    connection.exec_driver_sql('ALTER DATABASE "' + active + '" RENAME TO "' + previous + '"')
+                    connection.exec_driver_sql('ALTER DATABASE "' + stage + '" RENAME TO "' + active + '"')
+                    connection.exec_driver_sql('COMMENT ON DATABASE "' + active + '" IS \'fabric-conditioning:restore:' + identifier + "'")
         except Exception:
-            with admin.connect() as connection:
-                if promoted:
-                    connection.exec_driver_sql('ALTER DATABASE "' + active + '" RENAME TO "' + stage + '"')
-                if renamed:
-                    connection.exec_driver_sql('ALTER DATABASE "' + previous + '" RENAME TO "' + active + '"')
-                connection.exec_driver_sql('ALTER DATABASE "' + active + '" ALLOW_CONNECTIONS true')
+            # A transaction-exit error can mean PostgreSQL committed but its
+            # COMMIT response was lost. Keep the durable intent ambiguous;
+            # staged_record() checks the transactional database marker before
+            # classifying this as restored or safe to retry.
+            LOGGER.exception("Restore outcome requires database marker reconciliation")
             raise
         finally:
             admin.dispose()
             engine.dispose()
         record.update(status="restored", previous_database=previous, pre_restore_backup=checkpoint["id"])
-        save_json(path, record)
-        return {"id": identifier, "status": "restored", "counts": record["counts"],
-                "pre_restore_backup": checkpoint["id"], "previous_database_retained": True}
+        try:
+            save_json(path, record)
+        except OSError:
+            LOGGER.exception("Restore committed; durable database marker will recover its status")
+        return restore_result(record)
 
 
 class BackupSettings(BaseModel):
@@ -271,7 +321,17 @@ class RestoreConfirmation(BaseModel):
 def list_backups():
     items = [json.loads(path.read_text()) for path in folder().glob("*.info.json")]
     items.sort(key=lambda row: row["created_at"], reverse=True)
-    return {"items": items, "settings": settings(), "timezone": "America/New_York"}
+    config = settings()
+    now = utcnow().astimezone(ZoneInfo("America/New_York"))
+    planned = datetime.combine(now.date(), clock_time(config["daily_hour"]), tzinfo=now.tzinfo)
+    overdue = config["enabled"] and now >= planned and config.get("last_day") != now.date().isoformat()
+    if not overdue and (now >= planned or config.get("last_day") == now.date().isoformat()):
+        planned = datetime.combine(now.date() + timedelta(days=1), clock_time(config["daily_hour"]), tzinfo=now.tzinfo)
+    return {"items": items, "settings": config, "timezone": "America/New_York",
+            "scheduler": {"enabled": config["enabled"], "last_success_at": config.get("last_success_at"),
+                          "last_error": config.get("last_error"), "last_day": config.get("last_day"),
+                          "next_run_at": planned.isoformat() if config["enabled"] else None,
+                          "timezone": "America/New_York", "overdue": bool(overdue)}}
 
 
 @router.put("/settings")
@@ -320,7 +380,27 @@ async def restore_backup(identifier: str, body: RestoreConfirmation, request: Re
     if body.confirmation != "RESTORE":
         raise HTTPException(422, "Type RESTORE to confirm the reviewed database replacement.")
     async with request.app.state.traffic_gate.exclusive():
-        return await asyncio.to_thread(apply_staging, identifier)
+        # A disconnected browser can cancel its coroutine, but cannot cancel
+        # work already running in the thread. Keep maintenance exclusive until
+        # that database switch has actually finished.
+        operation = asyncio.create_task(asyncio.to_thread(apply_staging, identifier))
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            try:
+                await operation
+            finally:
+                raise
+
+
+@router.get("/imports/{identifier}")
+def imported_backup_status(identifier: str):
+    with LOCK:
+        _, record = staged_record(identifier)
+        if record["status"] == "restored":
+            return restore_result(record)
+        return {key: value for key, value in record.items()
+                if key not in {"database", "previous_database", "pre_restore_backup"}}
 
 
 class TrafficGate:
@@ -344,18 +424,21 @@ class TrafficGate:
 
     @asynccontextmanager
     async def exclusive(self):
-        async with self.condition:
-            if self.maintenance:
-                raise HTTPException(409, "Another restore is already in progress.")
-            self.maintenance = True
-            while self.active:
-                await self.condition.wait()
+        claimed = False
         try:
+            async with self.condition:
+                if self.maintenance:
+                    raise HTTPException(409, "Another restore is already in progress.")
+                self.maintenance = True
+                claimed = True
+                while self.active:
+                    await self.condition.wait()
             yield
         finally:
-            async with self.condition:
-                self.maintenance = False
-                self.condition.notify_all()
+            if claimed:
+                async with self.condition:
+                    self.maintenance = False
+                    self.condition.notify_all()
 
 
 async def daily_scheduler():
@@ -368,7 +451,13 @@ async def daily_scheduler():
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            value = settings()
-            value["last_error"] = type(error).__name__ + ": backup failed; see server log."
-            save_json(folder() / "settings.json", value)
+            LOGGER.exception("Scheduled checkpoint failed")
+            try:
+                value = settings()
+                value["last_error"] = type(error).__name__ + ": backup failed; see server log."
+                save_json(folder() / "settings.json", value)
+            except Exception:
+                # A permissions/disk problem must not kill the scheduler while
+                # it is trying to report the original backup failure.
+                LOGGER.exception("Could not persist the scheduled checkpoint error")
         await asyncio.sleep(60)

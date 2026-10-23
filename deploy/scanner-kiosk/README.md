@@ -36,7 +36,7 @@ This validates package integrity and argument formats. It does not prove API rea
        sudo sh ~/scanner-kiosk/install.sh ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
        sudo reboot
 
-The fifth argument is optional; omitting it keeps the station ID stored in the package. Repeat with the appropriate station ID for all three Pis. When `raspi-config` is present, the installer also sets Desktop Autologin for the kiosk user (`do_boot_behaviour B4`) and turns off screen blanking (`do_blanking 1`). Otherwise it prints those steps for you to do by hand. The installer writes the fixed station configuration and a systemd environment file. It validates file checksums and host settings before making changes.
+The fifth argument is optional; omitting it keeps the station ID stored in the package. Repeat with the appropriate station ID for all three Pis. When `raspi-config` is present, the installer also sets Desktop Autologin for the kiosk user (`do_boot_behaviour B4`) and turns off screen blanking (`do_blanking 1`). Otherwise it prints those steps for you to do by hand. The installer writes the initial room configuration and a systemd environment file. It validates file checksums and host settings before making changes.
 
 If the older `deploy/pi` service occupies port 8080, stop its user service and disable its nginx site before installing this deployment. Run only one kiosk deployment. The installer detects that conflict and stops with instructions.
 
@@ -102,6 +102,8 @@ Local checks:
     sh -n deploy/scanner-kiosk/browser.sh
     node deploy/scanner-kiosk/check-package.mjs
 
-The last command serves the generated local package on an ephemeral loopback port and opens headless Chromium. It checks dedicated routing, fixed station identity, offline readiness, heartbeat, local assets, reload, and zero offline movement submissions; it requires the frontend's installed Playwright dependency.
+The last command serves the generated local package on an ephemeral loopback port and opens headless Chromium. It checks dedicated routing, remembered room selection, offline readiness, heartbeat, local assets, reload, and zero offline movement submissions; it requires the frontend's installed Playwright dependency.
 
 Physical acceptance remains: repeated cold boots, API-unavailable boot, focus loss, frozen/closed browser, USB unplug/replug, exact Data Matrix decoding from printed stock, popup scan rejection, interrupted-response recovery, and measured scan-to-confirmation latency. These provisioning files have not been run on a physical Pi.
+
+The three room buttons on the scanner can change that initial room. The highlighted room persists locally across reloads; the bottom dock contains IN, OUT, and Undo. Confirmation is automatic and stays green for 12 seconds.

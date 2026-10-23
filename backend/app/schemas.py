@@ -33,6 +33,11 @@ class PrepDraftRow(BaseModel):
 
 class PrepBody(BaseModel):
     rows: list[PrepDraftRow] = Field(min_length=1, max_length=1000)
+    expected_rows: list[PrepDraftRow] | None = Field(default=None, min_length=1, max_length=1000)
+
+
+class PrepCommitBody(BaseModel):
+    expected_rows: list[PrepDraftRow] | None = Field(default=None, min_length=1, max_length=1000)
 
 
 class LookupBody(BaseModel):

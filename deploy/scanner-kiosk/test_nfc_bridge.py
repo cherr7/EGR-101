@@ -68,6 +68,21 @@ class IdentifierTests(unittest.TestCase):
 
 
 class TagTests(unittest.TestCase):
+    def test_truncated_text_and_tlv_lengths_never_become_partial_identifiers(self):
+        record = bridge.encode_ndef_text("1234567890")[2:-1]
+        self.assertIsNone(bridge.decode_text_record(record[:8]))
+        self.assertIsNone(bridge.decode_text_record(bytes([0xC1, 1, 0])))
+        tag = FakeTag()
+        tag.pages[16:20] = bytes([0x03, 0xFF, 0x02, 0x00])
+        with self.assertRaisesRegex(ValueError, "capacity"):
+            bridge.read_tag_id(tag, NTAG_UID)
+
+    def test_short_hardware_reads_are_reported(self):
+        tag = FakeTag()
+        tag.mifare_classic_read_block = lambda page: b"\xe1"
+        with self.assertRaisesRegex(RuntimeError, "read failed"):
+            bridge.read_tag_id(tag, NTAG_UID)
+
     def test_written_id_reads_back_as_the_payload(self):
         tag = FakeTag()
         payload = bridge.write_tag_id(tag, tag.uid, SPECIMEN)

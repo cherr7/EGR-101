@@ -40,7 +40,7 @@ class StationPackageTests(unittest.TestCase):
         self.assertLess(html.index("station-bootstrap.js"), html.index('type="module"'))
         self.assertIn('src="/station-runtime.js"', html)
         self.assertTrue((self.output / "assets/app.js").exists())
-        self.assertIn('"fixed": true', (self.output / "station-config.js").read_text())
+        self.assertIn('"fixed": false', (self.output / "station-config.js").read_text())
         self.assertIn('"roomName": "PPE conditioning room"', (self.output / "station-config.js").read_text())
         self.assertEqual(manifest["target_display"], {"width": 1280, "height": 720})
         self.assertFalse(manifest["offline_transactions"])

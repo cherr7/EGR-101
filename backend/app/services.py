@@ -27,18 +27,21 @@ def sessions_for(db, specimen_id, include_voided=False):
     query = select(ConditioningSession).where(ConditioningSession.specimen_id == specimen_id)
     if not include_voided:
         query = query.where(ConditioningSession.voided.is_(False))
-    return list(db.scalars(query.order_by(ConditioningSession.entered_at, ConditioningSession.id)))
+    return list(db.scalars(query.order_by(ConditioningSession.entered_at, ConditioningSession.id)
+                           .execution_options(populate_existing=True)))
 
 
 def current_session(db, specimen_id):
     return db.scalar(select(ConditioningSession).where(
         ConditioningSession.specimen_id == specimen_id,
-        ConditioningSession.exited_at.is_(None), ConditioningSession.voided.is_(False)))
+        ConditioningSession.exited_at.is_(None), ConditioningSession.voided.is_(False))
+        .execution_options(populate_existing=True))
 
 
 def conditioning_period(db, specimen_id):
     return db.scalar(select(ConditioningSession).where(
-        ConditioningSession.specimen_id == specimen_id, ConditioningSession.voided.is_(False)))
+        ConditioningSession.specimen_id == specimen_id, ConditioningSession.voided.is_(False))
+        .execution_options(populate_existing=True))
 
 
 def barcode_value(identifier):
@@ -69,12 +72,26 @@ def event_dict(db, event):
     latest_id = effective["latest_event_id"] if effective else event.id
     can_undo = event.kind == "movement" and not undone and all(
         db.get(Specimen, identifier).last_event_id == latest_id for identifier in affected_ids)
+    stack = db.get(Stack, event.stack_id)
+    room_id = effective["room_id"] if effective else event.payload.get("room_id")
+    if room_id is None:
+        room_ids = {period.get("room_id") for periods in event.payload.get("after", {}).values()
+                    for period in periods if period.get("room_id")}
+        room_id = next(iter(room_ids)) if len(room_ids) == 1 else None
+    room = db.get(Room, room_id) if room_id else None
+    station_id = event.payload.get("station_id")
+    station = db.get(Station, station_id) if station_id else None
     return {"id": event.id, "kind": event.kind, "direction": event.direction,
             "actor": event.actor, "reason": event.reason, "stack_id": event.stack_id,
             "specimen_ids": event.specimen_ids, "affected_count": len(event.specimen_ids),
             "recorded_at": iso(event.recorded_at), "payload": event.payload, "undone": undone,
             "occurred_at": effective["occurred_at"] if effective else event.payload.get("occurred_at", iso(event.recorded_at)),
-            "room_id": effective["room_id"] if effective else event.payload.get("room_id"),
+            "room_id": room_id, "room_name": room.name if room else None,
+            "station_id": station_id, "station_name": station.name if station else None,
+            "project_number": stack.project.project_number, "material_ref": stack.material.material_ref,
+            "test_code": stack.test_code, "preconditioning_code": stack.preconditioning_code,
+            "specimen_numbers": [number for number in db.scalars(select(Specimen.number).where(
+                Specimen.id.in_(affected_ids)).order_by(Specimen.number))],
             "note": effective["note"] if effective else event.reason or "",
             "effective_specimen_ids": affected_ids, "effective_count": len(affected_ids),
             "effective_occurred_at": effective["occurred_at"] if effective else None,

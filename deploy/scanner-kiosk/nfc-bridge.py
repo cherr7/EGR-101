@@ -68,7 +68,7 @@ def encode_ndef_text(text, lang="en"):
 def read16(pn532, page):
     """One NTAG READ returns 16 bytes (4 pages)."""
     chunk = pn532.mifare_classic_read_block(page)
-    if chunk is None:
+    if chunk is None or len(chunk) != 16:
         raise RuntimeError(f"read failed at page {page}")
     return bytes(chunk)
 
@@ -83,7 +83,9 @@ def read_ndef_message(pn532):
 
     def ensure(n):
         nonlocal page
-        while len(data) < min(n, capacity):
+        if n > capacity:
+            raise ValueError("NDEF length exceeds the tag's declared capacity")
+        while len(data) < n:
             data.extend(read16(pn532, page))
             page += 4
 
@@ -96,13 +98,14 @@ def read_ndef_message(pn532):
             continue
         if tag == 0xFE:                 # terminator: no NDEF message
             return b""
-        ensure(i + 4)
+        ensure(i + 2)
         if data[i + 1] == 0xFF:         # 3-byte length form
+            ensure(i + 4)
             length, header = int.from_bytes(data[i + 2:i + 4], "big"), 4
         else:
             length, header = data[i + 1], 2
+        ensure(i + header + length)
         if tag == 0x03:                 # NDEF message TLV
-            ensure(i + header + length)
             return bytes(data[i + header:i + header + length])
         i += header + length            # skip lock/memory-control TLVs
     return b""
@@ -113,21 +116,33 @@ def decode_text_record(message):
     if len(message) < 3:
         return None
     flags, type_len = message[0], message[1]
-    if flags & 0x07 != 0x01:            # TNF must be well-known
+    if flags & 0x07 != 0x01 or not flags & 0x80 or flags & 0x20:
         return None
     if flags & 0x10:
         length, p = message[2], 3
     else:
+        if len(message) < 6:
+            return None
         length, p = int.from_bytes(message[2:6], "big"), 6
+    if flags & 0x08 and p >= len(message):
+        return None
     id_len = message[p] if flags & 0x08 else 0
     p += 1 if flags & 0x08 else 0
+    if p + type_len + id_len + length > len(message):
+        return None
     record_type = bytes(message[p:p + type_len])
     p += type_len + id_len
     payload = bytes(message[p:p + length])
     if record_type != b"T" or not payload:
         return None
     status = payload[0]
-    return payload[1 + (status & 0x3F):].decode("utf-16" if status & 0x80 else "utf-8", errors="replace")
+    start = 1 + (status & 0x3F)
+    if status & 0x40 or start > len(payload):
+        return None
+    try:
+        return payload[start:].decode("utf-16" if status & 0x80 else "utf-8")
+    except UnicodeError:
+        return None
 
 
 def read_tag_id(pn532, uid):

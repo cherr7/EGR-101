@@ -1,0 +1,146 @@
+.scanner-v2 {
+  display: grid;
+  grid-template-rows: 104px minmax(0, 1fr) 108px;
+  height: 100dvh;
+  overflow: hidden;
+  background: #f0f5f3;
+}
+.scanner-v2 .kiosk-header {
+  height: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 20px;
+  padding: 16px 24px;
+}
+.scanner-v2 .scanner-room-title { min-width: 0; }
+.scanner-v2 .scanner-room-title h1 { font-size: 23px; line-height: 1.18; margin: 5px 0 3px; }
+.scanner-v2 .scanner-room-title small { font-size: 12px; color: #5b736e; }
+.scanner-v2 .scanner-rooms { display: flex; gap: 5px; padding: 5px; border: 1px solid #cadbd2; border-radius: 12px; background: #eaf1ed; }
+.scanner-v2 .scanner-rooms button { min-height: 49px; min-width: 88px; padding: 10px 17px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #405f58; font: inherit; font-weight: 700; }
+.scanner-v2 .scanner-rooms button.selected { background: #244c49; color: white; border-color: #244c49; box-shadow: 0 2px 4px #244c4918; }
+.scanner-v2 .scanner-rooms button:disabled { opacity: .55; cursor: default; }
+.scanner-v2 .scanner-connection { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+.scanner-v2 .scanner-sound { min-height: 28px; padding: 3px 9px; border: 0; background: transparent; color: #5b736e; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+.scanner-v2 .kiosk-middle { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 332px; gap: 16px; padding: 16px 20px; overflow: hidden; }
+.scanner-v2 .readiness-area { min-height: 0; padding: 16px 24px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; overflow: hidden; border-radius: 15px; }
+.scanner-v2 .scanner-scope { display: flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; }
+.scanner-v2 .scanner-scope > span { font-size: 12px; margin-right: 8px; opacity: .8; }
+.scanner-v2 .scanner-scope button { min-height: 45px; border: 1px solid #bbccc2; border-radius: 9px; padding: 9px 15px; background: #ffffff66; color: #355e4b; font: inherit; font-size: 13px; font-weight: 700; }
+.scanner-v2 .scanner-scope button[aria-pressed=true] { background: #e5efda; border-color: #8caf6c; }
+.scanner-v2 .confirmed .scanner-scope > span { color: white; }
+.scanner-v2 .confirmed .scanner-scope button { border-color: #ffffff77; color: #153f2e; }
+.scanner-v2 .confirmed .scanner-scope button[aria-pressed=true] { background: #fff; }
+.scanner-v2 .scanner-result { display: flex; flex: 1 1 auto; min-height: 100px; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px 0; }
+.scanner-v2 .readiness-icon { flex: 0 0 auto; font-size: 49px; line-height: 1; margin: 0 0 7px; }
+.scanner-v2 .readiness-area h2 { margin: 0; font-size: 38px; line-height: 1.18; }
+.scanner-v2 .readiness-description { max-width: 620px; font-size: 15px; line-height: 1.5; margin: 12px 0 0; }
+.scanner-v2 .confirmed .readiness-description { color: #fff; }
+.scanner-v2 .latency { margin: 8px 0 0; font-size: 11px; }
+.scanner-v2 .last-stack { width: 100%; max-width: none; margin: 0; padding: 15px 18px; text-align: left; flex: 0 0 auto; }
+.scanner-v2 .last-stack h3 { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 19px; margin: 7px 0 5px; }
+.scanner-v2 .last-stack em { margin: 0 9px; }
+.scanner-v2 .last-stack p { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin: 0; }
+.scanner-v2 .stack-counts { margin: 10px 0 0; padding: 10px 0 0; gap: 24px; }
+.scanner-v2 .stack-counts span { font-size: 12px; }
+.scanner-v2 .stack-counts b { font-size: 19px; }
+.scanner-v2 .scanner-receipt { display: flex; justify-content: space-between; gap: 10px; flex: 0 0 auto; padding: 10px 2px 0; font-size: 12px; color: #4a6862; }
+.scanner-v2 .kiosk-message { margin: 9px 0 0; padding: 10px; font-size: 13px; line-height: 1.35; flex: 0 0 auto; }
+.scanner-v2 .readiness-area > .button { flex: 0 0 auto; margin: 8px auto 0; min-height: 40px; }
+.scanner-v2 .recent-panel { min-height: 0; display: flex; flex-direction: column; }
+.scanner-v2 .recent-heading { flex: 0 0 auto; padding: 17px; }
+.scanner-v2 .recent-heading h2 { font-size: 15px; }
+.scanner-v2 .recent-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 15px; scrollbar-gutter: stable; }
+.scanner-v2 .recent-row { align-items: flex-start; padding: 13px 0; gap: 10px; }
+.scanner-v2 .recent-row > div { min-width: 0; }
+.scanner-v2 .recent-row b { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.scanner-v2 .recent-row p { font-size: 12px; margin: 4px 0; line-height: 1.35; overflow-wrap: anywhere; }
+.scanner-v2 .recent-row small { display: block; font-size: 11px; }
+.scanner-v2 .recent-row time { display: block; margin-top: 4px; font-size: 10px; color: #6d7e73; }
+.scanner-v2 .recent-direction { min-width: 42px; font-size: 10px; height: 32px; }
+.scanner-v2 .recent-direction.amended { background: #edf0f4; color: #45647c; }
+.scanner-v2 .recent-foot { flex: 0 0 auto; font-size: 10px; padding: 11px 15px; }
+.scanner-v2 .kiosk-dock { height: auto; min-height: 0; display: flex; align-items: center; padding: 14px 24px; gap: 22px; flex-wrap: nowrap; }
+.scanner-v2 .dock-direction { display: flex; flex: 1 1 auto; gap: 14px; }
+.scanner-v2 .dock-direction button { display: flex; justify-content: center; gap: 18px; width: auto; flex: 1 1 0; min-height: 78px; max-width: none; font-size: 29px; border-radius: 12px; }
+.scanner-v2 .dock-direction button > span { font-size: 33px; }
+.scanner-v2 .dock-direction button div { text-align: left; line-height: 1; }
+.scanner-v2 .dock-direction button small { display: block; font-size: 11px; margin-top: 8px; font-weight: 500; }
+.scanner-v2 .dock-direction button.active.in { background: #dff0cc; border-color: #85aa60; color: #42672c; }
+.scanner-v2 .dock-direction button.active.out { background: #d8e9ee; border-color: #648e9c; color: #214b58; }
+.scanner-v2 .dock-undo { display: flex; align-items: center; justify-content: center; gap: 13px; min-height: 78px; min-width: 185px; margin: 0; padding: 13px 20px; font-size: 16px; }
+.scanner-v2 .dock-undo > span { font-size: 30px; }
+.scanner-v2 .dock-undo div { text-align: left; }
+.scanner-v2 .dock-undo small { display: block; font-size: 11px; margin-top: 6px; }
+.scanner-v2 .modal { max-height: calc(100dvh - 50px); }
+.scanner-v2 .modal-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.scanner-v2 .modal-actions { flex-shrink: 0; }
+
+@media (max-width: 1000px) {
+  .scanner-v2 { grid-template-rows: 90px minmax(0, 1fr) 94px; }
+  .scanner-v2 .kiosk-header { grid-template-columns: minmax(130px, 1fr) auto auto; padding: 10px 14px; gap: 12px; }
+  .scanner-v2 .scanner-room-title h1 { font-size: 18px; }
+  .scanner-v2 .scanner-room-title .eyebrow { font-size: 9px; }
+  .scanner-v2 .scanner-room-title small { font-size: 10px; }
+  .scanner-v2 .scanner-rooms { gap: 1px; padding: 3px; }
+  .scanner-v2 .scanner-rooms button { min-width: 62px; min-height: 45px; padding: 9px; font-size: 12px; }
+  .scanner-v2 .scanner-connection .connection { font-size: 10px; }
+  .scanner-v2 .kiosk-middle { grid-template-columns: minmax(0, 1fr) 246px; gap: 10px; padding: 10px; }
+  .scanner-v2 .readiness-area { padding: 12px 16px; }
+  .scanner-v2 .readiness-area h2 { font-size: 30px; }
+  .scanner-v2 .readiness-description { font-size: 12px; margin-top: 8px; }
+  .scanner-v2 .scanner-scope { gap: 4px; }
+  .scanner-v2 .scanner-scope > span { font-size: 10px; margin-right: 2px; }
+  .scanner-v2 .scanner-scope button { font-size: 11px; padding: 8px 10px; min-height: 40px; }
+  .scanner-v2 .last-stack { padding: 10px 13px; }
+  .scanner-v2 .last-stack h3 { font-size: 16px; }
+  .scanner-v2 .last-stack p { font-size: 11px; }
+  .scanner-v2 .kiosk-dock { padding: 10px 14px; gap: 13px; }
+  .scanner-v2 .dock-direction { gap: 10px; }
+  .scanner-v2 .dock-direction button { min-height: 70px; font-size: 26px; gap: 13px; }
+  .scanner-v2 .dock-undo { min-width: 150px; min-height: 70px; padding: 10px 14px; font-size: 14px; }
+}
+@media (max-height: 570px) {
+  .scanner-v2 { grid-template-rows: 78px minmax(0, 1fr) 82px; }
+  .scanner-v2 .kiosk-header { padding: 8px 14px; }
+  .scanner-v2 .kiosk-middle { padding: 8px 10px; }
+  .scanner-v2 .readiness-area { padding: 9px 13px; }
+  .scanner-v2 .scanner-result { padding: 4px 0; min-height: 70px; }
+  .scanner-v2 .readiness-icon { font-size: 28px; margin-bottom: 3px; }
+  .scanner-v2 .readiness-area h2 { font-size: 25px; }
+  .scanner-v2 .readiness-description { margin-top: 5px; font-size: 11px; }
+  .scanner-v2 .scanner-scope button { min-height: 34px; padding: 5px 10px; }
+  .scanner-v2 .last-stack { padding: 8px 11px; }
+  .scanner-v2 .last-stack h3 { margin: 4px 0; font-size: 14px; }
+  .scanner-v2 .stack-counts { margin-top: 6px; padding-top: 6px; }
+  .scanner-v2 .stack-counts b { font-size: 16px; }
+  .scanner-v2 .scanner-receipt { font-size: 10px; padding-top: 5px; }
+  .scanner-v2 .latency { font-size: 9px; margin-top: 5px; }
+  .scanner-v2 .readiness-area.confirming .last-stack { display: none; }
+  .scanner-v2 .dock-direction button, .scanner-v2 .dock-undo { min-height: 60px; }
+  .scanner-v2 .dock-direction button small { margin-top: 5px; }
+}
+@media (max-width: 600px) {
+  .scanner-v2 { grid-template-rows: 137px minmax(0, 1fr) 90px; }
+  .scanner-v2 .kiosk-header { grid-template-columns: minmax(0, 1fr) auto; padding: 10px; gap: 7px; }
+  .scanner-v2 .scanner-room-title h1 { font-size: 17px; }
+  .scanner-v2 .scanner-rooms { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .scanner-v2 .scanner-rooms button { flex: 1; }
+  .scanner-v2 .scanner-connection { gap: 3px; }
+  .scanner-v2 .kiosk-middle { grid-template-columns: minmax(0, 1fr); padding: 8px; }
+  .scanner-v2 .recent-panel { display: none; }
+  .scanner-v2 .scanner-scope { gap: 4px; }
+  .scanner-v2 .scanner-scope > span { display: none; }
+  .scanner-v2 .scanner-scope button { flex: 1; }
+  .scanner-v2 .readiness-area h2 { font-size: 28px; }
+  .scanner-v2 .scanner-receipt { flex-direction: column; gap: 3px; }
+  .scanner-v2 .kiosk-dock { gap: 8px; padding: 8px; }
+  .scanner-v2 .dock-direction { gap: 6px; }
+  .scanner-v2 .dock-direction button { min-height: 70px; gap: 5px; font-size: 23px; }
+  .scanner-v2 .dock-direction button > span { font-size: 23px; }
+  .scanner-v2 .dock-direction button small { display: none; }
+  .scanner-v2 .dock-undo { min-width: 93px; padding: 8px; font-size: 12px; gap: 5px; min-height: 70px; }
+  .scanner-v2 .dock-undo > span { font-size: 20px; }
+  .scanner-v2 .dock-undo small { font-size: 9px; }
+}

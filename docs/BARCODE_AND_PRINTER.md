@@ -38,7 +38,7 @@ The application prints black codes/text. It has no red-channel workflow. Paper a
 1. Join the printer and Mac to a reachable network, or connect by USB. Add the Brother printer in macOS Printers & Scanners using a supported driver/queue and the actual roll. Wi-Fi capability alone does not create that Mac queue. [Apple: add and manage printers](https://support.apple.com/en-gb/guide/mac-help/mh14004/27/mac/27)
 2. Register the reviewed prep rows. Select the registered stacks and open the label preview.
 3. Check readable fields, numbered pieces, count, dimensions, and the Data Matrix margin. Save/download the PDF if direct printing is not configured.
-4. Choose an available Mac printer queue and press Print. The Mac service submits the previewed labels through CUPS using the selected custom media dimensions and no fit-to-page scaling.
+4. Select the existing stacks or numbered specimens to print. Preview and Print use exactly this same selection; reprints retain the original IDs and specimen numbers. Choose an available Mac printer queue and press Print. The Mac service submits the previewed labels through CUPS using the selected custom media dimensions and no fit-to-page scaling.
 5. Inspect the physical result and scan representative labels back into the application.
 
 The printer queue is installed on the host Mac; office browsers ask that host to submit the job. They do not need to install their own printer drivers to use the app's direct Print action. PDF download remains available if CUPS/the queue is unavailable or the chosen roll needs a manual print workflow.

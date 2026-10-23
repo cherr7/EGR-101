@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -33,6 +34,7 @@ QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
 
 class LabelPreviewBody(BaseModel):
     stack_ids: list[UUID] = Field(min_length=1, max_length=100)
+    selected_specimen_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=5000)
     width_mm: float = Field(default=50.8, ge=40, le=150)
     height_mm: float = Field(default=25.4, ge=25, le=150)
 
@@ -41,6 +43,13 @@ class LabelPreviewBody(BaseModel):
     def unique_stacks(cls, values):
         if len(set(values)) != len(values):
             raise ValueError("Each stack can appear only once in a label job.")
+        return values
+
+    @field_validator("selected_specimen_ids")
+    @classmethod
+    def unique_specimens(cls, values):
+        if values is not None and len(set(values)) != len(values):
+            raise ValueError("Each specimen can appear only once in a label job.")
         return values
 
 
@@ -90,13 +99,21 @@ def printer_inventory() -> dict:
     return result
 
 
-def _details(db: Session, stack_ids: list[str]) -> list[dict]:
+def _details(db: Session, stack_ids: list[str], selected_specimen_ids: list[str] | None = None) -> list[dict]:
     details = []
     for identifier in stack_ids:
         stack = db.get(Stack, identifier)
         if stack is None:
             raise HTTPException(404, "A selected stack is no longer registered.")
         details.append(stack_detail(db, stack, include_events=False))
+    if selected_specimen_ids is not None:
+        selected = set(selected_specimen_ids)
+        available = {specimen["id"] for item in details for specimen in item["specimens"]}
+        if not selected or not selected <= available:
+            raise HTTPException(422, "Select registered specimens belonging to the selected stacks.")
+        details = [{**item, "specimens": [specimen for specimen in item["specimens"] if specimen["id"] in selected]}
+                   for item in details]
+        details = [item for item in details if item["specimens"]]
     if sum(len(item["specimens"]) for item in details) > 5000:
         raise HTTPException(422, "Preview at most 5,000 labels per job.")
     return details
@@ -108,6 +125,7 @@ def _job_dict(job: PrintJob) -> dict:
             "stack_ids": job.stack_ids, "options": job.options, "error": job.error,
             "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(),
             "physical_print_confirmed": False,
+            "needs_review": job.status in {"submitting", "unknown"},
             "message": "Accepted by the Mac print queue; verify the physical labels."
                        if job.status == "submitted" else
                        "Submission may have reached the printer. Check the queue before creating a new job."
@@ -121,7 +139,8 @@ def list_printers():
 
 @router.post("/labels/preview")
 def preview_labels(body: LabelPreviewBody, db: Session = Depends(get_db)):
-    document = labels_pdf(_details(db, [str(item) for item in body.stack_ids]),
+    document = labels_pdf(_details(db, [str(item) for item in body.stack_ids],
+                                  [str(item) for item in body.selected_specimen_ids] if body.selected_specimen_ids is not None else None),
                           body.width_mm, body.height_mm)
     return Response(document, media_type="application/pdf", headers={
         "Content-Disposition": 'inline; filename="specimen-labels.pdf"', "Cache-Control": "no-store"})
@@ -148,14 +167,22 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
         if inventory["configured_queue"] and body.printer_queue != inventory["configured_queue"]:
             raise HTTPException(409, "This host is configured for a different printer queue.")
         stack_ids = [str(item) for item in body.stack_ids]
-        details = _details(db, stack_ids)
+        details = _details(db, stack_ids, [str(item) for item in body.selected_specimen_ids]
+                           if body.selected_specimen_ids is not None else None)
         document = labels_pdf(details, body.width_mm, body.height_mm)
         job = PrintJob(id=request_id, fingerprint=fingerprint, status="submitting",
                        printer_queue=body.printer_queue, stack_ids=stack_ids,
                        options={"copies": body.copies, "width_mm": body.width_mm,
                                 "height_mm": body.height_mm, "barcode_format": "DataMatrix",
+                                "selected_specimen_ids": [specimen["id"] for detail in details for specimen in detail["specimens"]],
                                 "label_count": sum(len(item["specimens"]) for item in details) * body.copies})
         db.add(job)
+        for detail in details:
+            db.add(AuditEvent(stack_id=detail["id"], kind="label_print_requested", actor="staff",
+                              specimen_ids=[item["id"] for item in detail["specimens"]],
+                              payload={"print_request_id": request_id, "status": "submitting",
+                                       "printer_queue": body.printer_queue, "copies": body.copies,
+                                       "physical_print_confirmed": False}))
         db.flush()
     status, cups_job_id, error = "unknown", None, None
     temporary = None
@@ -208,7 +235,18 @@ def create_print_job(body: PrintBody, db: Session = Depends(get_db)):
 
 @router.get("/print-jobs/{request_id}")
 def print_job_status(request_id: UUID, db: Session = Depends(get_db)):
-    job = db.get(PrintJob, str(request_id))
-    if job is None:
-        raise HTTPException(404, "Print request not found. Retry with the same request ID.")
-    return _job_dict(job)
+    with db.begin():
+        job = db.scalar(select(PrintJob).where(PrintJob.id == str(request_id)).with_for_update())
+        if job is None:
+            raise HTTPException(404, "Print request not found. Retry with the same request ID.")
+        if job.status == "submitting" and utcnow() - job.updated_at > timedelta(seconds=60):
+            job.status = "unknown"
+            job.error = "The host did not retain a final print response. Check the Mac queue and physical output before creating another job."
+            job.updated_at = utcnow()
+            selected = set(job.options.get("selected_specimen_ids", []))
+            for detail in _details(db, job.stack_ids, list(selected) if selected else None):
+                db.add(AuditEvent(stack_id=detail["id"], kind="label_print_status", actor="host",
+                                  specimen_ids=[item["id"] for item in detail["specimens"]],
+                                  payload={"print_request_id": job.id, "status": "unknown", "physical_print_confirmed": False}))
+            db.flush()
+        return _job_dict(job)

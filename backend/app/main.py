@@ -4,13 +4,14 @@ import io
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from urllib.parse import urlencode
 from pydantic import ValidationError
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
+from sqlalchemy.orm import aliased
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import current_user, require_supervisor, valid_credentials
@@ -20,9 +21,9 @@ from .backups import TrafficGate, daily_scheduler, router as backups_router
 from .exports import router as exports_router
 from .workbooks import router as workbooks_router
 from .printing import router as printing_router
-from .models import AuditEvent, MovementRequest, PrepDraft, Room, Specimen, Stack, Station, Treatment, utcnow
+from .models import AuditEvent, Material, MovementRequest, PrepDraft, Project, Room, Specimen, Stack, Station, Treatment, utcnow
 from .movements import process_movement
-from .schemas import CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, TransactionEditBody, TransactionUndoBody
+from .schemas import CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, PrepCommitBody, TransactionEditBody, TransactionUndoBody
 from .services import commit_draft, draft_dict, event_dict, iso, query_stacks, resolve_code, seed_config, specimen_time_log, stack_detail
 
 
@@ -143,17 +144,21 @@ def update_draft(draft_id: str, body: PrepBody, db=Depends(get_db)):
             raise HTTPException(404, "Draft not found.")
         if draft.committed:
             raise HTTPException(409, "A committed registration cannot be edited. Start a new draft.")
+        if body.expected_rows is not None and draft.rows != [row.model_dump() for row in body.expected_rows]:
+            raise HTTPException(409, "This preparation changed in another browser. Reload its latest values before registering.")
         draft.rows = [r.model_dump() for r in body.rows]
         db.flush()
         return draft_dict(draft)
 
 
 @app.post("/api/prep-drafts/{draft_id}/commit")
-def register_draft(draft_id: str, db=Depends(get_db)):
+def register_draft(draft_id: str, body: PrepCommitBody | None = None, db=Depends(get_db)):
     with db.begin():
         draft = db.scalar(select(PrepDraft).where(PrepDraft.id == draft_id).with_for_update())
         if not draft:
             raise HTTPException(404, "Draft not found.")
+        if not draft.committed and body and body.expected_rows is not None and draft.rows != [row.model_dump() for row in body.expected_rows]:
+            raise HTTPException(409, "This preparation changed before registration. Reload its latest values.")
         return {"stack_ids": commit_draft(db, draft)}
 
 
@@ -230,11 +235,42 @@ def logout(request: Request):
 
 @app.get("/api/transactions")
 @app.get("/api/events")
-def events(stack_id: str | None = None, db=Depends(get_db)):
-    query = select(AuditEvent).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id)
+def events(stack_id: str | None = None, room_id: str | None = None, station_id: str | None = None,
+           limit: int = Query(default=100, ge=1, le=500), q: str | None = None,
+           kind: str | None = Query(default=None, max_length=32), db=Depends(get_db)):
+    query = select(AuditEvent).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id.desc())
     if stack_id:
         query = query.where(AuditEvent.stack_id == stack_id)
-    return {"items": [event_dict(db, e) for e in db.scalars(query)]}
+    if room_id:
+        modification = aliased(AuditEvent)
+        latest_room = select(modification.payload["effective_movement"]["room_id"].astext).where(
+            modification.kind == "modification", modification.payload["event_id"].astext == AuditEvent.id
+        ).order_by(modification.recorded_at.desc(), modification.id.desc()).limit(1).correlate(AuditEvent).scalar_subquery()
+        effective_room = func.coalesce(latest_room, AuditEvent.payload["room_id"].astext)
+        legacy_room = text("jsonb_path_exists(audit_events.payload, '$.after.*[*] ? (@.room_id == $room)', jsonb_build_object('room', CAST(:event_room AS text)))").bindparams(event_room=room_id)
+        query = query.where(or_(effective_room == room_id, (effective_room.is_(None) & legacy_room)))
+    if station_id:
+        query = query.where(AuditEvent.payload["station_id"].astext == station_id)
+    if kind:
+        query = query.where(AuditEvent.kind == kind)
+    if q:
+        pattern = "%" + q.replace("%", "\\%").replace("_", "\\_") + "%"
+        query = query.join(Stack, Stack.id == AuditEvent.stack_id).join(Project).join(Material).where(or_(
+            Project.project_number.ilike(pattern, escape="\\"), Material.material_ref.ilike(pattern, escape="\\"),
+            Stack.test_code.ilike(pattern, escape="\\"), Stack.preconditioning_code.ilike(pattern, escape="\\"),
+            AuditEvent.id.ilike(pattern, escape="\\")))
+    matching_count = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+    rows = list(db.scalars(query.limit(limit + 1)))
+    return {"items": [event_dict(db, event) for event in rows[:limit]], "limit": limit,
+            "has_more": len(rows) > limit, "matching_count": matching_count, "server_time": iso(utcnow())}
+
+
+@app.get("/api/transactions/{event_id}")
+def get_transaction(event_id: str, db=Depends(get_db)):
+    event = db.get(AuditEvent, event_id)
+    if event is None:
+        raise HTTPException(404, "Transaction not found.")
+    return event_dict(db, event)
 
 
 @app.post("/api/corrections")

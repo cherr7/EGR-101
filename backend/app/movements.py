@@ -65,6 +65,8 @@ def process_movement(db, body):
         return finish("already_recorded", f"Already recorded {body.direction}; original timestamps preserved. Each specimen conditions once.", stack)
     if body.direction == "OUT" and any(active[p.id].room_id != station.room_id for p in changed):
         return finish("rejected", "A selected specimen is in another room. Check it out at that room first.", stack)
+    if body.direction == "OUT" and any(now < active[p.id].entered_at for p in changed):
+        return finish("rejected", "The server clock is before the recorded entry. Check the timestamps before checkout.", stack)
     if body.scope != "stack" and len(changed) != len(selected):
         return finish("rejected", "Some selected specimens are already in the requested state. Select only specimens to move.", stack)
     early = [p for p in changed if body.direction == "OUT" and

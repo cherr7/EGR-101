@@ -21,6 +21,17 @@ export async function api<T>(path: string, options: RequestInit = {}, timeout = 
   } finally { clearTimeout(timer) }
 }
 export const post = <T,>(path: string, body: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(body) })
+export async function apiBlob(path: string, body: unknown, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch('/api' + path, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+  })
+  if (!response.ok) {
+    const value = await response.json().catch(() => ({}))
+    throw new ApiError(response.status, typeof value.detail === 'string' ? value.detail : value.detail?.message || 'Could not generate the label preview.')
+  }
+  return response.blob()
+}
 export const formatTime = (value?: string | null) => value ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(value)) : '—'
 export const elapsed = (value?: string | null, end?: string | null) => {
   if (!value) return '—'

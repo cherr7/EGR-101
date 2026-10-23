@@ -46,6 +46,8 @@ ZIP is a container, not encryption. Its SHA-256 checks detect corruption; they d
 4. Type **RESTORE** and select **Restore backup**. This explicitly replaces the active dataset with the validated copy.
 5. Refresh staff pages and let scanner stations reconcile their state before resuming work. Check specimen IDs, counts, ENTRY/EXIT values, and representative audit events.
 
+The app saves the identity of a submitted restore before sending it. If the response is lost, it checks that same operation after reconnection or reload instead of starting another replacement. Database renames and a completion marker commit together; a lost PostgreSQL commit response is reconciled against that marker, including when a subsequent restore has retained the database under another name.
+
 During the final switch, the API drains in-flight traffic and rejects new work until replacement finishes. It creates a pre-restore checkpoint and retains the previous complete database under a separate generated name. The previous database is not deleted by this flow. Recovery of that retained database is a maintenance operation rather than another automatic switch.
 
 Restored records represent the checkpoint's point in time. Movements recorded after that point are not present in the restored dataset; reconcile physical specimen locations before routine scanning resumes. Printer-job history is restored as data and is not an instruction to print those jobs again.

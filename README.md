@@ -2,7 +2,7 @@
 
 The working application runs on one MacBook Neo: PostgreSQL, the FastAPI HTTP API, the React staff app, and label-print submission. Staff computers and three Raspberry Pi scanner stations use that same database through the API. The scanner is a separate fullscreen interface; its Pi deployment keeps its own compiled UI locally.
 
-The current workflow uses **one permanent 128-bit ID per physical specimen**, linked to a stack. Labels encode only that ID as a 39-digit decimal ECC200 Data Matrix. Each specimen has one effective ENTRY and one EXIT for the designated 24-hour conditioning step. Historical UI galleries remain in output/prototypes; they are design archives and do not define the current workflow.
+The current workflow uses **one permanent 128-bit ID per physical specimen**, linked to a stack. Labels encode only that ID as a 39-digit decimal ECC200 Data Matrix. Each specimen has one effective ENTRY and one EXIT for the designated 24-hour conditioning step. Obsolete galleries and screenshots have been removed. The active interfaces are built from frontend/src; fresh local captures are described in output/README.md.
 
 ## Start on the Mac
 
@@ -25,12 +25,12 @@ See [Mac installation and startup](deploy/macos/README.md) for the prepared Laun
 
 ## Staff workflow
 
-1. **Prep & labels:** upload an Excel .xlsx or .xlsm workbook, inspect the detected worksheets and source warnings, and review the proposed rows. CSV and manual entry are also available.
+1. **Specimens → Prepare / import:** upload an Excel .xlsx or .xlsm workbook, inspect the detected worksheets and source warnings, and review the proposed rows. CSV and manual entry are also available.
 2. **Review physical groups:** each registration row represents one material/sample, test, and exact treatment text. Include every physical piece sent to conditioning, including extras. Split combined groups before registration. The importer retains source metadata and leaves ambiguous fields unresolved rather than inventing counts or material identities.
 3. **Register:** complete project, material, test, treatment, and specimen count. Registration creates the stack and its individually numbered specimens with permanent IDs. Repeating the same draft commit returns the existing registration. A repeated workbook upload with the same worksheet selection reuses its draft unless explicitly imported as a new batch.
 4. **Preview & print:** review the labels, then select an installed Mac printer queue. The default layout is 2 inches wide × 1 inch high, or 50.8 × 25.4 mm. Reprints preserve IDs. PDF/CSV exports remain available when the printer is unavailable.
 5. **Stack overview:** see ready specimens first, sort stacks by longest current time inside, and filter by room, status, project, material, test, or treatment. A partially ready stack shows exact ready/inside/finished counts.
-6. **Specimen records:** inspect the single ENTRY/EXIT pair and history for each numbered specimen. Download session CSV, audit CSV, or a printable conditioning report.
+6. **Specimens → Registered specimens:** inspect the single ENTRY/EXIT pair and history for each numbered specimen. Download session CSV, audit CSV, or a printable conditioning report.
 7. **Transaction log:** amend a scan's selected specimen numbers, time, room, or optional notes; record a missed movement; or undo an eligible transaction. No supervisor login or mandatory reason is required. Original observations remain in the append-only audit history.
 8. **Backups:** create/download a checkpoint, configure daily snapshots and an additional copy destination, or validate a backup before explicitly restoring it.
 
@@ -48,9 +48,9 @@ The production station targets the **1280 × 720 landscape Touch Display 2** and
 - Whole-stack OUT includes only members still inside. If 3 of 10 have left, the next whole-stack OUT moves the remaining 7.
 - Individual mode opens numbered checkboxes. Confirming that popup moves exactly those pieces, then returns to whole-stack mode.
 - An OUT before 24 hours opens an early-checkout popup. Override records the real removal and incomplete conditioning.
-- Undo last reverses the exact last transaction, with a brief confirmation. It restores all its affected specimens and retains both observations.
+- Undo last reverses the exact last transaction in one tap. It restores all its affected specimens and retains both observations.
 
-Green appears only after a confirmed database commit. Repeated IN/OUT scans preserve original timestamps; finished specimens do not start another conditioning period. A pending movement or undo is reconciled before accepting another scan. A failed backend health check shows **NOT AVAILABLE**, disables writes, and accepts no offline transactions.
+Choose PPE, Shared, or Footwear using the three highlighted room buttons; the selection persists on that device. Green appears only after a confirmed database commit and remains for 12 seconds without delaying the next scan. A neutral last-result receipt remains afterward. Repeated IN/OUT scans preserve original timestamps; finished specimens do not start another conditioning period. A pending movement or undo is reconciled before accepting another scan. A failed backend health check shows **NOT AVAILABLE**, disables writes, and accepts no offline transactions.
 
 The readiness/result area and bottom controls remain visible; only the recent log scrolls in the main station view. Popup bodies can scroll while their action bars stay visible.
 
@@ -70,6 +70,9 @@ The SQL model stores projects, materials, treatments, stacks, specimens, conditi
 
 ## Labels, backups, and deployment
 
+- [Code audit and interface update](docs/CODE_AUDIT.md): verified fixes, upstream integration findings, and current UI organization.
+- [Real Excel pipeline verification](docs/EXCEL_PIPELINE_VERIFICATION.md): source-file coverage, reviewed missing fields, and decoded labels.
+- [Current state and possible improvements](docs/PROJECT_STATUS.md): implemented features, deployment checks, known gaps, and proposed interface priorities.
 - [Barcode and Brother printer guide](docs/BARCODE_AND_PRINTER.md): 128-bit identity encoding, 20 × 20 Data Matrix symbols, 1 × 2 layout, actual roll dimensions, preview/print, and physical acceptance checks.
 - [Backup and restore guide](docs/BACKUPS.md): consistent ZIP checkpoints, SHA-256 validation, daily 2 a.m. Eastern snapshots, 30-day local retention, staged restore, and retained previous databases.
 - [Mac host guide](deploy/macos/README.md): local app launcher and system startup installation.
@@ -96,7 +99,7 @@ These tests can reset that isolated test database. They must never target the ap
 Native packaging and Pi watchdog tests do not open a browser or register services:
 
     python3 -m unittest discover -s deploy/macos -p test_native.py
-    python3 -m unittest discover -s deploy/scanner-kiosk -p test_watchdog.py
+    python3 -m unittest discover -s deploy/scanner-kiosk -p 'test_*.py'
 
 Build the local Pi UI package after the frontend build:
 
@@ -108,6 +111,6 @@ Build the Mac app again after final source/frontend changes:
 
 Automated checks cover identity preservation, one-period movement, partial checkout, stale/concurrent requests, lost-response reconciliation, amendments/undo, audit history, label decoding, imports, exports, and backup validation. Software checks do not establish physical scan accuracy, stock adhesion, print readability, network behavior, or actual Pi/Mac cold-start recovery. Measure confirmed scan latency from the scanner's final Enter to visible confirmation against the outline's one-second target during hardware acceptance.
 
-Verified on October 22, 2026: **44 PostgreSQL integration tests, 15 real-API browser tests, 8 Mac packaging checks, and 13 Pi package/watchdog checks passed**. The compiled Pi package also passed a headless offline-start workflow. A 20-specimen scan took **213 ms from final Enter to visible green confirmation** on this development laptop. The native launcher and portable command-line checkpoint export were checked against the running host. These results do not establish physical printer/scanner performance or actual Mac/Pi cold-start behavior.
+Verified on October 22, 2026: **61 PostgreSQL integration tests, 25 real-API browser tests, 8 Mac packaging checks, and 23 Pi package/NFC/watchdog checks passed**. The compiled Pi package also passed a headless offline-start workflow. A 20-specimen scan took **141 ms from final Enter to visible green confirmation** on this development laptop. The native launcher and portable command-line checkpoint export were checked against the running host. These results do not establish physical printer/scanner performance or actual Mac/Pi cold-start behavior.
 
 The older Docker Compose files and scripts remain for legacy development. They are not the primary Mac deployment documented here, and old prototype payloads or supervisor workflows should not be used as the current specification.

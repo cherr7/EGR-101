@@ -58,6 +58,12 @@ def conditioning_count(value) -> tuple[int | None, list[dict]]:
     if re.fullmatch(r"\d+(?:\.0+)?", source):
         count = int(float(source))
         return (count if 1 <= count <= 500 else None), []
+    # Real prep templates also write a quantity followed by panel dimensions,
+    # e.g. '6 15x15'. Dimensions describe each piece; they are not multipliers.
+    panel = re.fullmatch(r'(\d+)\s+\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?(?:\s*(?:in|inch|inches|cm|mm|["″]))?', source, re.I)
+    if panel:
+        count = int(panel.group(1))
+        return (count if 1 <= count <= 500 else None), []
     # These are physical subdivisions, not a sequence such as '24 hours'.
     pieces = re.split(r"\s*(?:,|\+|;|\band\b)\s*", source, flags=re.I)
     groups = []

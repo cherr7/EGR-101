@@ -26,7 +26,12 @@ if [ "$with_nfc" = true ]; then
     for name in nfc-bridge.py nfc-requirements.txt fabric-scanner-nfc.service; do
         [ -f "$source_dir/$name" ] || { echo "Missing NFC bridge file: $source_dir/$name" >&2; exit 1; }
     done
-    python3 -m py_compile "$source_dir/nfc-bridge.py"
+    python3 - "$source_dir/nfc-bridge.py" <<'PY'
+import ast
+from pathlib import Path
+import sys
+ast.parse(Path(sys.argv[1]).read_text())
+PY
 fi
 if [ "$check_only" = true ]; then
     echo "Live React station package validated for $station_id. No system changes made."
@@ -60,7 +65,7 @@ rooms = {"shared-door": ("shared", "Shared conditioning room"),
 room_id, room_name = rooms.get(station, (station, "Conditioning station " + station))
 Path("/opt/fabric-scanner/ui/station-config.js").write_text(
     "window.fabricStationConfig = " + json.dumps({"stationId": station, "stationName": room_name + " door",
-                                               "roomId": room_id, "roomName": room_name, "fixed": True,
+                                               "roomId": room_id, "roomName": room_name, "fixed": False,
                                                "targetWidth": 1280, "targetHeight": 720}) + ";\n")
 Path("/opt/fabric-scanner/station.env").write_text(
     "KIOSK_URL=http://127.0.0.1:8080/station.html?station=" + station + "#kiosk\n")

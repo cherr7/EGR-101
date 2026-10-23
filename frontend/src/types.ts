@@ -10,4 +10,5 @@ export type Stack = PrepRow & { id: string; version: number; created_at: string;
 export type Movement = { request_id: string; station_id: string; code: string; direction: 'IN' | 'OUT'; scope: 'stack' | 'specimen' | 'selection'; selected_specimen_ids?: string[]; expected_version?: number; acknowledge_early?: boolean }
 export type MovementResult = { status: 'committed' | 'already_recorded' | 'selection_required' | 'acknowledgment_required' | 'rejected'; message: string; stack_id: string; affected_count: number; recorded_at?: string; event_id?: string; version?: number; specimens?: Specimen[] }
 export type PrinterInfo = { available: boolean; enabled: boolean; configured_queue?: string; printers: { name: string; is_default?: boolean }[]; message: string }
-export type PrintJob = { request_id: string; status: string; message?: string; job_id?: string; printer_queue?: string }
+export type PrintJob = { request_id: string; status: string; message?: string; job_id?: string; printer_queue?: string; affected_count?: number; label_count?: number; stack_ids?: string[]; selected_specimen_ids?: string[]; error?: string | null }
+export type SpecimenRecord = Specimen & { stack_id: string; project_number: string; material_ref: string; test_code: string; preconditioning_code: string; metadata?: Record<string, unknown>; server_time?: string }

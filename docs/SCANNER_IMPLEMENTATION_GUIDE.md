@@ -1,6 +1,6 @@
 # Scanner station implementation guide
 
-The current station targets a Raspberry Pi 5, a **1280 × 720 landscape Touch Display 2**, and an Eyoyo EYH2 USB keyboard-wedge scanner. It uses the working application's HTTP API on the host Mac. The old 800 × 480, 40-bit/binary mockups are archived prototypes.
+The current station targets a Raspberry Pi 5, a **1280 × 720 landscape Touch Display 2**, and an Eyoyo EYH2 USB keyboard-wedge scanner. It uses the working application's HTTP API on the host Mac. The old mockups have been removed; the current app also has a compact fallback layout.
 
 The core behavior is: choose persistent IN or OUT, scan a registered specimen label, and automatically record the eligible whole-stack movement. There is no visible input field and no routine Submit step. The staff database editor is a separate desktop interface.
 
@@ -19,7 +19,7 @@ The core behavior is: choose persistent IN or OUT, scan a registered specimen la
 
 The Pi serves compiled frontend assets locally through nginx and proxies /api requests to the Mac at port 8120. It does not host its own SQL database or accept offline transactions. A browser restart or unavailable Mac must still load the local UI and show the unavailable state.
 
-Use deploy/scanner-kiosk for this implementation. The older deploy/pi files and prototype galleries are legacy alternatives; do not enable two kiosk nginx configurations on the same port.
+Use deploy/scanner-kiosk for this implementation. The superseded deploy/pi sources and prototype galleries were removed. Stop any service installed from those old sources before installing this version.
 
 ## Barcode and scanner input
 
@@ -82,7 +82,7 @@ Build from the current working application on the Mac:
     cd ..
     python3 scripts/build-station.py
 
-The default output is output/station-ui; --source, --output, and --station can select another compiled frontend, package folder, or fixed station. For example, python3 scripts/build-station.py --station ppe-door builds the PPE station package. The package contains the compiled station page/assets and deployment metadata/configuration. It is a real API-connected kiosk package, not the archived mock gallery. Rebuild it after frontend changes and transfer that directory plus deploy/scanner-kiosk to each Pi. No customer workbooks or application database files belong in this package.
+The default output is output/station-ui; --source, --output, and --station can select another compiled frontend, package folder, or default room. For example, python3 scripts/build-station.py --station ppe-door builds the PPE station package. The package contains the compiled station page/assets and deployment metadata/configuration. It is a real API-connected kiosk package, not the archived mock gallery. Rebuild it after frontend changes and transfer that directory plus deploy/scanner-kiosk to each Pi. No customer workbooks or application database files belong in this package.
 
 ## Provision a room station
 
@@ -95,11 +95,11 @@ Install the required packages on the Pi:
     sudo apt update
     sudo apt install nginx chromium python3
 
-Run the project's installer with the transferred package, Mac API origin, desktop username, a reachable LAN DNS resolver, and fixed station ID:
+Run the project's installer with the transferred package, Mac API origin, desktop username, a reachable LAN DNS resolver, and default station ID:
 
     sudo sh deploy/scanner-kiosk/install.sh /path/to/station-ui http://MAC_RESERVED_IP:8120 KIOSK_USER LAN_DNS_IPV4 shared-door
 
-Replace the placeholders with actual values. The fifth station argument is optional and defaults to the station embedded in the package; the builder defaults to shared-door. Use ppe-door or footwear-door for the other room stations. The fixed Pi configuration prevents changing the station through the touchscreen selector.
+Replace the placeholders with actual values. The fifth station argument is optional and defaults to the station embedded in the package; the builder defaults to shared-door. Use ppe-door or footwear-door for the other room stations. The installed station is the initial room. The PPE, Shared, and Footwear buttons may change it; that selection is remembered on this device across reloads.
 
 For read-only validation on the Mac or Pi before installation, run the same arguments with --check as the first argument; no root permission or system changes are needed:
 
@@ -158,3 +158,9 @@ Verify each station with the actual scanner, screen, printer stock, and lab netw
 - Measure final-Enter-to-visible-confirmation latency against the one-second target and record physical first-read accuracy.
 
 Automated browser/watchdog tests cover software behavior. Actual Pi cold-start, focus recovery on the installed OS, scanner suffix configuration, print readability, and physical timing remain hardware acceptance checks.
+
+## Current scanner controls
+
+The top row has PPE, Shared, and Footwear room buttons with a persistent highlighted selection. The installed station is the initial default; a room selected on the touchscreen survives reloads and reboot. Room changes are blocked while a transaction, popup, or unresolved result is active. Changing room clears the local Undo target; earlier transactions remain accessible through the staff log.
+
+The main scan area groups Whole stack and Choose specimens. The bottom dock contains only persistent IN, OUT, and one-tap Undo last. Ordinary scans record automatically. A green confirmed result stays for 12 seconds, and another scan can start immediately. The last-result receipt remains when the green period ends. Early removal still requires the explicit override popup, and numbered partial movement needs its Record selected action.

@@ -68,7 +68,7 @@ def _label_rows(detail: dict, include_header: bool) -> list[dict]:
     base = {key: detail.get(key) for key in (
         "project_number", "material_ref", "test_code", "preconditioning_code", "is_demo"
     )}
-    base.update(stack_id=detail["id"], specimen_count=len(detail["specimens"]))
+    base.update(stack_id=detail["id"], specimen_count=detail.get("specimen_count", len(detail["specimens"])))
     rows = []
     if include_header:
         rows.append({**base, "label_kind": "STACK", "barcode_payload": id_payload(detail["id"]),

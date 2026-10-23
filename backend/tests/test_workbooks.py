@@ -49,6 +49,8 @@ def prep_cells():
 
 
 def test_conditioning_count_includes_extras_and_named_subdivisions():
+    assert conditioning_count("1 24x18")[0] == 1
+    assert conditioning_count("6 15x15")[0] == 6
     assert conditioning_count("6 Warp, 6 Fill")[0] == 12
     assert conditioning_count("4 Contact, 4 Spaced")[0] == 8
     assert conditioning_count("24 hours")[0] is None

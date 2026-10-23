@@ -8,10 +8,8 @@
   main{max-width:760px;padding:48px}p{line-height:1.5;color:#cbdfe1}h1{font-size:42px;margin:12px 0}small{font-size:16px;color:#cbdfe1}.dot{width:16px;height:16px;display:inline-block;border-radius:50%;background:#87dac4;margin-right:12px;animation:pulse 1s infinite alternate}@keyframes pulse{to{opacity:.35}}
 </style>
 <main>
-  <div><span class="dot"></span>Fabric conditioning</div>
-  <h1>Starting station…</h1>
-  <p id="message">Opening the local scanner screen. No action needed.</p>
-  <small id="detail">Checking the station on this Raspberry Pi.</small>
+  <h1 id="message">Starting…</h1>
+  <small id="detail" hidden></small>
 </main>
 <script>
 (() => {
@@ -24,6 +22,7 @@
       !station||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(station)||[...target.searchParams.keys()].join(',')!=='station')throw Error('Invalid station address');
   } catch {
     message.textContent='Station configuration needs attention.';
+    detail.hidden=false;
     detail.textContent='Ask the lab maintainer to rerun the scanner installer.';
     return;
   }
@@ -37,7 +36,6 @@
     } catch {
       const seconds=Math.floor((performance.now()-started)/1000);
       detail.textContent='Waiting for the local station service · '+seconds+' seconds';
-      if(seconds>=15)message.textContent='The station is taking longer to start. It will open automatically when ready.';
     } finally {clearTimeout(timer)}
     setTimeout(check,1000);
   }

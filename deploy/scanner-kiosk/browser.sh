@@ -11,12 +11,15 @@ from urllib.parse import quote
 print("file:///opt/fabric-scanner/bin/startup.html#" + quote(os.environ["KIOSK_URL"], safe=""))
 PY
 )
+# Hardware fallback when a Chromium build cannot leave the file-origin starting page.
+if [ "${KIOSK_DIRECT_START:-false}" = true ]; then startup_url=$KIOSK_URL; fi
 exec /usr/bin/chromium \
     --kiosk \
     --noerrdialogs \
     --no-first-run \
     --no-default-browser-check \
     --disable-session-crashed-bubble \
+    --password-store=basic \
     --ozone-platform=wayland \
     --user-data-dir="$state_dir" \
     "$startup_url"

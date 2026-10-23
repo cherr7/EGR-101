@@ -16,15 +16,16 @@ Initial audit October 22, 2026; Pi input integration reviewed October 23, 2026. 
 | Backup maintenance | Cancellation, corrupt settings, malformed archives, and a narrow database rename/journal failure window could strand recovery. | Maintenance waits reset safely, running restore workers keep the traffic gate, database renames commit atomically, and a durable operation marker reconciles the final result. |
 | Lost restore response | The UI could lose the identity of a completed restore. | The pending import ID survives reload, including a lost PostgreSQL COMMIT response, and is reconciled against the transactional database marker through a status endpoint; retry returns the recorded result without replacing the database again. |
 | Excel panel counts | Text such as `6 15x15` could be interpreted as dimensions instead of six physical panels. | The explicit leading panel count is used and source text is retained. Ambiguous counts still require review. |
+| Activity Undo | Activity rows omitted their stack version, allowing an unseen amendment to be paired with a newer version. | Events carry the displayed stack version; stale Undo requests fail without changes. Lost responses reconcile the selected event, including older eligible activity. |
 | New upstream NFC | A truncated NDEF record could decode only a prefix as an ID. | Buffer/TLV/record and text-encoding bounds are checked, with regressions for truncated payloads. |
 
 The backup archive remains a consistent database checkpoint with integrity checks, validation in a separate database, and a retained previous database on restore. A checksum detects corruption; it is not a substitute for retaining an independent copy.
 
 ## Interface decisions
 
-The staff navigation now contains Stack overview, Specimens, Transaction log, and Backups. Specimens has Prepare / import and Registered specimens tabs. One shared label dialog works from a newly registered batch, a stack, a selected set of pieces, or a single specimen's history. No extra draft-saving workflow or new permissions were introduced.
+The staff navigation contains Stacks, Specimens, Transactions, and Backups. Decorative branding, repeated titles, footer text, and navigation subtitles were removed; useful counts, filters, and actions remain. Specimens has Prepare / import and Registered specimens tabs. One shared label dialog works from a newly registered batch, a stack, a selected set of pieces, or a single specimen's history. No extra draft-saving workflow or new permissions were introduced.
 
-The scanner uses three persistent room tabs, a separate ready/result area, whole-stack/individual controls in the main card, and a fixed IN / OUT / Undo dock. Ordinary scans record automatically. Numbered selection and early checkout use popups, with actions kept visible. Green confirmation lasts 12 seconds and does not block another scan. The room log scrolls independently and identifies projects/materials and changes.
+The scanner uses three persistent room tabs, a separate ready/result area, Stack/Individual controls in the header, and a fixed IN / OUT / Undo dock. Ordinary scans record automatically. Numbered selection and early checkout use popups, with actions kept visible. Green confirmation lasts 12 seconds and does not block another scan. Activity scrolls independently and identifies projects/materials, quantities, and Undone/Modified status. The commit response inserts the row immediately; a late previous poll cannot erase it. Undo targets that top row, marks it Undone and disables instead of stepping backward. Ordinary error/duplicate notices last four seconds and do not delay another scan; unresolved transactions and Offline remain persistent. Header and dock labels are deliberately short, with equal-width IN/OUT/Undo controls.
 
 ## Repository update findings
 
@@ -40,10 +41,10 @@ The installer safely migrates the old NFC process/runtime into the shared servic
 
 ## Evidence and limits
 
-- 61 PostgreSQL tests passed.
-- All 36 browser checks passed: real-API direct/keyboard workflows plus native HTTP EventSource recovery and interface checks.
-- 8 Mac packaging checks and 53 Pi/NFC/watchdog checks passed; compiled-package smoke checks cover single ownership, selected PPE room, usable-reader heartbeat, unavailable boot, and the standalone starting screen.
-- A local 20-specimen keyboard scan reached green in 111 ms. This does not measure physical evdev/Pi/printer timing.
+- 62 PostgreSQL tests passed.
+- All 44 browser checks passed: real-API direct/keyboard workflows plus native HTTP EventSource recovery and interface checks.
+- 8 Mac packaging checks and 59 Pi/NFC/watchdog checks passed; compiled-package smoke checks cover single ownership, selected PPE room, usable-reader heartbeat, unavailable boot, and the standalone starting screen.
+- A local 20-specimen keyboard scan reached green in 118 ms. This does not measure physical evdev/Pi/printer timing.
 - Real workbook verification covered 28 worksheets, 842 review candidates, 709 registered test specimens, and 709 original plus 709 reprint Data Matrix decodes. Missing identifiers/counts were explicit test placeholders in an isolated database, not invented production data.
 
 Browser print tests intercept printer submission; they do not send physical jobs. Source workbooks and generated private reports remain outside Git. Printer readability, actual scanner output, Pi reboot/focus recovery, Mac unattended startup, and external backup recovery still require installation checks. Full specimen/stack inventories remain browser-filtered and need server pagination if volumes grow substantially.

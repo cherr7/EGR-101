@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import queue
+import subprocess
 import sys
 import threading
 import uuid
@@ -50,6 +51,14 @@ DEFAULT_MATCH = "barcode,scanner,eyoyo"
 REJECT_MESSAGE = "Unrecognized scanner input. Rescan the complete label."
 
 log = logging.getLogger("input-bridge")
+
+
+def local_ips():
+    """Read the station's interface addresses, without requiring the central API."""
+    try:
+        return subprocess.check_output(["hostname", "-I"], text=True, timeout=1, stderr=subprocess.DEVNULL).split()
+    except (OSError, subprocess.SubprocessError):
+        return []
 
 
 # --- key events to scans ----------------------------------------------------
@@ -78,15 +87,34 @@ class FrameDecoder:
         self.keymap = build_keymap(ecodes)
         self.shift_keys = {ecodes.KEY_LEFTSHIFT, ecodes.KEY_RIGHTSHIFT}
         self.enter_keys = {ecodes.KEY_ENTER, ecodes.KEY_KPENTER}
+        self.num_lock = getattr(ecodes, "KEY_NUMLOCK", 69)
+        self.down_key = getattr(ecodes, "KEY_DOWN", 108)
         self.held_shift = set()
         self.completed_at = None
+        self.terminated_at = None
         self._clear()
 
     def _clear(self):
         self.buffer, self.invalid, self.last, self.started = [], False, None, None
+        self.invalid_reasons = []
+        self.key_trace = []
 
     def feed(self, code, value, at):
         """Return ("scan", text) or ("reject", message) when Enter ends a frame, else None."""
+        if code == self.num_lock:
+            # Some Eyoyo keyboard-wedge modes toggle Num Lock around each scan.
+            # It carries no payload character and must not poison the frame.
+            return None
+        if (code == self.down_key and self.started is None and self.terminated_at is not None
+                and 0 <= at - self.terminated_at <= MAX_GAP):
+            # This Eyoyo sends Enter, Down, then restores Num Lock. Enter already
+            # closed the frame. Consume only this observed, time-bounded trailer;
+            # Down inside a payload or outside the suffix window remains invalid.
+            if value == 1 and os.environ.get("SCANNER_DEBUG", "").lower() in ("1", "true"):
+                log.info("USB trailer key=KEY_DOWN after_enter_ms=%.1f", (at - self.terminated_at) * 1000)
+            return None
+        if value == 1 and os.environ.get("SCANNER_TRACE_KEYS", "").lower() in ("1", "true") and len(self.key_trace) < 150:
+            self.key_trace.append([code, round(at * 1000, 1)])
         if code in self.shift_keys:
             if value:
                 self.held_shift.add(code)
@@ -99,10 +127,18 @@ class FrameDecoder:
             self.started = at
         if self.last is not None and (at < self.last or at - self.last > MAX_GAP):
             self.invalid = True               # interrupted/out-of-order frame: reject at Enter
+            self.invalid_reasons.append("key_gap_or_order")
         self.last = at
         if code in self.enter_keys:
             text, invalid = "".join(self.buffer), self.invalid
+            if os.environ.get("SCANNER_DEBUG", "").lower() in ("1", "true"):
+                log.info("USB frame text=%s length=%s invalid=%s reasons=%s", json.dumps(text), len(text), invalid,
+                         json.dumps(self.invalid_reasons))
+                if self.key_trace:
+                    first = self.key_trace[0][1]
+                    log.info("USB frame keys_ms=%s", json.dumps([[key, round(at_ms - first, 1)] for key, at_ms in self.key_trace]))
             self.completed_at = self.started
+            self.terminated_at = at
             self._clear()
             if invalid:
                 return ("reject", REJECT_MESSAGE)
@@ -110,6 +146,7 @@ class FrameDecoder:
         pair = self.keymap.get(code)
         if pair is None or len(self.buffer) >= MAX_LENGTH:
             self.invalid = True
+            self.invalid_reasons.append("unknown_key_" + str(code) if pair is None else "too_long")
         else:
             self.buffer.append(pair[bool(self.held_shift)])
         return None
@@ -181,6 +218,9 @@ class Hub:
             delivered = self._send(message)
         if not delivered:
             log.warning("%s %s dropped: no available kiosk page", source, kind)
+        if os.environ.get("SCANNER_DEBUG", "").lower() in ("1", "true"):
+            log.info("input kind=%s source=%s delivered=%s fields=%s", kind, source, delivered,
+                     json.dumps(fields, ensure_ascii=True))
         return delivered
 
     def subscribe(self):
@@ -211,8 +251,9 @@ def handler_for(hub):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/status":
+                addresses = local_ips()
                 with hub.lock:
-                    body = json.dumps({**hub.snapshot(), "pages": int(hub.subscriber is not None)}).encode()
+                    body = json.dumps({**hub.snapshot(), "pages": int(hub.subscriber is not None), "local_ips": addresses}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Cache-Control", "no-store")
@@ -320,6 +361,7 @@ def scanner_worker(hub, evdev, device_path=None, match=(), sleep=time.sleep,
                 for event in device.read_loop():
                     if event.type == getattr(evdev.ecodes, "EV_SYN", 0) and event.code == getattr(evdev.ecodes, "SYN_DROPPED", 3):
                         decoder.invalid = True  # lost keys may otherwise form a different valid decimal ID
+                        decoder.invalid_reasons.append("kernel_events_lost")
                         continue
                     if event.type != evdev.ecodes.EV_KEY:
                         continue
@@ -328,6 +370,7 @@ def scanner_worker(hub, evdev, device_path=None, match=(), sleep=time.sleep,
                     # A stale key-up after Enter must not poison the next fresh frame.
                     if event.value == 1 and (not math.isfinite(at) or age_ms > MAX_AGE_MS or age_ms < -FUTURE_TOLERANCE_MS):
                         decoder.invalid = True
+                        decoder.invalid_reasons.append("event_age_ms_" + str(round(age_ms)) if math.isfinite(age_ms) else "nonfinite_event_time")
                     result = decoder.feed(event.code, event.value, at)
                     if result and result[0] == "scan":
                         hub.publish("scan", "barcode", code=result[1], at_ms=decoder.completed_at * 1000.0)

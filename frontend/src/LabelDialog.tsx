@@ -5,6 +5,8 @@ import { ErrorNotice, Modal } from './App'
 
 const PRINT_KEY = 'fabric-tracker.pending-print.v2'
 const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
+const LABEL_WIDTH_MM = 50.8
+const LABEL_HEIGHT_MM = 25.4
 type LabelSelection = {
   stack_ids: string[]
   selected_specimen_ids: string[]
@@ -39,8 +41,6 @@ export default function LabelDialog({
 }) {
   const [selected, setSelected] = useState<string[]>(() => initialSelectedIds || stacks.flatMap(stack => stack.specimens.map(s => s.id)))
   const [expanded, setExpanded] = useState<string | null>(() => initialSelectedIds ? stacks[0]?.id || null : null)
-  const [width, setWidth] = useState(50.8)
-  const [height, setHeight] = useState(25.4)
   const [copies, setCopies] = useState(1)
   const [queue, setQueue] = useState('')
   const [printers, setPrinters] = useState<PrinterInfo | null>(null)
@@ -62,11 +62,11 @@ export default function LabelDialog({
   const selection = useMemo<LabelSelection>(() => ({
     stack_ids: stacks.filter(stack => stack.specimens.some(s => selected.includes(s.id))).map(stack => stack.id).sort(),
     selected_specimen_ids: [...selected].sort(),
-    width_mm: width,
-    height_mm: height,
-  }), [stacks, selected, width, height])
+    width_mm: LABEL_WIDTH_MM,
+    height_mm: LABEL_HEIGHT_MM,
+  }), [stacks, selected])
   const fingerprint = JSON.stringify(selection)
-  const valid = selected.length > 0 && width >= 40 && width <= 150 && height >= 25 && height <= 150
+  const valid = selected.length > 0
   useEffect(() => {
     if (!healthy) return
     let current = true
@@ -199,7 +199,7 @@ export default function LabelDialog({
       <section className="label-selection-panel">
         <div className="selection-heading">
           <h3>Labels to print</h3>
-          <span>{selected.length} selected</span>
+          <span data-testid="label-scope">{selected.length} selected</span>
         </div>
         <div className="selection-tools">
           <button className="button text" disabled={busy} onClick={() => setSelected(allIds)}>Select all</button>
@@ -231,11 +231,10 @@ export default function LabelDialog({
             </div>}
           </div>
         })}
-        <p className="input-help">Reprinting keeps the original IDs. The preview and print job use exactly the same selected labels.</p>
       </section>
       <section className="label-preview-panel">
         <div className="preview-toolbar">
-          <label>Printer queue
+          <label>Printer
             <select aria-label="Printer queue" value={queue} disabled={busy} onChange={e => setQueue(e.target.value)}>
               <option value="">Choose a printer</option>
               {printers?.printers.map(printer => <option key={printer.name} value={printer.name}>{printer.name}{printer.is_default ? ' (default)' : ''}</option>)}
@@ -245,22 +244,13 @@ export default function LabelDialog({
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
         </div>
         {previewURL ? <iframe className="pdf-preview" title="Actual label PDF preview" src={previewURL} /> :
-          <div className="pdf-preview preview-empty" role="status">{previewing ? 'Generating the selected label preview…' : !selected.length ? 'Choose at least one specimen label.' : !healthy ? 'Preview unavailable while disconnected.' : 'Check the label dimensions.'}</div>}
-        <p className="input-help" data-testid="label-scope">{selected.length} labels per copy · {selection.stack_ids.length} stacks · {width} × {height} mm</p>
-        <details className="label-dimensions">
-          <summary>Label dimensions · 2 × 1 inch default</summary>
-          <div className="form-grid">
-            <label>Width (mm)<input aria-label="Label width" type="number" min="40" max="150" step="0.1" value={width} disabled={busy} onChange={e => setWidth(Number(e.target.value))} /></label>
-            <label>Height (mm)<input aria-label="Label height" type="number" min="25" max="150" step="0.1" value={height} disabled={busy} onChange={e => setHeight(Number(e.target.value))} /></label>
-          </div>
-        </details>
-        <p className="input-help">{printers?.message || 'Printer discovery is unavailable. Open the generated PDF to use normal printing.'}</p>
+          <div className="pdf-preview preview-empty" role="status">{previewing ? 'Loading preview…' : !selected.length ? 'Select labels to preview.' : !healthy ? 'Preview unavailable offline.' : 'Preview unavailable.'}</div>}
+        {printers && !printers.available && <p className="input-help">No printer available. Open the PDF to print.</p>}
         {job && <div className={'notice ' + (job.status === 'submitted' ? 'success' : job.status === 'failed' ? 'error' : 'warning')} role="status">
-          {job.status === 'submitted' ? 'Accepted by the Mac print queue. Verify the physical labels.' : job.message || job.error || job.status}
+          {job.status === 'submitted' ? 'Sent to printer.' : job.message || job.error || job.status}
         </div>}
         {pending && <div className="notice warning">
-          <b>A previous print request needs confirmation.</b>
-          <p>Recovery keeps the original request ID and selection. A new job is blocked until its result is known; check the Mac queue and physical printer.</p>
+          <b>Print result unconfirmed. Check the printer before retrying.</b>
           <button className="button secondary" disabled={!healthy || busy} onClick={() => void checkPrevious()}>Check previous print job</button>
           {job?.status === 'unknown' && <button className="button text" disabled={busy} onClick={() => {
             forgetPending(); setPending(null); setJob(null)
@@ -270,11 +260,11 @@ export default function LabelDialog({
       </section>
     </div>
     <div className="modal-actions">
-      {previewURL && <a className="button secondary" href={previewURL} target="_blank" rel="noreferrer">Open selected PDF ↗</a>}
+      {previewURL && <a className="button secondary" href={previewURL} target="_blank" rel="noreferrer">Open PDF ↗</a>}
       <span className="grow" />
       <button className="button secondary" disabled={busy} onClick={onClose}>Close</button>
       <button className="button primary" disabled={!canPrint} onClick={() => void print()}>
-        {busy ? 'Checking print request…' : 'Print ' + selected.length * copies + ' labels'}
+        {busy ? 'Checking print request…' : 'Print ' + selected.length * copies + (selected.length * copies === 1 ? ' label' : ' labels')}
       </button>
     </div>
   </Modal>

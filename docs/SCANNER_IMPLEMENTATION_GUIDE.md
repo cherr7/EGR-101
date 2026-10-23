@@ -4,7 +4,7 @@ The room station runs Chromium in fullscreen kiosk mode on 64-bit Raspberry Pi O
 
 ## Architecture and supported hardware
 
-The target is a Raspberry Pi 5, Touch Display 2 in 1280 × 720 landscape, and an Eyoyo EYH2 USB keyboard scanner. The default labels carry a permanent 128-bit specimen ID as 39 zero-padded decimal characters in ECC200 Data Matrix. Configure the scanner to append Enter. Keep codes as strings; use BigInt for numeric conversion, never JavaScript Number.
+The target is a Raspberry Pi 5, Touch Display 2 in 1280 × 720 landscape, and an Eyoyo EYH2 USB keyboard scanner. The default labels carry a permanent 128-bit specimen ID as 39 zero-padded decimal characters in ECC200 Data Matrix. The supported physical unit already emits Enter, Down Arrow, and Num Lock; the local reader handles that observed sequence without reprogramming the scanner. Keep codes as strings; use BigInt for numeric conversion, never JavaScript Number.
 
 On an installed Pi, a local Python service reads the USB scanner directly through Linux evdev and an exclusive device grab. Completed frames travel through local nginx to the React page over a server-sent event stream. Chromium remains the display and the page uses the same lookup/movement API as hosted scanner pages. Reading the hardware directly removes the normal dependency on Chromium having OS keyboard focus. A visible, healthy scanner page is still required, and only a database-confirmed commit produces green success.
 
@@ -28,17 +28,19 @@ The exact endpoint, ownership, timing, and failure contract is documented in [SC
 
 ## What operators see
 
-The top row shows the room, highlighted PPE / Shared / Footwear buttons, database availability, and input health. The selected room and persistent IN/OUT direction survive reloads in the dedicated browser profile. The installed room is the initial default. Room changes are blocked during a request, unresolved result, or popup, and clear the local Undo target; older observations remain in the staff transaction log.
+The header contains PPE / Shared / Footwear on the left, Stack / Individual in the middle, and a green Online or red Offline database indicator on the right. There is no repeated room title, sound toggle, input-transport jargon, or explanatory ready-screen paragraph. Room and persistent direction survive reloads. The installed room is the initial default. Room changes are blocked during requests or popups; Activity and Undo then switch to the selected room.
 
-The main ready/result area stays separate from the room-specific recent log. Whole stack and Choose specimens controls sit in the main card. The fixed bottom dock contains IN, OUT, and one-tap Undo last. Only the recent log scrolls during ordinary scanning; popup bodies can scroll while their action bars remain visible.
+The main ready/result area stays separate from Activity. The fixed bottom dock contains equally sized IN, OUT, and Undo buttons, without subtitles. Only Activity scrolls during ordinary scanning; popup bodies scroll while their actions remain visible. The target is 1280 × 720, with a fallback layout at 800 × 480.
 
-- Whole-stack IN moves members awaiting their first entry.
-- Whole-stack OUT moves remaining members still inside: after three of ten leave, the next whole-stack OUT moves seven.
-- Individual mode opens numbered checkboxes. Record the selected pieces, then return to whole-stack mode.
-- OUT before 24 hours requires an explicit early-checkout override and records actual removal/incomplete conditioning.
+- Stack IN moves members awaiting their first entry. Stack OUT moves remaining members still inside: after three of ten leave, the next stack OUT moves seven.
+- Individual opens numbered checkboxes; Stack/Individual remains selected after a movement, override, or Undo and survives reloads. Only an explicit mode change switches it.
+- Early OUT requires an explicit override and records actual removal/incomplete conditioning.
 - Repeat scans preserve original times and do not create another conditioning period.
-- Undo last reverses the exact last transaction in one tap, subject to the backend's intervening-activity checks. Original scan and Undo remain in history.
-- Green lasts 12 seconds without blocking a new scan. The last receipt and recent activity remain afterward. Optional tones follow confirmed results and can be muted.
+- The confirmed commit response immediately inserts the scan at the top of Activity. A follow-up detail/history request is not required, and an older poll cannot erase the new row.
+- Undo targets the newest scan shown in Activity, subject to the backend's intervening-activity checks. It marks that row Undone and disables; it never silently steps backward to another scan. A new recorded scan can become the new target. There is no kiosk Redo or per-row Undo button.
+- Activity shows scans with their current Undone/Modified status. The staff transaction log retains separate original, amendment and Undo audit events.
+- Green lasts 12 seconds without blocking a new scan. It shows count/time, project/material, test/treatment and inside/finished/total counts. The main area then returns to Ready for IN/OUT; Activity retains the scan.
+- Ordinary scan errors, duplicate notices and successful Undo feedback clear after four seconds. Another scan can replace them immediately. Offline, unavailable input, unresolved movements/Undo and popup warnings are persistent conditions; they remain until resolved and block the affected operation.
 
 Readiness means recorded residence reached 24 hours. Environmental measurements remain in the laboratory's existing system. This app tracks one designated room visit per specimen, not subsequent oven/laundry/testing stages.
 
@@ -50,13 +52,13 @@ Device discovery/open/grab failures are retried and exposed as input status. Wor
 
 The reader requests Linux CLOCK_MONOTONIC event timestamps before grabbing the device. It rejects stale/future kernel-buffered frames and lost-key notifications instead of re-dating them as fresh when the process resumes. If the kernel timestamp setup fails, reader readiness stays false and the service reports/retries the failure. The stream has a process session ID, sequence IDs, and monotonic timestamps. The browser calibrates against the Pi's status endpoint using its own monotonic clock and bounded request timing; it rejects unsupported, duplicate, stale, wrong-session, and implausibly future frames. Wall-clock changes used to display laboratory timestamps do not determine transport freshness. Reconnects establish current stream/clock state without replaying old frames.
 
-Database availability and usable input are separate states. A connected HTTP stream alone is insufficient to show reader readiness or bypass focus recovery. A background/hidden station page does not submit bridged scans. Hosted scanner pages on staff computers continue using keyboard capture. An installed Pi's fallback behavior is explicit in its input status; a page refused ownership cannot use fallback to compete with the owning page.
+Database availability and usable input are separate states. A connected HTTP stream alone is insufficient to show reader readiness or bypass focus recovery. A background/hidden station page does not submit bridged scans. Hosted scanner pages on staff computers continue using keyboard capture. Operators see Connect scanner, Scanner in use, or Tap to resume only when action is needed. Transport details remain in the local status endpoint and service logs. A page refused ownership cannot use fallback to compete with the owning page.
 
 Keyboard capture uses a capture-phase document listener, so no visible input field or focused text box is needed. Touching an IN/OUT button or checkbox does not lose capture. It consumes Enter/Space before controls can activate, rejects incomplete/malformed frames, and clears buffered input on focus/visibility changes. It accepts production decimal IDs, optional AIM Data Matrix prefixes, and supported UUID/legacy forms; unsupported 0x/0b text is rejected. OS keyboard capture still requires Chromium focus when used without the direct service. See [MDN key events](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event) and [document.hasFocus](https://developer.mozilla.org/en-US/docs/Web/API/Document/hasFocus).
 
 Before submitting a movement, the page saves its request UUID and exact payload in persistent browser storage. A lost response blocks another scan until the page queries/retries that same request. Changed selections or early-OUT acknowledgment use a new UUID. Pending Undo is also saved and reconciled after reload using the exact transaction status endpoint, independent of log pagination. Keep the dedicated Chromium profile; never clear storage while an outcome is unresolved.
 
-An unreachable API/database shows NOT AVAILABLE and accepts no offline transactions. Reconnection reconciles previously submitted requests; it does not upload scans taken during an outage. Printer submission, staff corrections, imports, and backups continue using the same central backend.
+An unreachable API/database shows Offline in red and accepts no offline transactions. Reconnection reconciles previously submitted requests; it does not upload scans taken during an outage. Printer submission, staff corrections, imports, and backups continue using the same central backend.
 
 ## Build and install
 
@@ -103,7 +105,7 @@ The intended chain is:
       → local station service becomes ready; page navigates to the React scanner
       → input ownership/reader health and database health establish readiness
 
-The launcher no longer silently polls the local web server before opening Chromium. Its self-contained startup page shows progress while waiting for that server. The startup page does not wait for the Mac API; the scanner UI can show NOT AVAILABLE after a backend-unavailable cold boot. The initial OS/graphical/Chromium startup time still requires measurement on hardware. This does not claim zero desktop visibility before Chromium itself appears or establish the cause of the reported 20–30-second delay.
+The launcher no longer silently polls the local web server before opening Chromium. Its self-contained startup page shows progress while waiting for that server. The startup page does not wait for the Mac API; the scanner UI can show Offline after a backend-unavailable cold boot. The initial OS/graphical/Chromium startup time still requires measurement on hardware. This does not claim zero desktop visibility before Chromium itself appears or establish the cause of the reported 20–30-second delay.
 
 Systemd restarts a crashed browser/input process. A local heartbeat every two seconds reports visibility, focus, capture attachment, and usable bridge state. The watchdog allows 45 seconds at startup, then restarts a browser after more than 15 seconds without healthy page state, with restart-loop limiting. Usable direct input can allow a visible page to work without OS keyboard focus. Connection alone or a failed reader cannot grant that exemption. Database outage alone does not trigger a browser restart.
 
@@ -132,7 +134,7 @@ Use a disposable *_test PostgreSQL database/API for browser workflows. The norma
 When hardware testing resumes, verify:
 
 - Cold boot: visible startup feedback, automatic fullscreen scanner, measured boot-to-first-paint and boot-to-ready timing.
-- Mac unavailable at boot: local UI loads, NOT AVAILABLE, no writes/queued scans; later reconnect recovers.
+- Mac unavailable at boot: local UI loads, Offline, no writes/queued scans; later reconnect recovers.
 - Actual Eyoyo stable path, exact 39 digits including leading zeroes, Enter suffix, first-read performance, and unplug/replug without a manual restart.
 - Visible but unfocused browser, hidden/closed/frozen page, competing second page, service crash, and fallback recovery without duplicate movements.
 - Partial three-of-ten OUT followed by remaining-seven OUT; repeated scans preserve times; early override and one-tap Undo behave correctly.
@@ -140,4 +142,8 @@ When hardware testing resumes, verify:
 - Fixed controls/log scrolling and popup action visibility at the target screen size; optional audio on the actual display/speaker arrangement.
 - Printed Data Matrix readability, scale, cutter behavior, and adhesion using the actual Brother stock.
 
-Hardware testing was explicitly deferred during this merge. Record the physical results separately from software test results.
+Initial physical testing subsequently verified one 12-specimen IN transaction and eight exact Data Matrix payloads, including leading zeros and consistent Enter/Down/Num-Lock trailers. The captured sequence is a regression fixture. The remaining physical checks above still require acceptance; see [the input contract](SCANNER_INPUT_PROTOCOL.md#supported-eyoyo-keyboard-sequence).
+
+## Activity and room inventory
+
+The scanner divides its main screen equally between the result and Activity. The upper-right expand button opens detailed Activity with a minus button for each movement; minus reverses that exact transaction, preserves its audit trail, and is disabled after Undo or intervening activity. The dock still targets only the newest movement. Inventory opens a read-only popup for the selected room, defaulting to Ready, with Inside, Next 2h, and project filters. Rows show ready/inside counts, elapsed time, and expandable specimen numbers. Inventory refreshes every ten seconds, updates readiness against server time, and clears stale results on failure. Scans are discarded while either popup is open; close it before scanning. Only the list scrolls, leaving filters and Close visible.

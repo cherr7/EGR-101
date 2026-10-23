@@ -6,7 +6,7 @@ from pathlib import Path
 import types
 import threading
 import struct
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import unittest
 import urllib.request
 import urllib.error
@@ -57,6 +57,37 @@ def decode(events):
 
 
 class FrameDecoderTests(unittest.TestCase):
+    def test_recorded_eyoyo_hardware_sequence_preserves_all_eight_payloads(self):
+        fixture = json.loads((Path(__file__).parent / 'fixtures' / 'eyoyo-hid-scans.json').read_text())
+        self.assertEqual(len(fixture['expected']), 8)
+        self.assertEqual(decode(fixture['events']), [('scan', value) for value in fixture['expected']])
+
+    def test_eyoyo_enter_down_numlock_trailer_does_not_poison_next_scan(self):
+        events = []
+        for start in (0, 3, 13):
+            events += [(69, 1, start), (69, 0, start + .001)] + keys(PAYLOAD, start=start + .002, step=.006)
+            end = start + .002 + len(PAYLOAD) * .006
+            events += [(108, 1, end + .006), (108, 0, end + .007), (69, 1, end + .012), (69, 0, end + .013)]
+        self.assertEqual(decode(events), [("scan", PAYLOAD)] * 3)
+
+    def test_down_arrow_inside_payload_or_after_suffix_window_is_rejected(self):
+        middle = keys(PAYLOAD[:10], enter='KEY_0')[:-2] + [(108, 1, .105)] + keys(PAYLOAD[10:], start=.11)
+        self.assertEqual(decode(middle), [("reject", bridge.REJECT_MESSAGE)])
+        events = keys(PAYLOAD) + [(108, 1, 1)] + keys(PAYLOAD, start=2)
+        self.assertEqual(decode(events), [("scan", PAYLOAD), ("reject", bridge.REJECT_MESSAGE)])
+
+    def test_scanner_num_lock_toggle_does_not_reject_or_poison_scans(self):
+        events = [(69, 1, 0), (69, 0, .001)] + keys(PAYLOAD, start=.01)
+        events += [(69, 1, .5), (69, 0, .501)] + keys(PAYLOAD, start=1)
+        self.assertEqual(decode(events), [("scan", PAYLOAD), ("scan", PAYLOAD)])
+
+    def test_rejected_frame_debug_log_includes_received_text_and_cause(self):
+        events = [(ecodes.KEY_LEFTCTRL, 1, 0)] + keys(PAYLOAD, start=.01)
+        with patch.dict(bridge.os.environ, {"SCANNER_DEBUG": "true"}), self.assertLogs(bridge.log, level="INFO") as captured:
+            self.assertEqual(decode(events), [("reject", bridge.REJECT_MESSAGE)])
+        self.assertIn('text="' + PAYLOAD + '"', captured.output[0])
+        self.assertIn('unknown_key_' + str(ecodes.KEY_LEFTCTRL), captured.output[0])
+
     def test_complete_scan_with_case_and_punctuation(self):
         self.assertEqual(decode(keys(PAYLOAD)), [("scan", PAYLOAD)])
         self.assertEqual(decode(keys("UL-Fab 01")), [("scan", "UL-Fab 01")])
@@ -89,6 +120,15 @@ class FrameDecoderTests(unittest.TestCase):
 
 
 class HubTests(unittest.TestCase):
+    def test_debug_log_preserves_exact_scan_string_and_delivery(self):
+        hub = bridge.Hub()
+        hub.subscribe()
+        code = '000000000000000000000000000000000000123'
+        with patch.dict(bridge.os.environ, {"SCANNER_DEBUG": "true"}), self.assertLogs(bridge.log, level="INFO") as captured:
+            hub.publish("scan", "barcode", code=code)
+        self.assertIn('"code": "' + code + '"', captured.output[0])
+        self.assertIn('delivered=1', captured.output[0])
+
     def test_scans_reach_connected_pages_only_and_are_never_replayed(self):
         hub = bridge.Hub(clock=lambda: 1000.0)
         self.assertEqual(hub.publish("scan", "barcode", code=PAYLOAD), 0)   # no page: dropped

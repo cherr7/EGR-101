@@ -91,16 +91,14 @@ try {
   await page.goto(origin + '/station.html?station=wrong-room#overview');
   await page.bringToFront();
   await page.waitForFunction(() => window.fabricScannerCaptureReady === true);
-  await page.waitForFunction(() => document.querySelector('.readiness-area')?.textContent?.includes('NOT AVAILABLE'));
+  await page.waitForFunction(() => document.querySelector('.readiness-area')?.textContent?.includes('Offline'));
   const station = await page.evaluate(() => window.fabricStationConfig);
   assert.equal(new URL(page.url()).hash, '#kiosk');
   assert.equal(new URL(page.url()).searchParams.get('station'), station.stationId);
   assert.equal(station.fixed, false);
-  assert.ok((await page.locator('.kiosk-header h1').innerText()).includes(station.roomName));
   assert.equal(await page.getByRole('navigation', { name: 'Conditioning room' }).getByRole('button').count(), 3);
   await page.getByRole('button', { name: 'PPE', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
-  assert.ok((await page.locator('.kiosk-header h1').innerText()).includes('PPE'));
   assert.equal(await page.locator('.sidebar').count(), 0);
   assert.ok(await page.locator('.kiosk-dock').isVisible());
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.kiosk-shell').scrollHeight <= innerHeight));
@@ -115,7 +113,7 @@ try {
   await page.evaluate(() => { location.hash = 'records'; });
   await page.waitForFunction(() => location.hash === '#kiosk');
   await page.reload();
-  await page.waitForFunction(() => window.fabricScannerCaptureReady === true && document.querySelector('.readiness-area')?.textContent?.includes('NOT AVAILABLE'));
+  await page.waitForFunction(() => window.fabricScannerCaptureReady === true && document.querySelector('.readiness-area')?.textContent?.includes('Offline'));
   assert.equal(new URL(page.url()).searchParams.get('station'), 'ppe-door');
   assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.readiness-area.confirmed').count(), 0);
@@ -123,7 +121,7 @@ try {
   bridgeMode = true;
   await page.reload();
   await page.waitForFunction(() => window.fabricInputBridgeReady === true);
-  await page.getByText('Scanner ready', { exact:true }).waitFor();
+  await page.waitForFunction(() => window.fabricInputBridgeReady === true);
   assert.equal(streams.size, 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.kiosk-shell').scrollHeight <= innerHeight));
   if (process.env.SCREENSHOT) await page.screenshot({ path: process.env.SCREENSHOT });
@@ -133,7 +131,7 @@ try {
   await page.waitForTimeout(100);
   assert.equal(movements.length, 0);
   apiUp = true;
-  await page.getByText('Database connected').waitFor({ timeout: 10000 });
+  await page.getByText('Online', { exact:true }).waitFor({ timeout: 10000 });
   send({ kind: 'scan', source: 'nfc', code: 'UL-FAB-0001' });
   await alert('Unrecognized scanner input');
   send({ kind: 'scan', code: '42', at_ms: clock() - 10000 });
@@ -142,7 +140,7 @@ try {
   await alert('does not hold a specimen ID');
   devices = { ...devices, scanner: 'missing', scanner_name: '', nfc: 'off' };
   send({ kind: 'status', ...devices });
-  await page.getByText('SCANNER NOT READY', { exact:true }).first().waitFor();
+  await page.getByRole('heading', { name:'Connect scanner', exact:true }).first().waitFor();
   await page.waitForFunction(() => window.fabricInputBridgeReady === false);
   await page.waitForTimeout(2200);
   assert.ok(heartbeats.slice(-1).every(value => value.input_bridge === false && value.capture_ready === true));
@@ -150,7 +148,7 @@ try {
   assert.equal(await page.locator('.readiness-area.confirmed').count(), 0);
   // With the API reachable, a bridge scan follows the normal lookup -> movement -> green path.
   apiUp = true;
-  await page.getByText('Database connected').waitFor({ timeout: 10000 });
+  await page.getByText('Online', { exact:true }).waitFor({ timeout: 10000 });
   devices = { ...devices, scanner: 'ok', scanner_name: 'Test scanner', nfc: 'ok' };
   send({ kind: 'status', ...devices });
   await page.waitForFunction(() => window.fabricInputBridgeReady === true);
@@ -159,7 +157,7 @@ try {
   // A second page sees the occupied state and cannot steal input or fall back to keys.
   const second = await page.context().newPage();
   await second.goto(origin + '/station.html?station=ppe-door#kiosk');
-  await second.getByText('Scanner in another page', { exact:true }).waitFor();
+  await second.getByRole('heading', { name:'Scanner in use', exact:true }).waitFor();
   assert.equal(await second.evaluate(() => window.fabricInputBridgeReady), false);
   assert.equal(streams.size, 1);
   await second.close();
@@ -186,7 +184,7 @@ try {
   const startupFile = pathToFileURL(resolve(root, 'deploy/scanner-kiosk/startup.html')).href;
   const target = 'http://127.0.0.1:8080/station.html?station=ppe-door#kiosk';
   await starting.goto(startupFile+'#'+encodeURIComponent(target));
-  await starting.getByRole('heading', { name:'Starting station…' }).waitFor();
+  await starting.getByRole('heading', { name:'Starting…', exact:true }).waitFor();
   await starting.waitForFunction(() => document.getElementById('detail')?.textContent?.includes('Waiting for the local station'));
   assert.ok(readyChecks>0);
   localReady = true;

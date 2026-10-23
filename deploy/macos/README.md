@@ -2,6 +2,12 @@
 
 The MacBook Neo hosts PostgreSQL, the HTTP API, the staff web app, and print jobs. The three Pi kiosks and staff browsers use this same host. Each Pi additionally runs local nginx and a USB/NFC input service for its own hardware; these do not add another database or a different central API. The packaged Mac app opens the staff interface and starts the local services when necessary.
 
+## Staff browser sizing
+
+Use the browser's actual content viewport rather than the panel's native pixels when checking layout. Apple lists a [2408 × 1506 panel](https://www.apple.com/macbook-neo/specs/); a [hands-on Neo review](https://saggiamente.com/2026/04/recensione-macbook-neo-apple-entra-in-una-nuova-fascia-di-prezzo-senza-snaturare-il-mac/) reports a default “looks like” desktop of 1408 × 881. Browser toolbars, the menu bar, Dock, zoom, and window size change the space available to the app. The Neo has no camera notch, unlike current Air/Pro designs ([hands-on review](https://www.macworld.com/article/3081612)).
+
+The layout suite includes a representative 1408 × 760 browser viewport plus smaller windows; this is a test size, not a claim about every Neo browser's default dimensions. On the actual host, verify at the staff's chosen display scaling and browser zoom.
+
 ## Local installation
 
 Install Homebrew, Python 3.14, PostgreSQL 18, and Node.js on the host:

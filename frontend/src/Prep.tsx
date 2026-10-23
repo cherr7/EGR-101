@@ -174,8 +174,8 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
       setSelectedSheets(value.sheets?.filter(sheet => (sheet as { selected?: boolean }).selected).map(sheet => sheet.name) || [])
       setOnlyMissing(false)
       setLabelStacks(null)
-      setMessage(value.committed ? 'This workbook is already registered. Its original identities and labels have been recovered.' :
-        'Workbook imported. Confirm the physical piece counts and resolve highlighted fields.')
+      setMessage(value.committed ? 'Already registered.' :
+        'Workbook imported.')
     })
   }
   async function openLabels(ids = registered) {
@@ -210,7 +210,7 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
       setDraft(saved)
       setRows(saved.rows)
       setLabelStacks(stacks)
-      setMessage('Registered ' + saved.stack_ids.length + ' stacks. Reprinting will keep these permanent identities.')
+      setMessage('Registered ' + saved.stack_ids.length + ' stacks.')
     })
   }
   function startNew() {
@@ -227,17 +227,15 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
   const shown = rows.map((row, index) => ({ row, index })).filter(({ row }) => !onlyMissing || missingFields(row).length)
 
   return <>
-    <PageHeader eyebrow="PREP & LABELS" title="Prepare the next batch."
-      description="Import a prep workbook, check its physical stacks, then preview and print the specimen labels.">
+    <PageHeader eyebrow="PREP & LABELS" title="Preparation">
       <button className="button secondary" disabled={busy} onClick={startNew}>＋ New preparation</button>
     </PageHeader>
     <ErrorNotice message={error} />
     {message && <div className="notice success" role="status">{message}</div>}
-    <section className="card">
+    <section className="card prep-card">
       <div className="card-heading">
         <div>
           <h2>Prep review {draft?.source && <span className="badge outline">{draft.source.filename}</span>}</h2>
-          <p>One row per physical stack. Count all pieces sent to conditioning, including extras.</p>
         </div>
         <label className={'button primary upload ' + (busy || !healthy ? 'disabled' : '')}>↑ Import Excel / CSV
           <input aria-label="Import prep workbook" type="file" accept=".xlsx,.xlsm,.csv"
@@ -271,7 +269,6 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
         <label className="check-label"><input type="checkbox" checked={onlyMissing}
           onChange={e => setOnlyMissing(e.target.checked)} />Only rows needing attention</label>
         {unresolved.length > 0 && <button className="button text" onClick={jumpToMissing}>Go to first missing value →</button>}
-        <small>Review changes are saved automatically on this computer.</small>
       </div>}
       <datalist id="treatments">{config.treatments.map(treatment => <option key={treatment} value={treatment} />)}</datalist>
       <div className="table-wrap"><table className="prep-table">
@@ -305,7 +302,7 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
     </section>
     {registered.length > 0 && <section className="card">
       <div className="card-heading">
-        <div><h2>Registered specimens</h2><p>Labels are permanent. Choose a stack or individual numbers to reprint without creating new records.</p></div>
+        <div><h2>Registered specimens</h2></div>
         {uploadFile.current && <button className="button secondary" disabled={busy || !healthy}
           onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets, true)}>New physical batch from this workbook</button>}
       </div>

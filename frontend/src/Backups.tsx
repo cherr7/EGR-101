@@ -75,7 +75,7 @@ export default function Backups({ healthy }: { healthy: boolean }) {
   }
 
   const bytes = (value: number) => value > 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${Math.ceil(value / 1024)} KB`
-  return <><PageHeader eyebrow="BACKUPS & RECOVERY" title="Keep a recoverable copy." description="Create a portable database archive, keep daily local snapshots, and validate an imported backup before restoring it."><button className="button primary" disabled={!healthy || busy} onClick={() => void create()}>{busy ? 'Working…' : '＋ Create backup now'}</button></PageHeader><ErrorNotice message={error} />{message && <div className="notice success" role="status">{message}</div>}<section className="backup-health" aria-label="Backup health">
+  return <><PageHeader title="Backups"><button className="button primary" disabled={!healthy || busy} onClick={() => void create()}>{busy ? 'Working…' : '＋ Create backup now'}</button></PageHeader><ErrorNotice message={error} />{message && <div className="notice success" role="status">{message}</div>}<section className="backup-health" aria-label="Backup health">
       <div><span>Latest successful checkpoint</span><b>{formatTime(scheduler.last_success_at || items[0]?.created_at)}</b></div>
       <div><span>Daily schedule</span><b>{scheduler.enabled === false ? 'Paused' : scheduler.overdue ? 'Checkpoint overdue' : formatTime(scheduler.next_run_at)}</b></div>
       <div><span>Additional copy</span><b>{!settings.destination ? 'Destination not configured' : items[0]?.cloud_copy_state === 'copy_failed' ? 'Latest copy failed' : 'Folder copy configured'}</b></div>

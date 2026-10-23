@@ -2,7 +2,7 @@
 
 This is the supported Pi deployment for the React scanner and shared Mac-hosted API. Use Raspberry Pi OS Desktop (64-bit, labwc/Wayland), a Pi 5, and a Touch Display 2 in landscape at 1280 × 720. Chromium still runs in kiosk mode. Changing to Raspberry Pi OS Lite is unnecessary for this deployment; Lite would need a graphical session installed and configured separately.
 
-Each Pi keeps the actual React assets locally and proxies same-origin `/api` calls to the Mac, normally port 8120. If the Mac is unavailable, the scanner screen remains visible with **NOT AVAILABLE**. There is no offline transaction queue. Only an already submitted request is retained for reconciliation with its original UUID.
+Each Pi keeps the actual React assets locally and proxies same-origin `/api` calls to the Mac, normally port 8120. If the Mac is unavailable, the scanner screen remains visible with **Offline**. There is no offline transaction queue. Only an already submitted request is retained for reconciliation with its original UUID.
 
 USB input normally follows **Eyoyo → Linux evdev → local input service → Chromium → Mac API → PostgreSQL confirmation**. The input service grabs the scanner device, so focus elsewhere does not divert ordinary scans or type them into another application. It also handles the optional PN532 reader. A focused keyboard-wedge fallback is available only if the local input service is unreachable, not while a different page owns the service. The app visibly distinguishes database availability, reader readiness, and keyboard fallback.
 
@@ -66,9 +66,15 @@ Then, from the kiosk user's session:
 systemctl --user restart fabric-scanner-input.service
 ```
 
+For hardware testing, add `SCANNER_DEBUG=true` to `/opt/fabric-scanner/scanner.env` and restart the input service. Follow `journalctl --user -fu fabric-scanner-input.service -o cat`. It prints the exact assembled scan string in JSON (including leading zeroes), source, rejection messages, and delivery status. This confirms input delivery, not a database commit; compare with Activity. Remove the setting after testing. Malformed/unfinished frames may not have a complete scan value. The station's IPv4 addresses appear below Online/Offline and refresh every 15 seconds, even when the Mac API is offline.
+
 The installer preserves an existing `/opt/fabric-scanner/scanner.env` on updates. It regenerates `input.env` with `ENABLE_NFC=true` or `false`; `scanner.env` is read afterward and can override those service settings. Use that override deliberately. Do not put account passwords or API credentials in these world-readable station files.
 
 USB unplug/replug, discovery errors, permissions failures, and grab failures are retried and shown as reader status. The Linux reader requests monotonic kernel event timestamps and rejects old buffered frames; an unsupported timestamp configuration stays visibly unavailable rather than accepting unverified input. Device discovery failures do not silently kill the reader thread. A gap or oversized frame is rejected; neither a rejected fragment nor a queued late scan becomes an automatic movement. Configure the physical scanner's Enter suffix; the Data Matrix itself contains the specimen's 128-bit ID as 39 decimal characters. The service reads those keystrokes directly and does not depend on a visible text box.
+
+Physical Eyoyo testing on ULScanner1 confirmed that it reports as `USB HIDKeyboard`; pin its by-id path rather than broadening discovery to every keyboard. This unit also sends Num Lock (Linux key 69) around the scan. The decoder ignores that non-character toggle. With `SCANNER_DEBUG=true`, `USB frame` logs preserve the assembled text, its length, and rejection causes even for a rejected frame. A 39-digit physical scan was verified through a single 12-specimen IN transaction in the shared room; reboot, printer output, and the rest of the physical movement workflow still need acceptance testing.
+
+The same unit emits Down Arrow after the terminating Enter. The decoder consumes this observed trailer only while no payload is active and within 350 ms after Enter. Down Arrow inside a payload, unrelated controls, partial frames, stale data, and lost kernel events still reject the scan. All eight physical diagnostic Data Matrix scans matched their expected payloads, including leading zeros, case, punctuation, URL, and repeat identity. Their 528-key-event capture is a regression fixture. Use this observed keyboard configuration as the station baseline; reprogramming the scanner is not a setup requirement. `SCANNER_TRACE_KEYS=true` adds bounded ordered payload-key/timing diagnostics; normally leave it off. Full hardware movement acceptance remains necessary. Virtual-COM and HID-POS are not implemented transports.
 
 ## Optional NFC
 
@@ -99,6 +105,10 @@ The write command accepts a UUID or its 39-digit payload and verifies the writte
 The startup sequence is **Desktop Autologin → labwc autostart → user systemd target → Chromium kiosk starting screen → local React scanner**. `browser.sh` immediately launches the self-contained `file://` starting page; it no longer waits silently for nginx before launching Chromium. That page says “Starting station…” and polls only read-only local `/station/ready`. Once the local station page exists it replaces itself with `http://127.0.0.1:8080/station.html?station=…#kiosk`. It never waits for the Mac API or internet. The file-origin CORS permission is restricted to the readiness route; it is not added to API writes. Only a validated loopback station target is accepted.
 
 This provides feedback **after Chromium opens**. It does not claim to remove desktop/compositor startup time, and the exact boot-to-browser delay still needs measurement on the Pi. There can still be a desktop interval before Chromium itself is ready.
+
+On ULScanner1 with Chromium 155, the file-origin starting screen did not reach the station page during hardware onboarding. The tested workaround is `KIOSK_DIRECT_START=true` in `/opt/fabric-scanner/station.env`, followed by a browser-service restart. This opens the local station URL directly; the watchdog handles a failed initial load. The installer regenerates `station.env`, so reapply this workaround after reinstalling until the starting-screen issue is resolved.
+
+The dedicated kiosk Chromium profile uses `--password-store=basic` to avoid an unlock-keyring prompt after desktop autologin. Do not save passwords in this profile; it only displays the lab station. The system keyring and other browser profiles are unchanged. The optional starting screen displays only “Starting…” during normal startup.
 
 `fabric-scanner.target` starts the browser, watchdog, and input service. Chromium's persistent profile retains room selection and interrupted-request IDs across restarts. Do not erase that profile during ordinary updates.
 

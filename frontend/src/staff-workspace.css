@@ -1,8 +1,49 @@
+/* Staff pages share one spacing rhythm; kiosk sizing lives in kiosk.css. */
+.app-shell .sidebar { width: 208px; padding: 24px 12px; }
+.app-shell .sidebar nav { gap: 8px; }
+.app-shell .nav-item { min-height: 48px; padding: 12px 10px; font-size: 13px; color: #456255; }
+.app-shell .nav-item.active { color: #214d46; }
+.app-shell .nav-icon { flex-shrink: 0; }
+.app-shell .side-foot { padding: 24px 10px 0; display: flex; flex-direction: column; gap: 20px; }
+.app-shell .station-link, .app-shell .connection { font-size: 12px; }
+.app-shell .main-shell { margin-left: 208px; }
+.app-shell main { padding: 24px; }
+.app-shell .page-heading { min-height: 48px; margin-bottom: 20px; }
+.app-shell .page-heading h1 { font-size: 28px; }
+.app-shell .button { font-size: 12px; }
+.app-shell .card-heading, .app-shell .toolbar, .app-shell .card-actions { padding-left: 20px; padding-right: 20px; }
+.app-shell .toolbar { gap: 12px; flex-wrap: wrap; }
+.app-shell .toolbar .search-label { min-width: 220px; }
+.app-shell .toolbar input, .app-shell .toolbar > select { font-size: 12px; }
+.app-shell table { font-size: 12px; }
+.app-shell th { font-size: 11px; color: #657c6c; }
+.app-shell td small { font-size: 11px; color: #718775; }
+.app-shell .metrics { margin-bottom: 20px; gap: 12px; }
+.app-shell .metric { padding: 16px; gap: 12px; }
+.app-shell .metric div > span { font-size: 12px; color: #60796a; }
+.app-shell .metric-icon { width: 36px; height: 36px; font-size: 22px; flex-shrink: 0; }
+.app-shell .overview-table .badge { font-size: 11px; }
+.app-shell .empty-inline { padding: 36px 20px; }
+.app-shell .empty-inline .button { margin-top: 16px; }
+@media (max-width: 800px) {
+  .app-shell .sidebar { width: 100%; padding: 12px; }
+  .app-shell .sidebar nav { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .app-shell .nav-item { font-size: 12px; padding: 10px 6px; min-height: 44px; }
+  .app-shell .side-foot { flex-direction: row; align-items: center; justify-content: space-between; padding: 12px 4px 0; gap: 12px; }
+  .app-shell .main-shell { margin-left: 0; }
+  .app-shell main { padding: 20px 16px; }
+  .app-shell .metric { padding: 14px; }
+  .app-shell .metric div > span { font-size: 11px; }
+}
+@media print {
+  .app-shell .sidebar, .app-shell .page-heading { display: none; }
+  .app-shell .main-shell { margin: 0; }
+  .app-shell main { padding: 0; }
+}
+
 .workspace-tabs { display: flex; align-items: center; gap: 7px; padding: 7px; margin-bottom: 28px; background: #e8efeb; border: 1px solid #d5e0da; border-radius: 11px; }
-.metrics-scope { font-size: 12px; color: #6b8175; margin: -5px 0 12px; }
 .workspace-tabs button { min-height: 43px; padding: 10px 20px; border: 1px solid transparent; border-radius: 7px; background: transparent; font-weight: 650; color: #49675d; }
 .workspace-tabs button[aria-selected=true] { color: #234c46; border-color: #d4dfd7; background: #fff; box-shadow: 0 2px 5px #244c4920; }
-.workspace-tabs > span { margin-left: auto; padding-right: 12px; font-size: 11px; color: #627d6e; }
 .prep-exceptions, .context-strip, .record-selection-actions, .selection-summary, .selection-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 14px 22px; border-bottom: 1px solid #dfe9df; background: #f6faf3; }
 .record-selection-actions small { color: #6a8072; font-size: 11px; }
 .prep-exceptions small { margin-left: auto; color: #69816f; font-size: 11px; }
@@ -12,17 +53,16 @@
 .app-shell .table-wrap th { position: sticky; top: 0; background: #f6faf3; z-index: 2; }
 .app-shell .modal .table-wrap { max-height: 42vh; }
 .source-cells { margin-top: 18px; }
-.label-dialog { display: grid; grid-template-columns: minmax(250px, .86fr) minmax(0, 1.14fr); gap: 23px; height: min(650px, 68vh); min-height: 0; overflow: hidden !important; }
+.label-dialog { display: grid; grid-template-columns: minmax(250px, .86fr) minmax(0, 1.14fr); gap: 20px; height: min(620px, 68vh); padding: 20px; min-height: 0; overflow: hidden !important; }
 .label-selection-panel, .label-preview-panel { min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
-.label-selection-panel { padding-right: 10px; }
-.label-preview-panel { display: flex; flex-direction: column; gap: 9px; padding-right: 5px; }
+.label-selection-panel { padding-right: 0; }
+.label-selection-panel .selection-heading { margin: 0 0 12px; }
+.modal:has(.label-dialog) > header, .modal:has(.label-dialog) > .modal-actions { padding: 16px 20px; }
+.label-preview-panel { display: flex; flex-direction: column; gap: 12px; padding-right: 0; }
 .label-preview-panel .preview-toolbar { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) 75px; gap: 12px; flex-shrink: 0; }
-.label-preview-panel .pdf-preview { flex: 1 0 260px; min-height: 260px; width: 100%; margin: 0; border: 1px solid #dce5e1; border-radius: 8px; }
+.label-preview-panel .pdf-preview { flex: 1 1 260px; min-height: 200px; width: 100%; margin: 0; border: 1px solid #dce5e1; border-radius: 8px; }
 .label-preview-panel .preview-empty { display: grid; place-items: center; background: #f3f6f4; color: #6b7f76; padding: 25px; text-align: center; }
 .label-preview-panel .input-help { margin: 0; }
-.label-preview-panel details { padding: 9px 0; }
-.label-preview-panel summary { color: #446359; font-size: 12px; cursor: pointer; }
-.label-preview-panel details .form-grid { padding-top: 10px; }
 .label-stack-choice { margin-bottom: 12px; border: 1px solid #dce5df; border-radius: 8px; background: #fcfefa; }
 .label-stack-heading { display: flex; align-items: flex-start; gap: 9px; padding: 13px; }
 .label-stack-heading .check-label { align-items: flex-start; flex: 1; min-width: 0; }
@@ -63,7 +103,6 @@
 .backup-health span { color: #698275; font-size: 11px; }
 .backup-health b { font-size: 14px; overflow-wrap: anywhere; }
 @media(max-width: 1100px) {
-  .workspace-tabs > span { display: none; }
   .label-dialog { grid-template-columns: minmax(220px, .9fr) minmax(0, 1.1fr); gap: 16px; }
 }
 @media(max-width: 700px) {
@@ -77,3 +116,10 @@
   .prep-exceptions small { margin-left: 0; }
   .app-shell .sidebar nav { grid-template-columns: repeat(4, 1fr); }
 }
+
+.prep-card .card-heading, .prep-card .card-actions { padding: 18px 20px; }
+.prep-card .prep-exceptions { padding: 12px 20px; }
+.prep-card .import-warnings { margin: 0 20px 12px; }
+.prep-card .sheet-inventory { padding: 0 20px 14px; }
+.prep-card .prep-table th:first-child, .prep-card .prep-table td:first-child { padding-left: 20px; }
+.prep-card .prep-table th:last-child, .prep-card .prep-table td:last-child { padding-right: 20px; }

@@ -10,10 +10,10 @@ import Backups from './Backups'
 
 type View = 'overview' | 'prep' | 'records' | 'transactions' | 'backups' | 'kiosk'
 const pages = [
-  { key: 'overview', title: 'Stack overview', icon: '▦', caption: 'Readiness & room time' },
-  { key: 'specimens', title: 'Specimens', icon: '▤', caption: 'Prepare, print & inspect' },
-  { key: 'transactions', title: 'Transaction log', icon: '↔', caption: 'Review & correct' },
-  { key: 'backups', title: 'Backups', icon: '◫', caption: 'Snapshots & recovery' },
+  { key: 'overview', title: 'Stacks', icon: '▦' },
+  { key: 'specimens', title: 'Specimens', icon: '▤' },
+  { key: 'transactions', title: 'Transactions', icon: '↔' },
+  { key: 'backups', title: 'Backups', icon: '◫' },
 ] as const
 function currentView(): View {
   const value = location.hash.slice(1).split('?')[0]
@@ -54,33 +54,26 @@ export default function App() {
   const page = pages.find(item => workspace ? item.key === 'specimens' : item.key === view)!
   return <div className="app-shell">
     <aside className="sidebar">
-      <a className="brand" href="#overview"><span className="brand-mark">fc</span><div>FABRIC<span>CONDITIONING</span></div></a>
-      <div className="side-label">LAB WORKSPACE</div>
       <nav aria-label="Main navigation">
         {pages.map(item => <button key={item.key}
-          className={'nav-item ' + (page.key === item.key ? 'active' : '')}
+          className={'nav-item ' + (page.key === item.key ? 'active' : '')} aria-current={page.key === item.key ? 'page' : undefined}
           onClick={() => navigate(item.key === 'specimens' ? lastSpecimenPage.current : item.key)}>
-          <span className="nav-icon">{item.icon}</span><span>{item.title}<small>{item.caption}</small></span>
+          <span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.title}</span>
         </button>)}
       </nav>
       <div className="side-foot">
-        <a className="station-link" href="#kiosk" target="_blank" rel="noreferrer">Open room station ↗</a>
-        <p>One shared database.<br />Every physical piece accounted for.</p><div className="zone">America/New_York</div>
+        <a className="station-link" href="#kiosk" target="_blank" rel="noreferrer">Room station ↗</a>
+        <span className={'connection ' + (healthy === false ? 'bad' : healthy ? 'good' : '')} role="status">
+          <i aria-hidden="true" />{healthy === null ? 'Connecting…' : healthy ? 'Database connected' : 'Offline'}
+        </span>
       </div>
     </aside>
     <div className="main-shell">
-      <header className="topbar">
-        <div><span className="breadcrumb">WORKSPACE</span><span className="slash">/</span>{page.title}</div>
-        <span className={'connection ' + (healthy === false ? 'bad' : healthy ? 'good' : '')} role="status">
-          <i />{healthy === null ? 'Connecting…' : healthy ? 'Database connected' : 'NOT AVAILABLE'}
-        </span>
-      </header>
       {healthy === false && <div className="offline-banner" role="alert"><strong>NOT AVAILABLE</strong>The database cannot be reached. Changes and printing are unavailable.</div>}
       <main>
         {workspace && <div className="workspace-tabs" role="tablist" aria-label="Specimen workspace">
           <button role="tab" aria-selected={view === 'prep'} onClick={() => navigate('prep')}>Prepare / import</button>
           <button role="tab" aria-selected={view === 'records'} onClick={() => navigate('records')}>Registered specimens</button>
-          <span>Prepare once · Reprint existing identities · Inspect and correct records</span>
         </div>}
         {view === 'overview' && <Overview config={config} healthy={healthy === true} />}
         {view === 'prep' && <Prep config={config} healthy={healthy === true} />}
@@ -88,7 +81,6 @@ export default function App() {
         {view === 'transactions' && <Transactions config={config} healthy={healthy === true} />}
         {view === 'backups' && <Backups healthy={healthy === true} />}
       </main>
-      <footer className="main-foot"><span>FABRIC CONDITIONING</span><span>Eastern Time · Confirmed database records</span></footer>
     </div>
   </div>
 }
@@ -96,10 +88,9 @@ export function ErrorNotice({ message }: { message: string }) {
   return message ? <div className="notice error" role="alert">{message}</div> : null
 }
 export function PageHeader({
-  eyebrow, title, description, children,
-}: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) {
-  return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div>
-    <h1>{title}</h1><p>{description}</p></div>{children}</div>
+  title, description, children,
+}: { eyebrow?: string; title: string; description?: string; children?: React.ReactNode }) {
+  return <div className="page-heading"><div><h1>{title}</h1>{description && <p>{description}</p>}</div>{children}</div>
 }
 const modalStack: symbol[] = []
 export function Modal({
@@ -135,7 +126,7 @@ export function Modal({
   }, [])
   return <div className="modal-backdrop">
     <section ref={container} className={'modal ' + (wide ? 'wide' : '')} role="dialog" aria-modal="true" aria-label={title}>
-      <header><div><span className="eyebrow">FABRIC CONDITIONING</span><h2>{title}</h2></div>
+      <header><div><h2>{title}</h2></div>
         <button className="icon-button" aria-label="Close dialog" onClick={onClose}>×</button></header>
       {children}
     </section>

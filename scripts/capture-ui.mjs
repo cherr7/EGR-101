@@ -75,7 +75,7 @@ try {
 
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/#kiosk');
-  await page.getByText('Database connected', { exact: true }).waitFor();
+  await page.getByText('Online', { exact: true }).waitFor();
   await page.bringToFront();
   await page.getByRole('button', { name: 'Shared', exact: true }).click();
   await page.getByRole('button', { name: 'IN', exact: true }).click();
@@ -85,7 +85,7 @@ try {
   await page.getByRole('heading', { name: 'IN confirmed', exact: true }).waitFor();
   await capture('scanner-confirmed.png');
   await page.getByRole('button', { name: 'OUT', exact: true }).click();
-  await page.getByRole('button', { name: 'Individual specimens' }).click();
+  await page.getByRole('button', { name: 'Individual' }).click();
   await page.keyboard.type(code(second.specimens[0].id));
   await page.keyboard.press('Enter');
   await page.getByRole('dialog', { name: 'Choose the specimens moving' }).waitFor();

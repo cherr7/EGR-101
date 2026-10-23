@@ -96,7 +96,7 @@ def event_dict(db, event):
             "effective_specimen_ids": affected_ids, "effective_count": len(affected_ids),
             "effective_occurred_at": effective["occurred_at"] if effective else None,
             "effective_room_id": effective["room_id"] if effective else None,
-            "modified": bool(effective and latest_id != event.id), "can_undo": can_undo}
+            "modified": bool(effective and latest_id != event.id), "can_undo": can_undo, "version": stack.version}
 
 
 def specimen_time_log(db, specimen_id):

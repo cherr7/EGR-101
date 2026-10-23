@@ -6,6 +6,7 @@ The active application is built from `frontend/src` and `backend/app`. Open the 
 - `station-ui/`: generated local Pi kiosk package.
 - `screenshots/`: freshly captured current interface previews, generated locally and excluded from Git.
 - `qa/`: local verification artifacts and disposable checkpoint exports, excluded from Git.
+- `design-review/`: locally recovered historical prototypes and per-concept comparisons; reference material, not deployment sources. The current-source screenshot section is refreshed separately from the archived build comparison.
 
 Old design galleries, mock interfaces, barcode images, and obsolete screenshots were removed. Their prior versions remain in Git history. They are not part of the running app.
 

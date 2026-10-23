@@ -24,12 +24,25 @@ GET status includes:
 - scanner: starting, ok, missing, or error; scanner_name and scanner_error explain device state.
 - nfc: off, starting, ok, or error; nfc_error explains optional reader failure.
 - pages: zero or one active event-stream consumer.
+- local_ips: station interface addresses, read without contacting the central API; the UI displays IPv4 addresses for debugging.
 
 The initial SSE status message and later status changes carry kind=status, session_id, now_ms, and reader states. Scan/reject messages carry kind, session_id, an increasing safe integer id, source (barcode or nfc), and monotonic at_ms. A scan adds code as a string. A rejection adds a human-readable message.
 
 The service may emit delivery_error for a delayed queued frame, with its sequence ID and a fresh error timestamp; it never converts that frame into a later movement. consumer_overflow is terminal and carries a message explaining that the label must be rescanned. Queues exist only for bounded live transport while a consumer is connected. Nothing is kept for offline operation or a later browser.
 
 USB frame timestamps originate in Linux evdev. The reader requests CLOCK_MONOTONIC through EVIOCSCLOCKID before taking the exclusive device grab. It retains the first key's timestamp, validates inter-key gaps, and rejects stale/future buffered input and SYN_DROPPED frames. An unsupported clock configuration remains a visible reader error. It never silently re-dates an old kernel buffer as a fresh scan after a paused process resumes.
+
+## Supported Eyoyo keyboard sequence
+
+The physical EY-H2 (`34eb:1502`, reported as `USB HIDKeyboard`) is supported in its observed configuration. No scanner reset, programming barcode, Windows driver, serial-mode change, or browser text box is required. Pin the scanner's actual stable by-id path in `scanner.env`; do not add every generic keyboard to discovery.
+
+Each payload is followed by Enter, Down Arrow, and a Num Lock toggle. Num Lock carries no payload character. Enter completes one frame; Down Arrow is consumed only outside a payload and within 350 ms after that Enter. Down inside a payload or outside this suffix window still rejects. The trailer cannot create a second movement or become the beginning of the next scan. Payload validation, first-character freshness, lost-event rejection, popup gating, and database confirmation still apply.
+
+Eight physical Data Matrix scans matched exactly: short decimal, 39-digit leading-zero value, registered specimen ID, maximum unsigned 128-bit value, mixed case, punctuation, URL, and repeated specimen ID. Every scan had the same Enter/Down/Num-Lock trailer. A sanitized 528-key-event capture is replayed by `test_recorded_eyoyo_hardware_sequence_preserves_all_eight_payloads`. This validates transport for these samples; arbitrary text from the diagnostic sheet is not a valid specimen ID in the kiosk.
+
+The physical Shared-room workflow was also checked against the working database on 2026-10-23: a 12-piece demo stack entered together; numbered OUT moved only 1–3; whole-stack OUT moved only 4–12; Undo restored only 4–12. Final state was nine inside and three finished. Original entry times and the first three exit times were preserved, and the original nine-piece OUT remained in audit history marked undone. USB reconnect, cold-start/outage recovery, and actual printed-label acceptance remain to be verified physically.
+
+Use `SCANNER_DEBUG=true` for exact assembled text, rejections, and delivery messages in the input-service journal. `SCANNER_TRACE_KEYS=true` is optional verbose timing output and should normally be off. Diagnostic programs must release the scanner before starting `fabric-scanner.target`; only one reader should grab the physical device. The separate temporary logger is not part of normal operation.
 
 ## Browser acceptance rules
 
@@ -45,7 +58,7 @@ A browser-hidden page does not record streamed scans even if its connection rema
 
 fabricInputBridgeConnected means this page has an open, calibrated stream. fabricInputBridgeReady additionally requires a usable USB or NFC reader. The watchdog heartbeat's input_bridge uses Ready, not merely Connected. A healthy stream with a dead/missing reader cannot bypass focus recovery.
 
-Installed pages distinguish Database connected, Scanner ready/not ready, another page owning input, and keyboard fallback. Hosted Mac scanner pages use keyboard capture normally. If the installed Pi service is unreachable, focused/visible keyboard fallback can work once the service's exclusive grab is released. That state does not guarantee a hung hardware service has released its device; use the documented service diagnostics if scans do not arrive. Known competing ownership disables fallback.
+Database health and usable input remain separate internal states. The header shows Online/Offline for the database; unavailable input shows Connect scanner, Scanner in use, or Tap to resume in the main area. Transport details stay in the local status endpoint and logs. The page exposes data-input-ready for diagnostics/tests; the watchdog still uses fabricInputBridgeReady, not the displayed database status. Hosted Mac scanner pages use keyboard capture normally. If the installed Pi service is unreachable, focused/visible keyboard fallback can work once the service's exclusive grab is released. That state does not guarantee a hung hardware service has released its device; use the documented service diagnostics if scans do not arrive. Known competing ownership disables fallback.
 
 The adapter explicitly recreates an EventSource permanently closed by an HTTP 409/502/503. Relying only on native automatic reconnect would strand a station that opened before its local service. Closed retries stop on page disposal. A failed clock request on an otherwise open stream retries calibration without requiring a reload.
 
@@ -55,4 +68,4 @@ Discovery failures retry; ambiguous device matches require a pinned SCANNER_DEVI
 
 The browser saves a submitted movement's UUID/payload and reconciles that exact request after a lost response. Undo recovery asks GET /api/transactions/{event_id}, independent of log pagination. These durable browser identities survive Chromium restarts in its dedicated profile; the local transport queue does not.
 
-Python tests cover ownership, overflow/EOF, discovery, kernel buffering/timestamps, frame assembly, NFC bounds/reconnect, and watchdog/package behavior. Browser tests simulate USB/NFC transport while using the real SQL-backed HTTP API for movements; an additional native EventSource test exercises HTTP unavailable/occupied recovery. Package smoke checks use real compiled assets and mock central API data. None of those establishes actual Pi reboot timing, evdev permissions on the selected image, or Eyoyo suffix/read performance. See [the implementation guide](SCANNER_IMPLEMENTATION_GUIDE.md) and [deployment README](../deploy/scanner-kiosk/README.md) for installation and physical acceptance.
+Python tests cover ownership, overflow/EOF, discovery, kernel buffering/timestamps, frame assembly, the captured Eyoyo sequence, NFC bounds/reconnect, and watchdog/package behavior. Browser tests simulate USB/NFC transport while using the real SQL-backed HTTP API for movements; an additional native EventSource test exercises HTTP unavailable/occupied recovery. Package smoke checks use real compiled assets and mock central API data. Physical input results are recorded above; full movement acceptance, repeated cold-start timing, and printed-label qualification remain separate checks. See [the implementation guide](SCANNER_IMPLEMENTATION_GUIDE.md) and [deployment README](../deploy/scanner-kiosk/README.md).

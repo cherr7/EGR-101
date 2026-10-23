@@ -198,8 +198,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
   const visibleIds = records.map(({ specimen }) => specimen.id)
   const selectedStacks = items.filter(stack => stack.specimens.some(s => selectedIds.includes(s.id)))
   return <>
-    <PageHeader eyebrow="REGISTERED SPECIMENS" title="Find the piece. See its record."
-      description="Search a printed label ID or project, open one specimen’s history, or select existing labels to reprint.">
+    <PageHeader title="Specimens">
       <button className="button secondary" disabled={!healthy || loading} onClick={() => setRevision(value => value + 1)}>↻ Refresh</button>
     </PageHeader>
     <ErrorNotice message={error} />

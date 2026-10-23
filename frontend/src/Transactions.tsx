@@ -185,8 +185,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
   const addedIds = editor ? editor.ids.filter(id => !originalIds.includes(id)) : []
 
   return <>
-    <PageHeader eyebrow="TRANSACTION LOG" title="Correct a movement. Keep its history."
-      description="Edit the numbered specimens, actual movement time, room or optional notes in a popup.">
+    <PageHeader title="Transactions">
       <button className="button primary" disabled={!healthy || busy || !stacks.length} onClick={() => {
         setError('')
         setMissed({ stackId: context.stackId, ids: [], direction: 'IN',

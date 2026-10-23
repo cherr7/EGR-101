@@ -376,3 +376,15 @@ def test_scheduler_does_not_die_while_reporting_an_unwritable_error(monkeypatch)
     monkeypatch.setattr(backups.asyncio, "sleep", stop_after_iteration)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(backups.daily_scheduler())
+
+
+def test_activity_row_version_rejects_undo_after_an_unseen_amendment(client, stack_factory):
+    stack = stack_factory(count=3)
+    entered, _ = move(client, stack)
+    row = next(e for e in client.get('/api/events', params={'stack_id': stack['id']}).json()['items'] if e['id'] == entered['event_id'])
+    assert row['version'] == entered['version']
+    changed = client.patch('/api/transactions/' + row['id'], json={'note': 'Updated after row loaded', 'expected_version': row['version']})
+    assert changed.is_success, changed.text
+    stale = client.post('/api/transactions/' + row['id'] + '/undo', json={'expected_version': row['version']})
+    assert stale.status_code == 409
+    assert detail(client, stack)['inside_count'] == 3

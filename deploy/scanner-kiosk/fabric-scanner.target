@@ -1,3 +1,3 @@
 [Unit]
 Description=Fabric dedicated scanner station
-Wants=fabric-scanner-browser.service fabric-scanner-watchdog.service
+Wants=fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service

@@ -80,6 +80,7 @@ def build(source: Path, output: Path, station: str = "shared-door") -> dict:
         (temporary / "station-config.js").write_text(
             "window.fabricStationConfig = " + json.dumps({"stationId": station, "stationName": room_name + " door",
                                                           "roomId": room_id, "roomName": room_name, "fixed": False,
+                                                          "inputBridge": True,
                                                           "targetWidth": 1280, "targetHeight": 720}) + ";\n")
         injection = ('<script src="/station-config.js"></script>\n'
                      '<script src="/station-bootstrap.js"></script>\n')

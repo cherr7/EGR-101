@@ -67,7 +67,7 @@ test('lost Undo response stays pending across reload and reconciles the same ori
   await openKiosk(page); await scan(page, code(stack.specimens[0].id)); await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
   let undoPosts = 0, holdReconciliation = false
   await page.route('**/api/transactions/*/undo', async route => { undoPosts++; const response = await route.fetch(); expect(response.ok()).toBeTruthy(); holdReconciliation = true; await route.abort('failed') })
-  await page.route('**/api/transactions?stack_id=*', async route => { if (holdReconciliation) await route.abort('failed'); else await route.continue() })
+  await page.route(/\/api\/transactions\/[0-9a-f-]+$/, async route => { if (holdReconciliation) await route.abort('failed'); else await route.continue() })
   await page.getByRole('button', { name: 'Undo last' }).click(); await expect(page.getByRole('heading', { name: 'Confirming undo…' })).toBeVisible()
   await expect(page.getByRole('alert').filter({ hasText: 'Undo confirmation is pending' })).toBeVisible(); const intent = await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-undo.v1')); expect(intent).not.toBeNull(); await scan(page, code(other.specimens[0].id)); expect((await current(request, other.id)).inside_count).toBe(0)
   holdReconciliation = false; await page.reload(); await expect(page.getByRole('heading', { name: 'Transaction undone', exact: true })).toBeVisible(); expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-undo.v1'))).toBeNull()

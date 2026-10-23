@@ -3,6 +3,8 @@ import { api, ApiError, elapsed, entryOf, exitOf, formatTime, isReady, post, req
 import type { AuditEvent, Config, Movement, MovementResult, Stack } from './types'
 import { Modal } from './App'
 import { attachScanner } from './scannerCapture'
+import { attachInputBridge, INITIAL_INPUT_STATUS } from './inputBridge'
+import type { InputBridgeStatus } from './inputBridge'
 import './kiosk.css'
 
 const PENDING_KEY = 'fabric-tracker.pending-movement.v2', LAST_KEY = 'fabric-tracker.last-movement.v2', UNDO_KEY = 'fabric-tracker.pending-undo.v1'
@@ -21,7 +23,10 @@ const ROOM_CHOICES = [
 type RecentEvent = AuditEvent & { project_number?: string; material_ref?: string; test_code?: string; preconditioning_code?: string }
 
 export default function Kiosk({ config, healthy }: { config: Config; healthy: boolean }) {
-  const stationConfig = (window as unknown as { fabricStationConfig?: { stationId?: string; fixed?: boolean; stationName?: string; roomId?: string; roomName?: string } }).fabricStationConfig
+  const stationConfig = (window as unknown as { fabricStationConfig?: { stationId?: string; fixed?: boolean; stationName?: string; roomId?: string; roomName?: string; inputBridge?: boolean } }).fabricStationConfig
+  const bridgeConfigured = stationConfig?.inputBridge === true
+  const [inputStatus, setInputStatus] = useState<InputBridgeStatus>(INITIAL_INPUT_STATUS)
+  const inputStatusRef = useRef(inputStatus); inputStatusRef.current = inputStatus
   const [station, setStation] = useState(() => stationConfig ? localStorage.getItem('fabric-tracker.station') || stationConfig.stationId || 'shared-door' : new URLSearchParams(location.search).get('station') || localStorage.getItem('fabric-tracker.station') || 'shared-door')
   const [direction, setDirection] = useState<'IN' | 'OUT'>(() => localStorage.getItem('fabric-tracker.direction') === 'OUT' ? 'OUT' : 'IN')
   const [scope, setScope] = useState<'stack' | 'specimen'>('stack'), [busy, setBusy] = useState(false), [pending, setPending] = useState<Movement | null>(() => stored<Movement>(PENDING_KEY))
@@ -103,14 +108,32 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     try { const stack = await post<Stack>('/lookup', { code }); if (!active.current) return; setDetail(stack); if (scope === 'specimen') { const scanned = stack.specimens.find(s => s.id === stack.scanned_specimen_id); const eligible = scanned && (direction === 'IN' ? !entryOf(scanned) : scanned.state === 'IN'); setSelection({ stack, code, direction, ids: eligible ? [scanned!.id] : [] }); return } inFlight.current = false; await submit({ request_id: requestId(), station_id: station, code, direction, scope: 'stack', expected_version: stack.version }, stack) }
     catch (err) { if (active.current) setError((err as Error).message) } finally { inFlight.current = false; if (active.current) setBusy(false) }
   }
-  const scanRef = useRef(scan), stateRef = useRef({ healthy, blocked }); scanRef.current = scan; stateRef.current = { healthy, blocked }
-  useEffect(() => { const dispose = attachScanner({ enabled: () => stateRef.current.healthy && !stateRef.current.blocked && !inFlight.current, onScan: code => void scanRef.current(code), onReject: message => { if (!stateRef.current.blocked) setError(message) }, onBlocked: () => { /* Reject scans while a popup or pending transaction is open; never queue them. */ }, onFocusChange: () => setFocused(document.hasFocus() && !document.hidden) }); (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady = true; return () => { dispose(); (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady = false } }, [])
+  const scanRef = useRef(scan), stateRef = useRef({ healthy, blocked, station, direction, scope }); scanRef.current = scan; stateRef.current = { healthy, blocked, station, direction, scope }
+  useEffect(() => {
+    const globals = window as unknown as { fabricScannerCaptureReady: boolean; fabricInputBridgeConnected: boolean; fabricInputBridgeReady: boolean }
+    const canScan = () => stateRef.current.healthy && !stateRef.current.blocked && !inFlight.current && !document.hidden
+    const reject = (message: string) => { if (!stateRef.current.blocked) setError(message) }
+    const disposeKeyboard = attachScanner({
+      enabled: () => canScan() && document.hasFocus() && (!bridgeConfigured || inputStatusRef.current.fallback),
+      context: () => [stateRef.current.station, stateRef.current.direction, stateRef.current.scope, stateRef.current.blocked].join('|'),
+      onScan: code => void scanRef.current(code), onReject: message => { if (!bridgeConfigured || inputStatusRef.current.fallback) reject(message) },
+      onBlocked: () => { /* Discard; never queue input during a popup, pending transaction, or active direct reader. */ },
+      onFocusChange: () => setFocused(document.hasFocus() && !document.hidden),
+    })
+    const disposeBridge = bridgeConfigured ? attachInputBridge({
+      url: '/station/input/events', statusUrl: '/station/input/status', enabled: canScan,
+      onScan: code => void scanRef.current(code), onReject: reject, onBlocked: () => {},
+      onStatus: value => { inputStatusRef.current = value; setInputStatus(value); globals.fabricInputBridgeConnected = value.connected; globals.fabricInputBridgeReady = value.ready },
+    }) : () => {}
+    globals.fabricScannerCaptureReady = true
+    return () => { disposeKeyboard(); disposeBridge(); globals.fabricScannerCaptureReady = false; globals.fabricInputBridgeConnected = false; globals.fabricInputBridgeReady = false }
+  }, [bridgeConfigured])
   const finishUndo = useCallback(async (intent: PendingUndo) => {
     localStorage.removeItem(UNDO_KEY); localStorage.removeItem(LAST_KEY); setPendingUndo(null); setLast(null); setGreen(false); setResult(null); setError(''); setUndoMessage(`Undo confirmed · ${intent.count} specimens restored.`)
     try { const stack = await api<Stack>(`/stacks/${intent.stack_id}`); if (active.current) setDetail(stack) } catch { /* The undo response or persisted audit event already confirmed the operation. */ }
     void refreshEvents()
   }, [refreshEvents])
-  const undoStatus = async (intent: PendingUndo) => { const value = await api<{ items: AuditEvent[] }>(`/transactions?stack_id=${encodeURIComponent(intent.stack_id)}`, {}, 4500); const target = value.items.find(event => event.id === intent.event_id); if (!target) throw new ApiError(404, 'The original transaction could not be found.'); return target }
+  const undoStatus = (intent: PendingUndo) => api<AuditEvent>('/transactions/' + encodeURIComponent(intent.event_id), {}, 4500)
   const reconcileUndo = useCallback(async () => {
     const intent = stored<PendingUndo>(UNDO_KEY); if (!intent || !healthy || inFlight.current) return
     inFlight.current = true; setBusy(true)
@@ -137,7 +160,10 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     setPendingUndo(intent); setGreen(false); setResult(null); setUndoMessage(''); setError('')
     await reconcileUndo()
   }
-  const title = !healthy ? 'NOT AVAILABLE' : !focused ? 'Tap this screen to resume' : pendingUndo ? 'Confirming undo…' : pending ? 'Confirming transaction…' : busy ? 'Reading label…' : green && result ? `${resultDirection} confirmed` : result?.status === 'already_recorded' ? 'Already recorded' : undoMessage ? 'Transaction undone' : error ? 'Check the message below' : `Ready for ${direction}`
+  const inputReady = bridgeConfigured ? inputStatus.ready || inputStatus.fallback && focused : focused
+  const inputLabel = !bridgeConfigured ? 'Keyboard scanner' : inputStatus.ready ? 'Scanner ready' : inputStatus.fallback ? 'Keyboard fallback' : inputStatus.busy ? 'Scanner in another page' : inputStatus.connected ? 'SCANNER NOT READY' : 'Scanner reconnecting'
+  const inputMessage = !bridgeConfigured ? '' : inputStatus.message || (!inputStatus.ready ? inputStatus.scannerError || inputStatus.nfcError || 'No usable scanner is connected. Check its USB connection.' : '')
+  const title = !healthy ? 'NOT AVAILABLE' : pendingUndo ? 'Confirming undo…' : pending ? 'Confirming transaction…' : !inputReady ? bridgeConfigured && !inputStatus.fallback ? 'SCANNER NOT READY' : 'Tap this screen to resume' : busy ? 'Reading label…'  : green && result ? `${resultDirection} confirmed` : result?.status === 'already_recorded' ? 'Already recorded' : undoMessage ? 'Transaction undone' : error ? 'Check the message below' : `Ready for ${direction}`
   const eligible = selection?.stack.specimens.filter(s => selection.direction === 'IN' ? !entryOf(s) : s.state === 'IN') || []
   const early = acknowledge?.stack.specimens.filter(s => s.state === 'IN' && !isReady(s) && (acknowledge.request.scope === 'stack' || acknowledge.request.selected_specimen_ids?.includes(s.id))) || []
 
@@ -174,6 +200,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         </nav>
         <div className="scanner-connection">
           <span className={'connection ' + (healthy ? 'good' : 'bad')} role="status"><i />{healthy ? 'Database connected' : 'NOT AVAILABLE'}</span>
+          <span className={'scanner-input-status ' + (inputReady ? 'ready' : 'not-ready')} role="status">{inputLabel}</span>
           <button type="button" className="scanner-sound" aria-pressed={sound}
             aria-label={sound ? 'Mute scanner sound' : 'Enable scanner sound'}
             onClick={() => { const value = !sound; setSound(value); localStorage.setItem('fabric-tracker.sound', value ? 'on' : 'off') }}>
@@ -183,7 +210,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
       </header>
 
       <div className="kiosk-middle">
-        <section className={['readiness-area', green && healthy ? 'confirmed' : '', !healthy ? 'unavailable' : '', pending || pendingUndo ? 'confirming' : ''].join(' ')} aria-live="polite">
+        <section className={['readiness-area', green && healthy && inputReady ? 'confirmed' : '', !healthy || !inputReady ? 'unavailable' : '', pending || pendingUndo ? 'confirming' : ''].join(' ')} aria-live="polite">
           <div className="scanner-scope" role="group" aria-label="Movement scope">
             <span>Scan moves</span>
             <button type="button" aria-pressed={scope === 'stack'} disabled={blocked}
@@ -192,12 +219,14 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
               onClick={() => { clearFeedback(); setScope('specimen') }}>Choose specimens</button>
           </div>
           <div className="scanner-result">
-            <div className="readiness-icon">{!healthy ? '!' : pending || pendingUndo || busy ? '◷' : green ? '✓' : direction === 'IN' ? '↘' : '↗'}</div>
+            <div className="readiness-icon">{!healthy || !inputReady ? '!' : pending || pendingUndo || busy ? '◷' : green ? '✓' : direction === 'IN' ? '↘' : '↗'}</div>
             <h2>{title}</h2>
             <p className="readiness-description">
               {!healthy ? 'Nothing is recorded until the database reconnects.'
                 : pendingUndo ? 'Checking the same Undo. New scans are paused until its result is known.'
                 : pending ? 'Checking this transaction. New scans are paused until its result is known.'
+                : !inputReady ? inputMessage || 'Tap the screen to resume keyboard scanner input.'
+                : bridgeConfigured && inputStatus.fallback ? inputMessage
                 : green && result ? result.affected_count + ' specimens · ' + formatTime(result.recorded_at)
                 : result?.status === 'already_recorded' ? result.message
                 : scope === 'specimen' ? 'Scan a label, then choose the numbered specimens.'

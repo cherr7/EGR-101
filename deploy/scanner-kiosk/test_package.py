@@ -41,6 +41,7 @@ class StationPackageTests(unittest.TestCase):
         self.assertIn('src="/station-runtime.js"', html)
         self.assertTrue((self.output / "assets/app.js").exists())
         self.assertIn('"fixed": false', (self.output / "station-config.js").read_text())
+        self.assertIn('"inputBridge": true', (self.output / "station-config.js").read_text())
         self.assertIn('"roomName": "PPE conditioning room"', (self.output / "station-config.js").read_text())
         self.assertEqual(manifest["target_display"], {"width": 1280, "height": 720})
         self.assertFalse(manifest["offline_transactions"])
@@ -63,6 +64,23 @@ class StationPackageTests(unittest.TestCase):
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("shared-door", result.stdout)
+
+    def test_installer_retires_legacy_nfc_before_replacing_runtime(self):
+        script = Path(__file__).with_name("install.sh").read_text()
+        self.assertLess(script.index('user_systemctl stop "$unit"'), script.index('rm -f /opt/fabric-scanner/bin/nfc-bridge.py'))
+        self.assertIn('fabric-scanner-nfc.service fabric-scanner-input.service', script)
+        self.assertIn('if [ ! -e /opt/fabric-scanner/scanner.env ]', script)
+        self.assertIn('user_systemctl daemon-reload', script)
+        self.assertIn('"inputBridge": True', script)
+
+    def test_browser_opens_inline_starting_screen_without_waiting_for_server(self):
+        browser = Path(__file__).with_name("browser.sh").read_text()
+        startup = Path(__file__).with_name("startup.html").read_text()
+        self.assertIn('file:///opt/fabric-scanner/bin/startup.html#', browser)
+        self.assertNotIn('urlopen', browser)
+        self.assertIn('target.origin!==\'http://127.0.0.1:8080\'', startup)
+        self.assertIn('target.username||target.password', startup)
+        self.assertIn('target.origin+\'/station/ready\'', startup)
 
     def test_changed_or_missing_assets_fail_before_installation(self):
         builder.build(self.source, self.output)
@@ -100,6 +118,10 @@ class StationPackageTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validator.validate(self.output, host, resolver, station)
         manifest = json.loads((self.output / "station-package.json").read_text())
+        for invalid in [[], None, "not a manifest"]:
+            (self.output / "station-package.json").write_text(json.dumps(invalid))
+            with self.assertRaisesRegex(ValueError, "Expected the live"):
+                validator.validate(self.output, "http://host", "192.168.1.1")
         manifest["files"]["../outside.txt"] = "invalid"
         (self.output / "station-package.json").write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError, "asset path"):

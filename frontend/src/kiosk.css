@@ -144,3 +144,12 @@
   .scanner-v2 .dock-undo > span { font-size: 20px; }
   .scanner-v2 .dock-undo small { font-size: 9px; }
 }
+.scanner-v2 .scanner-connection { gap: 5px; }
+.scanner-v2 .scanner-input-status { max-width: 230px; font-size: 11px; line-height: 1.25; text-align: right; }
+.scanner-v2 .scanner-input-status.ready { color: #406653; }
+.scanner-v2 .scanner-input-status.not-ready { color: #9a302c; font-weight: 700; }
+@media (max-height: 570px), (max-width: 1000px) {
+  .scanner-v2 .scanner-connection { gap: 3px; }
+  .scanner-v2 .scanner-input-status { font-size: 9px; max-width: 180px; }
+  .scanner-v2 .scanner-sound { min-height: 21px; }
+}

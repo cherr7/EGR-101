@@ -22,7 +22,7 @@ def validate(package, origin, resolver, station=None):
         manifest = json.loads((package / "station-package.json").read_text())
     except (OSError, ValueError) as error:
         raise ValueError("Build the live station package with scripts/build-station.py first.") from error
-    if (manifest.get("format") != "fabric-conditioning-station" or manifest.get("version") != 1
+    if (not isinstance(manifest, dict) or manifest.get("format") != "fabric-conditioning-station" or manifest.get("version") != 1
             or manifest.get("live_api") is not True or manifest.get("offline_transactions") is not False):
         raise ValueError("Expected the live React station package, not the mock prototype.")
     files = manifest.get("files")

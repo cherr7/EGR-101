@@ -1,6 +1,6 @@
 # MacBook host and app launcher
 
-The MacBook Neo hosts PostgreSQL, the HTTP API, the staff web app, and print jobs. The three Pi kiosks and staff browsers use this same host. The packaged Mac app opens the staff interface and starts the local services when necessary.
+The MacBook Neo hosts PostgreSQL, the HTTP API, the staff web app, and print jobs. The three Pi kiosks and staff browsers use this same host. Each Pi additionally runs local nginx and a USB/NFC input service for its own hardware; these do not add another database or a different central API. The packaged Mac app opens the staff interface and starts the local services when necessary.
 
 ## Local installation
 

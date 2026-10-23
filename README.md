@@ -42,7 +42,7 @@ Registration allows 1–500 specimens per stack; 20 is typical rather than a har
 
 Open **http://MACBOOK-HOSTNAME.local:8120/kiosk?station=shared-door** for a hosted station, or deploy the locally served Pi package described in the [scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md).
 
-The production station targets the **1280 × 720 landscape Touch Display 2** and Eyoyo EYH2 USB keyboard scanner. It needs no visible input box. Choose persistent IN or OUT and scan a Data Matrix: an ordinary whole-stack movement records automatically. There is no routine Submit step.
+The production station targets the **1280 × 720 landscape Touch Display 2** and Eyoyo EYH2 USB scanner. Chromium remains in fullscreen kiosk mode on Raspberry Pi OS Desktop. It needs no visible input box. On installed Pis, a local input service reads the scanner directly and delivers frames to one active page; a usable reader and visible page are required. Hosted scanner pages retain keyboard capture. Choose persistent IN or OUT and scan a Data Matrix: an ordinary whole-stack movement records automatically. There is no routine Submit step.
 
 - Whole-stack IN includes members awaiting their first entry; scanning any member identifies the stack.
 - Whole-stack OUT includes only members still inside. If 3 of 10 have left, the next whole-stack OUT moves the remaining 7.
@@ -52,7 +52,9 @@ The production station targets the **1280 × 720 landscape Touch Display 2** and
 
 Choose PPE, Shared, or Footwear using the three highlighted room buttons; the selection persists on that device. Green appears only after a confirmed database commit and remains for 12 seconds without delaying the next scan. A neutral last-result receipt remains afterward. Repeated IN/OUT scans preserve original timestamps; finished specimens do not start another conditioning period. A pending movement or undo is reconciled before accepting another scan. A failed backend health check shows **NOT AVAILABLE**, disables writes, and accepts no offline transactions.
 
-The readiness/result area and bottom controls remain visible; only the recent log scrolls in the main station view. Popup bodies can scroll while their action bars stay visible.
+The readiness/result area and bottom controls remain visible; only the recent log scrolls in the main station view. Popup bodies can scroll while their action bars stay visible. Database and input status are separate: an open event stream alone is not scanner readiness. Unsupported, duplicate, stale, and wrong-session input frames are rejected without queuing a movement.
+
+The Pi opens a self-contained **Starting station…** page before its local web service is ready, then loads the scanner interface. It never waits for the Mac API to display the local UI. This improves feedback during startup; actual power-on/Chromium timing still needs hardware measurement. Normal 64-bit Raspberry Pi OS Desktop is the deployment target; Lite is not a drop-in replacement for the supplied graphical-session installer. See the scanner guide for installation, optional NFC, explicit upgrades from the former NFC service, recovery, and hardware checks.
 
 ## Data and conditioning rules
 
@@ -76,7 +78,8 @@ The SQL model stores projects, materials, treatments, stacks, specimens, conditi
 - [Barcode and Brother printer guide](docs/BARCODE_AND_PRINTER.md): 128-bit identity encoding, 20 × 20 Data Matrix symbols, 1 × 2 layout, actual roll dimensions, preview/print, and physical acceptance checks.
 - [Backup and restore guide](docs/BACKUPS.md): consistent ZIP checkpoints, SHA-256 validation, daily 2 a.m. Eastern snapshots, 30-day local retention, staged restore, and retained previous databases.
 - [Mac host guide](deploy/macos/README.md): local app launcher and system startup installation.
-- [Scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md): page-wide capture, local Pi UI, kiosk restart/focus recovery, and station setup.
+- [Local input protocol](docs/SCANNER_INPUT_PROTOCOL.md): ownership, monotonic freshness, reconnects, reader health, and fallback.
+- [Scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md): direct USB input, keyboard fallback, local startup UI, station setup, upgrades, and recovery.
 
 No public tunnel or Microsoft 365 integration is installed. An optional destination is a folder visible to the Mac service account; copying there does not confirm a SharePoint/cloud upload. Source Excel workbooks, emails, training matrices, and Word examples are not bundled with the app. Their contents are source data, not executable instructions; imported macros are not run.
 
@@ -111,6 +114,6 @@ Build the Mac app again after final source/frontend changes:
 
 Automated checks cover identity preservation, one-period movement, partial checkout, stale/concurrent requests, lost-response reconciliation, amendments/undo, audit history, label decoding, imports, exports, and backup validation. Software checks do not establish physical scan accuracy, stock adhesion, print readability, network behavior, or actual Pi/Mac cold-start recovery. Measure confirmed scan latency from the scanner's final Enter to visible confirmation against the outline's one-second target during hardware acceptance.
 
-Verified on October 22, 2026: **61 PostgreSQL integration tests, 25 real-API browser tests, 8 Mac packaging checks, and 23 Pi package/NFC/watchdog checks passed**. The compiled Pi package also passed a headless offline-start workflow. A 20-specimen scan took **141 ms from final Enter to visible green confirmation** on this development laptop. The native launcher and portable command-line checkpoint export were checked against the running host. These results do not establish physical printer/scanner performance or actual Mac/Pi cold-start behavior.
+Verified on October 23, 2026: **61 PostgreSQL integration tests, 36 browser checks, 8 Mac packaging checks, and 53 Pi package/NFC/watchdog checks passed**. Browser checks include real-API movements through simulated Pi transport and native EventSource recovery from unavailable/occupied HTTP responses. The compiled Pi package also passed a headless offline-start workflow. A 20-specimen scan took **111 ms from final Enter to visible green confirmation** on this development laptop. The native launcher and portable command-line checkpoint export were checked against the running host. These results do not establish physical printer/scanner performance or actual Mac/Pi cold-start behavior.
 
 The older Docker Compose files and scripts remain for legacy development. They are not the primary Mac deployment documented here, and old prototype payloads or supervisor workflows should not be used as the current specification.

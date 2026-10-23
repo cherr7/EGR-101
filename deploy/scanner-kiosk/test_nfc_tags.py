@@ -1,8 +1,8 @@
 import importlib.util
 from pathlib import Path
-import types
 import unittest
-from unittest import mock
+import types
+from unittest.mock import patch
 from uuid import UUID
 
 
@@ -13,7 +13,7 @@ def load(name, path):
     return module
 
 
-bridge = load("nfc_bridge", Path(__file__).with_name("nfc-bridge.py"))
+bridge = load("nfc_tags", Path(__file__).with_name("nfc_tags.py"))
 NTAG_UID = bytes(range(1, 8))
 SPECIMEN = "4d2a1c3b-0000-4000-8000-00000000002a"
 
@@ -40,17 +40,6 @@ class FakeTag:
         if not self.taps:
             raise StopIteration
         return self.taps.pop(0)
-
-
-class FakeUInput:
-    def __init__(self):
-        self.events = []
-
-    def write(self, kind, code, value):
-        self.events.append((code, value))
-
-    def syn(self):
-        pass
 
 
 class IdentifierTests(unittest.TestCase):
@@ -112,6 +101,27 @@ class TagTests(unittest.TestCase):
         self.assertTrue(tags.is_new_tap(NTAG_UID, 2.0))    # lifted, then tapped again
         self.assertTrue(tags.is_new_tap(bytes(7), 2.1))    # a different tag
 
+    def test_disconnect_releases_gpio_before_spi_and_is_idempotent(self):
+        released = []
+        resources = [types.SimpleNamespace(deinit=lambda name=name: released.append(name))
+                     for name in ("spi", "chip_select", "reset")]
+        reader = types.SimpleNamespace(_fabric_resources=resources)
+        bridge.disconnect(reader)
+        self.assertEqual(released, ["reset", "chip_select", "spi"])
+        bridge.disconnect(reader)
+        self.assertEqual(len(released), 3)
+
+    def test_persistent_hardware_errors_escape_to_reader_reconnect(self):
+        tag = FakeTag()
+        calls = []
+        def fail_read(timeout):
+            calls.append(timeout)
+            raise RuntimeError("SPI stopped")
+        tag.read_passive_target = fail_read
+        with patch.object(bridge.time, "sleep"), self.assertRaisesRegex(RuntimeError, "reconnecting"):
+            next(bridge.taps(tag))
+        self.assertEqual(len(calls), bridge.MAX_READ_ERRORS)
+
     def test_taps_yield_ids_and_errors_once_per_tap(self):
         tag = FakeTag(taps=[None, NTAG_UID, NTAG_UID, bytes(4)])
         payload = bridge.write_tag_id(tag, NTAG_UID, SPECIMEN)
@@ -123,17 +133,6 @@ class TagTests(unittest.TestCase):
         self.assertEqual(results[0], (NTAG_UID, payload, None))
         self.assertEqual(results[1][:2], (bytes(4), None))
         self.assertEqual(len(results), 2)
-
-
-class KeyboardTests(unittest.TestCase):
-    def test_types_digits_then_enter_like_the_scanner(self):
-        codes = {f"KEY_{d}": 2 + d for d in range(10)} | {"KEY_ENTER": 28, "EV_KEY": 1}
-        evdev = types.SimpleNamespace(UInput=None, ecodes=types.SimpleNamespace(**codes))
-        device = FakeUInput()
-        with mock.patch.dict("sys.modules", {"evdev": evdev}), mock.patch.object(bridge.time, "sleep"):
-            bridge.Keyboard(device).type_line("0912")
-        self.assertEqual(device.events, [(2, 1), (2, 0), (11, 1), (11, 0), (3, 1), (3, 0),
-                                         (4, 1), (4, 0), (28, 1), (28, 0)])
 
 
 if __name__ == "__main__":

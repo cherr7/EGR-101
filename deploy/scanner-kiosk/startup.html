@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Starting conditioning station</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#112a31;color:#fff;font:22px system-ui,sans-serif;display:grid;min-height:100vh;place-items:center}
+  main{max-width:760px;padding:48px}p{line-height:1.5;color:#cbdfe1}h1{font-size:42px;margin:12px 0}small{font-size:16px;color:#cbdfe1}.dot{width:16px;height:16px;display:inline-block;border-radius:50%;background:#87dac4;margin-right:12px;animation:pulse 1s infinite alternate}@keyframes pulse{to{opacity:.35}}
+</style>
+<main>
+  <div><span class="dot"></span>Fabric conditioning</div>
+  <h1>Starting station…</h1>
+  <p id="message">Opening the local scanner screen. No action needed.</p>
+  <small id="detail">Checking the station on this Raspberry Pi.</small>
+</main>
+<script>
+(() => {
+  const message=document.getElementById('message'),detail=document.getElementById('detail');
+  let target;
+  try {
+    target=new URL(decodeURIComponent(location.hash.slice(1)));
+    const station=target.searchParams.get('station');
+    if(target.origin!=='http://127.0.0.1:8080'||target.username||target.password||target.pathname!=='/station.html'||target.hash!=='#kiosk'||
+      !station||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(station)||[...target.searchParams.keys()].join(',')!=='station')throw Error('Invalid station address');
+  } catch {
+    message.textContent='Station configuration needs attention.';
+    detail.textContent='Ask the lab maintainer to rerun the scanner installer.';
+    return;
+  }
+  const started=performance.now();
+  async function check(){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),1500);
+    try {
+      const response=await fetch(target.origin+'/station/ready',{cache:'no-store',signal:controller.signal});
+      if(!response.ok)throw Error('Local UI is still starting');
+      location.replace(target.href);return;
+    } catch {
+      const seconds=Math.floor((performance.now()-started)/1000);
+      detail.textContent='Waiting for the local station service · '+seconds+' seconds';
+      if(seconds>=15)message.textContent='The station is taking longer to start. It will open automatically when ready.';
+    } finally {clearTimeout(timer)}
+    setTimeout(check,1000);
+  }
+  check();
+})();
+</script>
+</html>

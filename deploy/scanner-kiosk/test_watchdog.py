@@ -33,6 +33,27 @@ class WatchdogTests(unittest.TestCase):
                 state.observe(payload, 70)
                 self.assertIsNotNone(state.restart_reason(76))
 
+    def test_usable_owned_input_bridge_tolerates_focus_loss_only(self):
+        state = module.Health(0)
+        state.observe(dict(focused=False, visible=True, capture_ready=True, input_bridge=True), 70)
+        self.assertIsNone(state.restart_reason(76))
+        state = module.Health(0)
+        state.observe(dict(focused=True, visible=False, capture_ready=True, input_bridge=True), 70)
+        self.assertIsNotNone(state.restart_reason(76))
+        state = module.Health(0)
+        state.observe(dict(focused=False, visible=True, capture_ready=True, input_bridge=False), 70)
+        self.assertIsNotNone(state.restart_reason(76))
+        with self.assertRaises(ValueError):
+            state.observe(dict(focused=True, visible=True, capture_ready=True, input_bridge="yes"), 80)
+
+    def test_socket_connection_without_reader_does_not_hide_focus_failure(self):
+        state = module.Health(0)
+        # runtime.js sends input_bridge from fabricInputBridgeReady, not socket state.
+        state.observe(dict(focused=False, visible=True, capture_ready=True, input_bridge=False), 70)
+        self.assertIsNotNone(state.restart_reason(76))
+        runtime = Path(__file__).with_name("runtime.js").read_text()
+        self.assertIn("input_bridge:window.fabricInputBridgeReady===true", runtime)
+
     def test_restart_gets_new_startup_grace(self):
         state = module.Health(0)
         state.restarted(100)

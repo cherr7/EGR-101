@@ -19,8 +19,13 @@ class Health:
         fields = ("focused", "visible", "capture_ready")
         if not isinstance(payload, dict) or any(type(payload.get(key)) is not bool for key in fields):
             raise ValueError("Expected boolean focus, visibility, and capture state.")
+        bridged = payload.get("input_bridge", False)
+        if type(bridged) is not bool:
+            raise ValueError("Expected a boolean input bridge state.")
         with self.lock:
-            if all(payload[key] for key in fields):
+            # Only the owning, calibrated stream with a usable reader may bypass focus.
+            # A connected SSE socket, missing scanner, or another page's stream cannot.
+            if payload["visible"] and payload["capture_ready"] and (payload["focused"] or bridged):
                 self.last_healthy = now
 
     def restart_reason(self, now):
@@ -78,12 +83,16 @@ def run():
         if reason:
             logging.warning("Restarting kiosk browser: %s", reason)
             health.restarted(now)
-            result = subprocess.run(
-                ["systemctl", "--user", "restart", "fabric-scanner-browser.service"],
-                check=False, timeout=20,
-            )
-            if result.returncode:
-                logging.error("Browser restart failed with exit %s", result.returncode)
+            try:
+                result = subprocess.run(
+                    ["systemctl", "--user", "restart", "fabric-scanner-browser.service"],
+                    check=False, timeout=20,
+                )
+                if result.returncode:
+                    logging.error("Browser restart failed with exit %s", result.returncode)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                # A transient systemd failure must not kill the watchdog itself.
+                logging.error("Browser restart failed: %s", error)
         time.sleep(2)
 
 

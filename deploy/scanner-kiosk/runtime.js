@@ -7,7 +7,9 @@
       body:JSON.stringify({
         focused:document.hasFocus(),
         visible:document.visibilityState==='visible',
-        capture_ready:window.location.hash==='#kiosk'&&window.fabricScannerCaptureReady===true
+        capture_ready:window.location.hash==='#kiosk'&&window.fabricScannerCaptureReady===true,
+        // A live socket alone does not prove that this page owns a usable reader.
+        input_bridge:window.fabricInputBridgeReady===true
       }),signal:controller.signal
     }).catch(()=>{}).finally(()=>clearTimeout(timer));
   }

@@ -1,109 +1,147 @@
 # Dedicated live scanner station
 
-This is the Pi deployment for the working React app and shared Mac-hosted API. It replaces the old prototype-only station package. Target hardware is Raspberry Pi 5, Touch Display 2 in landscape at 1280 × 720, and the Eyoyo EYH2 USB keyboard-wedge scanner.
+This is the supported Pi deployment for the React scanner and shared Mac-hosted API. Use Raspberry Pi OS Desktop (64-bit, labwc/Wayland), a Pi 5, and a Touch Display 2 in landscape at 1280 × 720. Chromium still runs in kiosk mode. Changing to Raspberry Pi OS Lite is unnecessary for this deployment; Lite would need a graphical session installed and configured separately.
 
-Each Pi stores its UI locally. Only same-origin `/api` calls are proxied to the Mac, normally port 8120. An unavailable Mac therefore leaves the scanner page visible with NOT AVAILABLE. No transactions are queued offline. The React app preserves only the exact pending request needed to reconcile an interrupted response.
+Each Pi keeps the actual React assets locally and proxies same-origin `/api` calls to the Mac, normally port 8120. If the Mac is unavailable, the scanner screen remains visible with **NOT AVAILABLE**. There is no offline transaction queue. Only an already submitted request is retained for reconciliation with its original UUID.
 
-## Build on the Mac
+USB input normally follows **Eyoyo → Linux evdev → local input service → Chromium → Mac API → PostgreSQL confirmation**. The input service grabs the scanner device, so focus elsewhere does not divert ordinary scans or type them into another application. It also handles the optional PN532 reader. A focused keyboard-wedge fallback is available only if the local input service is unreachable, not while a different page owns the service. The app visibly distinguishes database availability, reader readiness, and keyboard fallback.
 
-Build the working frontend, then package it:
+## Build and preflight on the Mac
 
-    cd frontend
-    npm run build
-    cd ..
-    python3 scripts/build-station.py
+```sh
+cd frontend
+npm run build
+cd ..
+python3 scripts/build-station.py
+sh deploy/scanner-kiosk/install.sh --check output/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
+```
 
-The output is `output/station-ui/`: `index.html`, `station.html`, compiled assets, station bootstrap/configuration, heartbeat runtime, and a checksummed manifest. Both entry pages force `#kiosk` before the React module mounts. There are no mock records or offline write adapters in this package.
+`output/station-ui/` contains the production assets, `station.html`, bootstrap/configuration, heartbeat runtime, and a checksummed manifest. Both entry pages force `#kiosk` before React mounts. The default room is `shared-door`; use `--station ppe-door` at build time or the optional fifth installer argument to change it. The three known stations are `ppe-door`, `shared-door`, and `footwear-door`.
 
-The default station is shared-door. Override it at build time with `--station ppe-door`, or supply the station ID to the Pi installer. The fixed IDs seeded by this project are shared-door, ppe-door, and footwear-door.
+The installed configuration has `inputBridge: true` and `fixed: false`. PPE / Shared / Footwear remain selectable and the highlighted choice survives reloads. The initial room is a default, not a locked room. Operator room changes do not require rebuilding the package.
 
-Read-only preflight can run on the Mac without root or Linux services:
-
-    sh deploy/scanner-kiosk/install.sh --check output/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
-
-This validates package integrity and argument formats. It does not prove API reachability or DNS resolution. Replace the example IP with the Mac's reserved LAN address. An ordinary lab DNS hostname also works when the supplied DNS resolver knows it. Do not assume Bonjour `.local` names work through nginx's configured unicast DNS resolver.
+`--check` only reads files and validates checksums and argument formats. It runs on a Mac without root or Linux services; adding `--nfc` also checks the optional source files. It does not prove API reachability, device permissions, or DNS resolution. Replace example addresses with the actual reserved Mac LAN address and Pi LAN DNS resolver. A lab hostname works only if that resolver knows it; do not assume nginx's unicast resolver can resolve Bonjour `.local` names.
 
 ## Install on the Pi
 
-1. Install 64-bit Raspberry Pi OS Desktop with labwc/Wayland. Configure network access, desktop autologin, time synchronization, and landscape display settings. Disable screen blanking. Enable SSH for maintenance.
+1. Install Raspberry Pi OS Desktop and configure networking, time synchronization, landscape display rotation, and SSH for maintenance. No OS reinstall or Lite conversion is required for an existing compatible Desktop station.
 2. Install prerequisites:
 
-       sudo apt update
-       sudo apt install nginx chromium python3 ca-certificates
+   ```sh
+   sudo apt update
+   sudo apt install nginx chromium python3 python3-venv python3-evdev ca-certificates
+   ```
 
-3. Copy `output/station-ui/` and `deploy/scanner-kiosk/` to the Pi, then install with the Mac's actual LAN origin and the Pi's actual LAN DNS resolver:
+3. Copy `output/station-ui/` and this complete deployment directory to the Pi, then install for the real desktop account:
 
-       sudo sh ~/scanner-kiosk/install.sh ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
-       sudo reboot
+   ```sh
+   sudo sh ~/scanner-kiosk/install.sh ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
+   sudo reboot
+   ```
 
-The fifth argument is optional; omitting it keeps the station ID stored in the package. Repeat with the appropriate station ID for all three Pis. When `raspi-config` is present, the installer also sets Desktop Autologin for the kiosk user (`do_boot_behaviour B4`) and turns off screen blanking (`do_blanking 1`). Otherwise it prints those steps for you to do by hand. The installer writes the initial room configuration and a systemd environment file. It validates file checksums and host settings before making changes.
+The optional last argument overrides the package's initial room. Repeat for all three Pis. When `raspi-config` exists, the installer sets Desktop Autologin for that user (`do_boot_behaviour B4`) and disables screen blanking (`do_blanking 1`). Otherwise it prints the corresponding manual steps. The Pi user is added to `input`, and its **user** systemd manager is reloaded. A running graphical station is restarted after installation; a reboot is still required to apply new supplementary groups and optional SPI settings.
 
-If the older `deploy/pi` service occupies port 8080, stop its user service and disable its nginx site before installing this deployment. Run only one kiosk deployment. The installer detects that conflict and stops with instructions.
+The legacy `conditioning-tracker` nginx site from the removed `deploy/pi` package must be stopped and disabled first if it occupies port 8080. The installer detects that conflicting site. Run one station deployment.
 
-## Optional NFC tags
+## USB device selection and operator settings
 
-A station with a PN532 NFC hat (SPI mode) can accept NTAG21x tags as well as Data Matrix labels. Install it with `--nfc` before the other arguments, after installing the extra prerequisites:
+The bridge discovers keyboard-capable USB devices whose names contain `barcode`, `scanner`, or `eyoyo`. It refuses ambiguous matches instead of choosing an arbitrary keyboard. If the Eyoyo reports only a generic name such as `HIDKeyboard`, or more than one candidate exists, pin its stable device path:
 
-       sudo apt install python3-venv python3-evdev
-       sudo sh ~/scanner-kiosk/install.sh --nfc ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
+```sh
+ls -l /dev/input/by-id/
+sudo nano /opt/fabric-scanner/scanner.env
+```
 
-`nfc-bridge.py` reads the tag's NDEF text record and types the specimen ID through a virtual keyboard (`/dev/uinput`), as 39 decimal digits and then Enter. Those are the same keystrokes the barcode scanner sends, so the React capture listener, health check and movement rules treat a tap like a scan. Tags that hold anything other than a specimen ID are logged and never typed. The bridge runs as `fabric-scanner-nfc.service` under `fabric-scanner.target`, so stopping the target for maintenance stops it too. With `--nfc`, the installer:
+For example, use the actual scanner's `...-event-kbd` link, not the literal placeholder:
 
-- creates `/opt/fabric-scanner/nfc-env` from `nfc-requirements.txt` (this needs network access);
-- loads `uinput` and makes it writable by the `input` group;
-- adds the kiosk user to `input`, `spi` and `gpio`;
-- enables SPI through `raspi-config`.
+```text
+SCANNER_DEVICE=/dev/input/by-id/usb-ACTUAL_SCANNER-event-kbd
+# Alternatively, customize candidate name fragments:
+# SCANNER_MATCH=eyoyo,barcode,scanner
+```
 
-Rerunning without `--nfc` detaches the bridge from the target.
+Then, from the kiosk user's session:
 
-Hat wiring: I1=H, I0=L, RSTPDN→D20, DIP 1–4 (SCK/MISO/MOSI/D4) ON, 5–8 OFF. To write a specimen ID onto a tag, stop the target and hold the tag on the coil:
+```sh
+systemctl --user restart fabric-scanner-input.service
+```
 
-       systemctl --user stop fabric-scanner.target
-       /opt/fabric-scanner/nfc-env/bin/python /opt/fabric-scanner/bin/nfc-bridge.py write 4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15
-       /opt/fabric-scanner/nfc-env/bin/python /opt/fabric-scanner/bin/nfc-bridge.py read
-       systemctl --user start fabric-scanner.target
+The installer preserves an existing `/opt/fabric-scanner/scanner.env` on updates. It regenerates `input.env` with `ENABLE_NFC=true` or `false`; `scanner.env` is read afterward and can override those service settings. Use that override deliberately. Do not put account passwords or API credentials in these world-readable station files.
 
-The ID can be the UUID or its 39-digit payload. The command verifies the tag by reading it back. The PN532 is 13.56 MHz HF/NFC and needs a tap within a few centimetres; it is not the passive UHF RFID considered in the design memo.
+USB unplug/replug, discovery errors, permissions failures, and grab failures are retried and shown as reader status. The Linux reader requests monotonic kernel event timestamps and rejects old buffered frames; an unsupported timestamp configuration stays visibly unavailable rather than accepting unverified input. Device discovery failures do not silently kill the reader thread. A gap or oversized frame is rejected; neither a rejected fragment nor a queued late scan becomes an automatic movement. Configure the physical scanner's Enter suffix; the Data Matrix itself contains the specimen's 128-bit ID as 39 decimal characters. The service reads those keystrokes directly and does not depend on a visible text box.
 
-## Startup and recovery
+## Optional NFC
 
-Desktop autologin runs the labwc autostart entry. It imports the Wayland environment and starts fabric-scanner.target, which starts the supervised browser and watchdog. The browser waits only for local nginx, then opens the dedicated station page. Chromium's persistent profile retains station preferences and pending-request IDs across restarts.
+A PN532 SPI hat can read NTAG21x NDEF specimen tags alongside the USB scanner:
 
-Every two seconds, the page reports focus, visibility, and whether the React scan listener is attached. No specimen data or database-health status appears in that heartbeat. After a 45-second startup grace period, more than 15 seconds without a healthy page triggers a browser restart. Database failure therefore leaves NOT AVAILABLE visible instead of restarting the browser repeatedly.
+```sh
+sudo sh ~/scanner-kiosk/install.sh --nfc ~/station-ui http://192.168.1.50:8120 kiosk 192.168.1.1 ppe-door
+sudo reboot
+```
 
-The installed URL is `http://127.0.0.1:8080/station.html?station=ppe-door#kiosk`. Local nginx and the watchdog bind to loopback. The browser must be the active application to receive USB keyboard events; the watchdog attempts recovery after persistent focus loss. Physical validation is still required for the actual Pi desktop/compositor.
+This installs the optional dependencies from `nfc-requirements.txt` into `/opt/fabric-scanner/input-env`, adds `spi` / `gpio` groups where available, and enables SPI using `raspi-config`. Dependency installation needs network access. Rerun without `--nfc` to disable NFC; USB input remains enabled.
 
-Normal scanning is automatic in the persistent IN/OUT direction. No visible input box or ordinary Submit is required. Partial selection and early-checkout override use explicit popup actions. Scanner Enter is consumed by the capture listener and cannot activate those buttons. The printed Data Matrix payload is the specimen's 128-bit ID represented as 39 decimal characters, with Enter supplied separately by the scanner setting.
+NFC is now a reader in `fabric-scanner-input.service`, not a separate virtual keyboard. During an upgrade the installer stops the old target / `fabric-scanner-nfc.service` before replacing its runtime and removes its old target link and unit. This prevents a tag tap reaching the app twice through old and new input routes. The old PR #1 input behavior is preserved through the shared service; `/dev/uinput` is no longer needed by this implementation.
 
-## Maintenance
+Hat wiring: I1=H, I0=L, RSTPDN→D20; DIP 1–4 (SCK/MISO/MOSI/D4) ON, 5–8 OFF. Tag support is 13.56 MHz HF/NFC at tap distance, not passive UHF RFID. For writing or checking a real registered specimen ID, stop the target to release the hat:
+
+```sh
+systemctl --user stop fabric-scanner.target
+/opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py write 4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15
+/opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py read
+systemctl --user start fabric-scanner.target
+```
+
+The write command accepts a UUID or its 39-digit payload and verifies the written tag. The example UUID above is only an example: use the registered specimen's actual ID. Truncated or invalid NDEF data is rejected.
+
+## Startup, focus, and recovery
+
+The startup sequence is **Desktop Autologin → labwc autostart → user systemd target → Chromium kiosk starting screen → local React scanner**. `browser.sh` immediately launches the self-contained `file://` starting page; it no longer waits silently for nginx before launching Chromium. That page says “Starting station…” and polls only read-only local `/station/ready`. Once the local station page exists it replaces itself with `http://127.0.0.1:8080/station.html?station=…#kiosk`. It never waits for the Mac API or internet. The file-origin CORS permission is restricted to the readiness route; it is not added to API writes. Only a validated loopback station target is accepted.
+
+This provides feedback **after Chromium opens**. It does not claim to remove desktop/compositor startup time, and the exact boot-to-browser delay still needs measurement on the Pi. There can still be a desktop interval before Chromium itself is ready.
+
+`fabric-scanner.target` starts the browser, watchdog, and input service. Chromium's persistent profile retains room selection and interrupted-request IDs across restarts. Do not erase that profile during ordinary updates.
+
+The page posts `/station/heartbeat` every two seconds with `focused`, `visible`, `capture_ready`, and `input_bridge` booleans. `input_bridge` is true only when this page owns a calibrated stream and at least one reader is usable; an open socket alone is insufficient. The watchdog allows loss of browser focus only in that usable direct-input state. Hidden pages, missing capture, or a frozen page still fail health checks. After a 45-second startup grace period, over 15 seconds without a healthy heartbeat triggers browser restart, with restart backoff. A database outage does not cause browser restart loops.
+
+The bridge listens only on loopback port 8766; nginx exposes same-origin `/station/input/events` and `/station/input/status`. The first active event-stream page owns input. An extra page receives an occupied status and cannot steal or duplicate scans. A dropped / overflowing connection closes and must reconnect; delayed frames are rejected and require a rescan. Status and frames carry a process session ID and monotonic timestamps. The browser calibrates against the local status endpoint, so an incorrect wall clock does not decide scan freshness. No scan replay or offline movement queue is provided.
+
+The normal operator flow remains persistent **IN / OUT → scan → automatic database confirmation**, with one-tap Undo of the last transaction. The bottom dock stays visible, history scrolls independently, and green confirmation lasts 12 seconds without blocking the next scan. Choose specimens opens a popup. Early checkout uses an explicit override popup. Scanner Enter cannot press a popup's action button.
+
+## Maintenance and updates
 
 From the kiosk user's graphical session:
 
-    systemctl --user status fabric-scanner.target
-    systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service
-    journalctl --user -u fabric-scanner-browser.service -n 50
-    journalctl --user -u fabric-scanner-watchdog.service -n 50
-    journalctl --user -u fabric-scanner-nfc.service -n 50
-    sudo nginx -t
+```sh
+systemctl --user status fabric-scanner.target
+systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service
+journalctl --user -u fabric-scanner-browser.service -n 50
+journalctl --user -u fabric-scanner-watchdog.service -n 50
+journalctl --user -u fabric-scanner-input.service -n 50
+curl -fsS http://127.0.0.1:8080/station/input/status
+sudo nginx -t
+```
 
-Stop the entire target during maintenance so the watchdog cannot reopen Chromium:
+If managing the user services as root over SSH, address the kiosk user's manager, for example with `sudo -u kiosk XDG_RUNTIME_DIR=/run/user/$(id -u kiosk) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u kiosk)/bus systemctl --user …`. The graphical session must already exist. Running bare `sudo systemctl --user` addresses root's manager and is incorrect.
 
-    systemctl --user stop fabric-scanner.target
-    systemctl --user start fabric-scanner.target
+Stop the **target** for maintenance so the watchdog cannot reopen Chromium:
 
-To update, rebuild the frontend and station package, recopy it, rerun the installer, and restart the target. Do not erase the Chromium profile: it may contain an unresolved movement request. Use lab DNS or a reserved LAN address and test access from each Pi.
+```sh
+systemctl --user stop fabric-scanner.target
+systemctl --user start fabric-scanner.target
+```
 
-## Verification
+To update, rebuild and recopy the station package plus deployment directory, rerun the installer with the same optional NFC setting, and reboot. Existing `scanner.env` and Chromium profile are preserved; install-generated room defaults and service files are refreshed. Recheck the highlighted room after updating. Use a reserved Mac LAN address or working lab DNS and verify access from each Pi.
 
-Local checks:
+## Software and physical verification
 
-    python3 -m unittest discover -s deploy/scanner-kiosk -p 'test_*.py' -v
-    sh -n deploy/scanner-kiosk/install.sh
-    sh -n deploy/scanner-kiosk/browser.sh
-    node deploy/scanner-kiosk/check-package.mjs
+```sh
+python3 -m unittest discover -s deploy/scanner-kiosk -p 'test_*.py' -v
+sh -n deploy/scanner-kiosk/install.sh
+sh -n deploy/scanner-kiosk/browser.sh
+node deploy/scanner-kiosk/check-package.mjs
+```
 
-The last command serves the generated local package on an ephemeral loopback port and opens headless Chromium. It checks dedicated routing, remembered room selection, offline readiness, heartbeat, local assets, reload, and zero offline movement submissions; it requires the frontend's installed Playwright dependency.
+The package check serves real compiled assets on an ephemeral loopback port and opens headless Chromium. Its fixtures cover all three rooms; it asserts a confirmed movement uses the selected **PPE** station rather than silently falling back to Shared. It also checks remembered room selection, offline screen/reload, zero offline movements, bridge delivery/readiness, heartbeat, single-owner behavior, and the standalone starting screen through local-unavailable → local-ready. It requires the frontend's installed Playwright dependency. These are software simulations, not hardware acceptance.
 
-Physical acceptance remains: repeated cold boots, API-unavailable boot, focus loss, frozen/closed browser, USB unplug/replug, exact Data Matrix decoding from printed stock, popup scan rejection, interrupted-response recovery, and measured scan-to-confirmation latency. These provisioning files have not been run on a physical Pi.
-
-The three room buttons on the scanner can change that initial room. The highlighted room persists locally across reloads; the bottom dock contains IN, OUT, and Undo. Confirmation is automatic and stays green for 12 seconds.
+Physical acceptance remains: repeated cold boots including Mac-unavailable boot; observed desktop-to-Chromium and total boot time; touch/display rotation; actual USB Data Matrix+Enter decoding; stable scanner device selection; unplug/replug and permissions; optional NFC taps; focus loss, hidden/frozen/closed browser recovery; popup scan rejection; lost movement/Undo responses; real stock/printed-code readability; and scan-to-confirmation latency. These provisioning scripts have not been installed on a physical Pi in this session.

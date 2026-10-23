@@ -1,12 +1,12 @@
 # Current project state
 
-Reviewed October 22, 2026 after integrating upstream main through `45c3747` and completing the interface/audit changes described in [CODE_AUDIT.md](CODE_AUDIT.md).
+Reviewed October 23, 2026 after integrating both Pi hardware PRs with the current interface and recovery fixes. See [CODE_AUDIT.md](CODE_AUDIT.md) for the implementation audit.
 
 ## Architecture
 
 The MacBook Neo hosts PostgreSQL, FastAPI, the staff website, and printer submissions. Staff computers and the three Pi room stations use HTTP to reach the same backend. Browsers never connect directly to SQL. The Mac launcher starts the services and opens the staff website; the supplied LaunchDaemon installer supports startup before interactive login once installed on the intended host.
 
-Pi stations keep the scanner interface locally, so they can display **NOT AVAILABLE** even when the Mac is unreachable after a restart. They accept no offline transactions. Optional NFC support from upstream is included in the package, but the agreed scanner remains the USB Eyoyo.
+Pi stations keep the scanner interface locally, so they can display **NOT AVAILABLE** even when the Mac is unreachable after a restart. They accept no offline transactions. The local input service reads the USB Eyoyo directly and streams frames to one active Chromium page. Optional PN532 NFC input joins the same service. The Pi keeps Chromium kiosk mode on Raspberry Pi OS Desktop; the Mac app, database, and staff interface remain the same architecture.
 
 ## Current interfaces
 
@@ -26,8 +26,8 @@ Every physical specimen has one permanent 128-bit ID. Its Data Matrix carries on
 ## Verification completed
 
 - 61 PostgreSQL integration tests passed, including concurrency, stale corrections, prep review conflicts, idempotency, selective printing, and backup recovery.
-- All 25 real-API browser workflow tests passed, including lost prep-save and lost restore responses. A local 20-specimen scan took 141 ms from final Enter to green confirmation.
-- 8 Mac packaging checks and 23 Pi package/NFC/watchdog checks passed. The compiled Pi package also passed a headless offline-start workflow.
+- All 36 browser checks passed, including real-API direct-input movements, lost movement/Undo responses, stale/hidden/duplicate frames, and native EventSource unavailable/occupied recovery. A local 20-specimen keyboard scan took 111 ms from final Enter to green confirmation.
+- 8 Mac packaging checks and 53 Pi package/NFC/watchdog checks passed. The compiled Pi package also passed its headless readiness, single-owner, three-room, and startup-page workflows.
 - All 28 worksheets in the four supplied workbooks were inspected. Reviewed test registrations produced 709 label PDFs and 709 reprints; every embedded Data Matrix decoded to its exact registered ID. See [the detailed Excel verification](EXCEL_PIPELINE_VERIFICATION.md).
 
 These are software checks. The Excel templates still need actual material/project fields where missing, and aggregate prep-board quantities still require an explicitly reviewed physical count. Training/reference documents are not specimen orders. The verification used isolated, marked test databases; the normal fresh app dataset was not populated with those source documents.
@@ -49,7 +49,7 @@ Old prototype galleries, outdated screenshots, the unused supervisor screen, and
 - Approved Microsoft 365 folder/email intake and managed SharePoint upload verification.
 - Optional Word datasheet completion from the existing independent reports.
 
-Training management, scheduling, test results, extra conditioning cycles, and offline transactions are outside the agreed core. The separate remote direct-scanner-input branch is not merged; its multi-client event handling needs further review before adoption.
+Training management, scheduling, test results, extra conditioning cycles, and offline transactions are outside the agreed core. Direct input from the Pi PR is integrated with single-page ownership, closed stale/full streams, discovery and worker recovery, calibrated monotonic freshness, and separate reader readiness. Startup feedback is implemented as a self-contained local page; physical timing remains unmeasured.
 
 ## Operational guides
 

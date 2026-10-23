@@ -21,7 +21,7 @@ The Eyoyo EYH2 is used as a USB keyboard-wedge scanner: decoding a label should 
 3. Check that no extra prefix/suffix, tab, character substitution, or conversion has been enabled.
 4. Repeat with multiple registered labels and the deployment's keyboard layout.
 
-The app does not assume that Data Matrix means binary USB input, request browser USB permissions, or infer the payload from the product name. Actual scanner configuration and physical first-read performance remain hardware acceptance work. See the [scanner implementation guide](SCANNER_IMPLEMENTATION_GUIDE.md) for field-free capture and reboot recovery.
+The app does not assume that Data Matrix means binary USB input, request browser USB permissions, or infer the payload from the product name. Actual scanner configuration and physical first-read performance remain hardware acceptance work. Installed Pi stations read the scanner through the local input service; hosted pages use keyboard capture. Both validate the same ID payload and never treat a scanner beep as database confirmation. See the [scanner implementation guide](SCANNER_IMPLEMENTATION_GUIDE.md) for capture, startup, and recovery.
 
 ## Layout and stock
 

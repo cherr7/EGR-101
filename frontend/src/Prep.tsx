@@ -227,7 +227,7 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
   const shown = rows.map((row, index) => ({ row, index })).filter(({ row }) => !onlyMissing || missingFields(row).length)
 
   return <>
-    <PageHeader eyebrow="PREP & LABELS" title="Preparation">
+    <PageHeader title="Preparation">
       <button className="button secondary" disabled={busy} onClick={startNew}>＋ New preparation</button>
     </PageHeader>
     <ErrorNotice message={error} />

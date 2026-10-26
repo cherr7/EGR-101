@@ -4,7 +4,7 @@
 .scanner-v2 .scanner-rooms{justify-self:start}
 .scanner-v2 .scanner-rooms button,.scanner-v2 .scanner-scope button{min-height:54px;padding:10px 19px;border-radius:7px;border:1px solid transparent;background:transparent;color:#36564f;font:inherit;font-size:20px;font-weight:650}
 .scanner-v2 .scanner-rooms button.selected,.scanner-v2 .scanner-scope button[aria-pressed=true]{background:#244c49;color:#fff;border-color:#244c49}
-.scanner-v2 .scanner-connection{justify-self:end;display:flex;align-items:center;gap:10px;font-size:20px;font-weight:600}
+.scanner-v2 .scanner-connection{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:600}
 .scanner-v2 .scanner-connection i{width:11px;height:11px;border-radius:50%;background:currentColor}
 .scanner-v2 .scanner-connection.online{color:#287048}
 .scanner-v2 .scanner-connection.offline{color:#b3312b}
@@ -48,7 +48,7 @@
 .scanner-v2 .recent-row[data-undo-target=true]{box-shadow:inset 3px 0 #6c947e;padding-left:10px}
 .scanner-v2 .recent-row.undone .recent-direction{background:#ecefec;color:#67736c}
 .scanner-v2 .recent-row.undone small{color:#6d5240}
-.scanner-v2 .kiosk-dock{height:auto;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;padding:14px 20px;gap:16px;flex-wrap:nowrap}
+.scanner-v2 .kiosk-dock{height:auto;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;padding:14px 20px;gap:16px}
 .scanner-v2 .kiosk-dock button{display:flex;align-items:center;justify-content:center;gap:14px;width:100%;min-width:0;min-height:0;margin:0;padding:8px;border:1px solid #bdcfc2;border-radius:11px;background:#f8fbf5;color:#36564a;font-size:32px;font-weight:650}
 .scanner-v2 .dock-icon{width:1em;height:1em;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .scanner-v2 .kiosk-dock button.active.in{background:#dff0cc;border-color:#85aa60;color:#3e6429;box-shadow:inset 0 0 0 1px #a6c88b}
@@ -89,7 +89,7 @@
  .scanner-v2 .kiosk-header{padding:9px 12px;gap:12px}
  .scanner-v2 .scanner-rooms button,.scanner-v2 .scanner-scope button{min-height:50px;padding:9px 12px;font-size:17px}
  .scanner-v2 .scanner-connection{font-size:17px;gap:7px}
- .scanner-v2 .kiosk-middle{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px}
+ .scanner-v2 .kiosk-middle{gap:12px;padding:12px}
  .scanner-v2 .readiness-area{padding:18px}
  .scanner-v2 .readiness-area h2{font-size:38px}
  .scanner-v2 .readiness-description{font-size:18px}

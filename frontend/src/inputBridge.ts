@@ -3,11 +3,11 @@ import { validScannerCode } from './scannerCapture'
 /** The Pi reads USB/NFC locally; only this page's active stream may use those scans. */
 export type InputBridgeStatus = {
   connected: boolean; ready: boolean; fallback: boolean; busy: boolean
-  scanner: string; scannerName: string; scannerError: string; nfc: string; nfcError: string; message: string
+  scanner: string; scannerName: string; scannerError: string; nfc: string; nfcError: string; message: string; localIps: string[]
 }
-type Message = { kind?: string; session_id?: unknown; id?: unknown; code?: unknown; message?: unknown; at_ms?: unknown; now_ms?: unknown; scanner?: unknown; scanner_name?: unknown; scanner_error?: unknown; nfc?: unknown; nfc_error?: unknown; pages?: unknown }
+type Message = { kind?: string; session_id?: unknown; id?: unknown; code?: unknown; message?: unknown; at_ms?: unknown; now_ms?: unknown; scanner?: unknown; scanner_name?: unknown; scanner_error?: unknown; nfc?: unknown; nfc_error?: unknown; pages?: unknown; local_ips?: unknown }
 const MAX_AGE_MS = 3000, MAX_CALIBRATION_RTT_MS = 1000, FUTURE_TOLERANCE_MS = 100
-export const INITIAL_INPUT_STATUS: InputBridgeStatus = { connected: false, ready: false, fallback: false, busy: false, scanner: 'starting', scannerName: '', scannerError: '', nfc: 'off', nfcError: '', message: 'Connecting to scanner input…' }
+export const INITIAL_INPUT_STATUS: InputBridgeStatus = { connected: false, ready: false, fallback: false, busy: false, scanner: 'starting', scannerName: '', scannerError: '', nfc: 'off', nfcError: '', message: 'Connecting to scanner input…', localIps: [] }
 
 export function attachInputBridge(options: { url: string; statusUrl?: string; enabled: () => boolean; onScan: (value: string) => void; onReject: (message: string) => void; onBlocked: () => void; onStatus: (status: InputBridgeStatus) => void }) {
   let status = { ...INITIAL_INPUT_STATUS }, alive = true, open = false, generation = 0
@@ -19,7 +19,7 @@ export function attachInputBridge(options: { url: string; statusUrl?: string; en
     status.ready = status.connected && (status.scanner === 'ok' || status.nfc === 'ok')
     if (alive) options.onStatus(status)
   }
-  const sensors = (message: Message) => ({ scanner: typeof message.scanner === 'string' ? message.scanner : 'unknown', scannerName: typeof message.scanner_name === 'string' ? message.scanner_name : '', scannerError: typeof message.scanner_error === 'string' ? message.scanner_error : '', nfc: typeof message.nfc === 'string' ? message.nfc : 'off', nfcError: typeof message.nfc_error === 'string' ? message.nfc_error : '' })
+  const sensors = (message: Message) => ({ scanner: typeof message.scanner === 'string' ? message.scanner : 'unknown', scannerName: typeof message.scanner_name === 'string' ? message.scanner_name : '', scannerError: typeof message.scanner_error === 'string' ? message.scanner_error : '', nfc: typeof message.nfc === 'string' ? message.nfc : 'off', nfcError: typeof message.nfc_error === 'string' ? message.nfc_error : '', localIps: Array.isArray(message.local_ips) ? message.local_ips.filter((ip): ip is string => typeof ip === 'string') : status.localIps })
   let source = new EventSource(options.url)
   const statusUrl = options.statusUrl || options.url.replace(/\/events(?:\?.*)?$/, '/status')
   async function synchronize(connected: boolean) {

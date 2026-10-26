@@ -1,30 +1,15 @@
 import { test, expect } from '@playwright/test'
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import { createStack, move, openKiosk, scan } from './helpers'
 
-const code = (id: string) => BigInt('0x' + id.replaceAll('-', '')).toString().padStart(39, '0')
-async function create(request: APIRequestContext, count: number, material: string, project = 'DEMO-PANELS-' + randomUUID().slice(0, 8)) {
-  const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: material, test_code: 'D5034', preconditioning_code: '5L', specimen_count: count }] } })).json()
-  const result = await (await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} })).json()
-  return (await request.get('/api/stacks/' + result.stack_ids[0])).json()
-}
-async function move(request: APIRequestContext, stack: any) {
-  const response = await request.post('/api/movements', { data: { request_id: randomUUID(), station_id: 'shared-door', code: code(stack.specimens[0].id), direction: 'IN', scope: 'stack' } })
-  expect(response.ok()).toBe(true)
-  return response.json()
-}
 async function kiosk(page: Page) {
   await page.setViewportSize({ width: 1280, height: 720 })
-  await page.goto('/#kiosk')
-  await expect(page.getByText('Online', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Shared', exact: true }).click()
-  await page.getByRole('button', { name: 'IN', exact: true }).click()
-  await page.bringToFront()
+  await openKiosk(page)
 }
-async function scan(page: Page, id: string) { await page.keyboard.type(code(id)); await page.keyboard.press('Enter') }
 
 test('50/50 layout and expanded Activity undo the chosen older transaction despite a lost response', async ({ page, request }) => {
-  const first = await create(request, 3, 'Older transaction'), second = await create(request, 2, 'Newest transaction'), untouched = await create(request, 1, 'Blocked scan')
+  const first = await createStack(request, 3, 'Older transaction'), second = await createStack(request, 2, 'Newest transaction'), untouched = await createStack(request, 1, 'Blocked scan')
   const entered = await move(request, first); await move(request, second)
   await kiosk(page)
   const left = await page.locator('.readiness-area').boundingBox(), right = await page.locator('.recent-panel').boundingBox()
@@ -50,7 +35,7 @@ test('50/50 layout and expanded Activity undo the chosen older transaction despi
 
 test('room inventory prioritizes ready pieces, filters project and due-soon, and blocks scans', async ({ page, request }) => {
   const project = 'DEMO-INVENTORY-' + randomUUID().slice(0, 8)
-  const mixed = await create(request, 3, 'Mixed readiness', project), otherRoom = await create(request, 2, 'Other room', project), untouched = await create(request, 1, 'Not entered', project)
+  const mixed = await createStack(request, 3, 'Mixed readiness', project), otherRoom = await createStack(request, 2, 'Other room', project), untouched = await createStack(request, 1, 'Not entered', project)
   async function enter(stack: any, ids: string[], hours: number, room: string) {
     const current = await (await request.get('/api/stacks/' + stack.id)).json()
     const response = await request.post('/api/transactions/missed', { data: { stack_id: stack.id, specimen_ids: ids, direction: 'IN', occurred_at: new Date(Date.now() - hours * 3600000).toISOString(), room_id: room, expected_version: current.version } })

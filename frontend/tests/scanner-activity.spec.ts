@@ -1,31 +1,9 @@
 import { test, expect } from '@playwright/test'
-import type { APIRequestContext, Page } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
-
-const code = (id: string) => BigInt('0x' + id.replaceAll('-', '')).toString().padStart(39, '0')
-async function specimenStack(request: APIRequestContext, count: number) {
-  const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{
-    project_number: 'DEMO-ACTIVITY-' + randomUUID().slice(0, 8), material_ref: 'DEMO touch-screen fabric',
-    test_code: 'D5034', preconditioning_code: '5L', specimen_count: count,
-  }] } })).json()
-  const registered = await (await request.post(`/api/prep-drafts/${draft.id}/commit`, { data: {} })).json()
-  return (await request.get('/api/stacks/' + registered.stack_ids[0])).json()
-}
-async function open(page: Page) {
-  await page.goto('/#kiosk')
-  await expect(page.getByText('Online', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Shared', exact: true }).click()
-  await page.getByRole('button', { name: 'IN', exact: true }).click()
-  await page.bringToFront()
-}
-async function scan(page: Page, id: string) {
-  await page.keyboard.type(code(id))
-  await page.keyboard.press('Enter')
-}
+import { createStack, move, openKiosk, scan } from './helpers'
 
 test('Individual survives early checkout, Undo and reload until explicitly changed', async ({ page, request }) => {
-  const stack = await specimenStack(request, 3)
-  await open(page)
+  const stack = await createStack(request, 3)
+  await openKiosk(page)
   await scan(page, stack.specimens[0].id)
   await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'OUT', exact: true }).click()
@@ -57,9 +35,9 @@ test('Individual survives early checkout, Undo and reload until explicitly chang
 })
 
 test('confirmed receipt and exact Undo do not wait for activity or detail refreshes', async ({ page, request }) => {
-  const stack = await specimenStack(request, 4)
+  const stack = await createStack(request, 4)
   await page.setViewportSize({ width: 1280, height: 720 })
-  await open(page)
+  await openKiosk(page)
   await page.route('**/api/events?**', route => route.abort('failed'))
   await page.route('**/api/stacks/' + stack.id, route => route.abort('failed'))
   await scan(page, stack.specimens[0].id)
@@ -81,9 +59,9 @@ test('confirmed receipt and exact Undo do not wait for activity or detail refres
 })
 
 test('a late history snapshot cannot erase the newly confirmed top Activity row', async ({ page, request }) => {
-  const stack = await specimenStack(request, 2)
+  const stack = await createStack(request, 2)
   await page.clock.install()
-  await open(page)
+  await openKiosk(page)
   let release: (() => void) | undefined
   let held = false
   await page.route('**/api/events?**', async route => {
@@ -107,15 +85,12 @@ test('a late history snapshot cannot erase the newly confirmed top Activity row'
 })
 
 test('Undo follows the newest visible scan and never steps backward after an Undo', async ({ page, request }) => {
-  const first = await specimenStack(request, 2), second = await specimenStack(request, 3)
+  const first = await createStack(request, 2), second = await createStack(request, 3)
   await page.clock.install()
-  await open(page)
+  await openKiosk(page)
   await scan(page, first.specimens[0].id)
   await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
-  const newer = await (await request.post('/api/movements', { data: {
-    request_id: randomUUID(), station_id: 'shared-door', code: code(second.specimens[0].id), direction: 'IN', scope: 'stack',
-  } })).json()
-  expect(newer.status).toBe('committed')
+  await move(request, second)
   await page.clock.fastForward(5001)
   await expect(page.locator('.recent-row').first()).toContainText(second.project_number)
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
@@ -126,9 +101,9 @@ test('Undo follows the newest visible scan and never steps backward after an Und
 })
 
 test('ordinary scan errors clear after four seconds and a new scan can interrupt them', async ({ page, request }) => {
-  const stack = await specimenStack(request, 3)
+  const stack = await createStack(request, 3)
   await page.clock.install()
-  await open(page)
+  await openKiosk(page)
   await page.clock.pauseAt(new Date(Date.now() + 1000))
   await page.keyboard.type('NOT-A-LABEL'); await page.keyboard.press('Enter')
   await expect(page.getByRole('alert')).toBeVisible()

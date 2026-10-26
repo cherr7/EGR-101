@@ -41,6 +41,8 @@ export const elapsed = (value?: string | null, end?: string | null) => {
 export function codeFor(id: string, _stack = false) { try { return BigInt(`0x${id.replaceAll('-', '')}`).toString(10).padStart(39, '0') } catch { return id } }
 export const entryOf = (s: import('./types').Specimen) => s.ENTRY ?? s.entry_at ?? s.sessions?.[0]?.entered_at ?? s.entered_at
 export const exitOf = (s: import('./types').Specimen) => s.EXIT ?? s.exit_at ?? s.sessions?.[0]?.exited_at ?? null
+export const specimenNumber = (value: number) => String(value).padStart(2, '0')
+export const specimenNumbers = (values: number[]) => values.map(specimenNumber).join(', ')
 export const specimenStatus = (s: import('./types').Specimen) => exitOf(s) ? 'Finished' : entryOf(s) ? 'Conditioning' : 'Awaiting entry'
 export const isReady = (s: import('./types').Specimen, now = serverNow()) => typeof s.ready === 'boolean' ? s.ready : s.state === 'IN' && !!s.due_at && Date.parse(s.due_at) <= now
 export const localTimeInput = (value: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value)).replace(' ', 'T')

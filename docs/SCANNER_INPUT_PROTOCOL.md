@@ -24,9 +24,9 @@ GET status includes:
 - scanner: starting, ok, missing, or error; scanner_name and scanner_error explain device state.
 - nfc: off, starting, ok, or error; nfc_error explains optional reader failure.
 - pages: zero or one active event-stream consumer.
-- local_ips: station interface addresses, read without contacting the central API; the UI displays IPv4 addresses for debugging.
+- local_ips: the station's non-loopback IPv4 addresses, refreshed every 15 seconds in the background without contacting the central API; the UI displays them for debugging.
 
-The initial SSE status message and later status changes carry kind=status, session_id, now_ms, and reader states. Scan/reject messages carry kind, session_id, an increasing safe integer id, source (barcode or nfc), and monotonic at_ms. A scan adds code as a string. A rejection adds a human-readable message.
+The initial SSE status message and later status changes carry kind=status, session_id, now_ms, reader states, and local_ips. Scan/reject messages carry kind, session_id, an increasing safe integer id, source (barcode or nfc), and monotonic at_ms. A scan adds code as a string. A rejection adds a human-readable message.
 
 The service may emit delivery_error for a delayed queued frame, with its sequence ID and a fresh error timestamp; it never converts that frame into a later movement. consumer_overflow is terminal and carries a message explaining that the label must be rescanned. Queues exist only for bounded live transport while a consumer is connected. Nothing is kept for offline operation or a later browser.
 

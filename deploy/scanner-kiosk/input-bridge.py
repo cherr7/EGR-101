@@ -53,12 +53,31 @@ REJECT_MESSAGE = "Unrecognized scanner input. Rescan the complete label."
 log = logging.getLogger("input-bridge")
 
 
+LOCAL_IPS_INTERVAL = 15.0  # seconds between station address refreshes (debug display only)
+
+
 def local_ips():
-    """Read the station's interface addresses, without requiring the central API."""
+    """Non-loopback IPv4 addresses of the station, without requiring the central API."""
     try:
-        return subprocess.check_output(["hostname", "-I"], text=True, timeout=1, stderr=subprocess.DEVNULL).split()
+        output = subprocess.check_output(["hostname", "-I"], text=True, timeout=1, stderr=subprocess.DEVNULL).split()
     except (OSError, subprocess.SubprocessError):
         return []
+    return [ip for ip in output if ip.count(".") == 3 and ":" not in ip and not ip.startswith("127.")]
+
+
+def local_ips_worker(hub, read=local_ips, sleep=time.sleep):
+    """Keep the subprocess off the /status calibration path. Address changes (a DHCP lease
+    arriving after boot, a renewal) reach a connected page as an ordinary SSE status event."""
+    while True:
+        try:
+            hub.set_status(local_ips=read())
+        except Exception as error:            # a debug display must never stop the bridge
+            log.warning("Station address refresh failed: %s", error)
+        sleep(LOCAL_IPS_INTERVAL)
+
+
+def env_flag(name, environment=os.environ, default="false"):
+    return environment.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 # --- key events to scans ----------------------------------------------------
@@ -110,10 +129,10 @@ class FrameDecoder:
             # This Eyoyo sends Enter, Down, then restores Num Lock. Enter already
             # closed the frame. Consume only this observed, time-bounded trailer;
             # Down inside a payload or outside the suffix window remains invalid.
-            if value == 1 and os.environ.get("SCANNER_DEBUG", "").lower() in ("1", "true"):
+            if value == 1 and env_flag("SCANNER_DEBUG"):
                 log.info("USB trailer key=KEY_DOWN after_enter_ms=%.1f", (at - self.terminated_at) * 1000)
             return None
-        if value == 1 and os.environ.get("SCANNER_TRACE_KEYS", "").lower() in ("1", "true") and len(self.key_trace) < 150:
+        if value == 1 and env_flag("SCANNER_TRACE_KEYS") and len(self.key_trace) < 150:
             self.key_trace.append([code, round(at * 1000, 1)])
         if code in self.shift_keys:
             if value:
@@ -131,12 +150,12 @@ class FrameDecoder:
         self.last = at
         if code in self.enter_keys:
             text, invalid = "".join(self.buffer), self.invalid
-            if os.environ.get("SCANNER_DEBUG", "").lower() in ("1", "true"):
+            if env_flag("SCANNER_DEBUG"):
                 log.info("USB frame text=%s length=%s invalid=%s reasons=%s", json.dumps(text), len(text), invalid,
                          json.dumps(self.invalid_reasons))
-                if self.key_trace:
-                    first = self.key_trace[0][1]
-                    log.info("USB frame keys_ms=%s", json.dumps([[key, round(at_ms - first, 1)] for key, at_ms in self.key_trace]))
+            if self.key_trace:                # collected only when SCANNER_TRACE_KEYS is set
+                first = self.key_trace[0][1]
+                log.info("USB frame keys_ms=%s", json.dumps([[key, round(at_ms - first, 1)] for key, at_ms in self.key_trace]))
             self.completed_at = self.started
             self.terminated_at = at
             self._clear()
@@ -181,7 +200,7 @@ class Hub:
         self.subscriber = None
         self.ids = itertools.count(1)
         self.status = {"scanner": "starting", "scanner_name": "", "scanner_error": "",
-                       "nfc": "off", "nfc_error": ""}
+                       "nfc": "off", "nfc_error": "", "local_ips": []}
 
     def now_ms(self):
         return self.clock() * 1000.0
@@ -218,7 +237,7 @@ class Hub:
             delivered = self._send(message)
         if not delivered:
             log.warning("%s %s dropped: no available kiosk page", source, kind)
-        if os.environ.get("SCANNER_DEBUG", "").lower() in ("1", "true"):
+        if env_flag("SCANNER_DEBUG"):
             log.info("input kind=%s source=%s delivered=%s fields=%s", kind, source, delivered,
                      json.dumps(fields, ensure_ascii=True))
         return delivered
@@ -251,9 +270,8 @@ def handler_for(hub):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/status":
-                addresses = local_ips()
                 with hub.lock:
-                    body = json.dumps({**hub.snapshot(), "pages": int(hub.subscriber is not None), "local_ips": addresses}).encode()
+                    body = json.dumps({**hub.snapshot(), "pages": int(hub.subscriber is not None)}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Cache-Control", "no-store")
@@ -425,8 +443,7 @@ def list_devices(evdev):
 
 
 def nfc_enabled(environment):
-    value = environment.get("ENABLE_NFC", environment.get("NFC", "false"))
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return env_flag("ENABLE_NFC", environment, environment.get("NFC", "false"))
 
 
 def main(argv):
@@ -440,6 +457,7 @@ def main(argv):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     hub = Hub()
     server = serve(hub)
+    threading.Thread(target=local_ips_worker, args=(hub,), name="local-ips", daemon=True).start()
     match = [part.strip().lower() for part in os.environ.get("SCANNER_MATCH", DEFAULT_MATCH).split(",") if part.strip()]
     workers = [("scanner", scanner_worker, (hub, evdev, os.environ.get("SCANNER_DEVICE") or None, match))]
     if nfc_enabled(os.environ):

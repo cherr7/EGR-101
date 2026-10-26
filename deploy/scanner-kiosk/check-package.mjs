@@ -121,7 +121,7 @@ try {
   bridgeMode = true;
   await page.reload();
   await page.waitForFunction(() => window.fabricInputBridgeReady === true);
-  await page.waitForFunction(() => window.fabricInputBridgeReady === true);
+  await page.waitForFunction(() => document.querySelector('.readiness-area')?.getAttribute('data-input-ready') === 'true');
   assert.equal(streams.size, 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.kiosk-shell').scrollHeight <= innerHeight));
   if (process.env.SCREENSHOT) await page.screenshot({ path: process.env.SCREENSHOT });

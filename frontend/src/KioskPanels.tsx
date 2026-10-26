@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, elapsed, entryOf, formatTime, serverNow } from './api'
+import { api, elapsed, entryOf, formatTime, isReady, serverNow, specimenNumbers } from './api'
 import { Modal } from './App'
 import type { AuditEvent, Stack } from './types'
 
 export type ActivityItem = AuditEvent & { project_number?: string; material_ref?: string; test_code?: string; preconditioning_code?: string; specimen_numbers?: number[]; note?: string }
-const numbers = (values: number[]) => values.map(n => String(n).padStart(2, '0')).join(', ')
 
 export function KioskActivity({ events, disabled, error, onUndo, onClose }: {
   events: ActivityItem[]; disabled: boolean; error: string; onUndo: (event: ActivityItem) => void; onClose: () => void
@@ -22,7 +21,7 @@ export function KioskActivity({ events, disabled, error, onUndo, onClose }: {
           <span className={'recent-direction ' + event.direction?.toLowerCase()}>{event.direction}</span>
           <div className="expanded-activity-details"><b>{event.project_number || event.stack_id.slice(0, 8)} / {event.material_ref}</b>
             <p>{[event.test_code, event.preconditioning_code].filter(Boolean).join(' · ')}</p>
-            {!!event.specimen_numbers?.length && <p className="activity-numbers">{numbers(event.specimen_numbers)}</p>}
+            {!!event.specimen_numbers?.length && <p className="activity-numbers">{specimenNumbers(event.specimen_numbers)}</p>}
             {event.note && <p>{event.note}</p>}
             <small>{event.undone ? 'Undone' : event.modified ? 'Modified' : ''}</small>
           </div>
@@ -31,7 +30,7 @@ export function KioskActivity({ events, disabled, error, onUndo, onClose }: {
             {event.modified && <small>Recorded {formatTime(event.recorded_at)}</small>}
           </div>
           <button type="button" className="activity-minus" aria-label={'Undo transaction ' + event.id} title={event.undone ? 'Undone' : event.can_undo === false ? 'Later activity prevents Undo' : 'Undo'}
-            disabled={disabled || event.undone || event.can_undo !== true} onClick={() => onUndo(event)}>−</button>
+            disabled={disabled || event.undone || event.can_undo === false} onClick={() => onUndo(event)}>−</button>
         </article>)}
         {!visible.length && <p className="panel-empty">No activity</p>}
       </div>
@@ -39,7 +38,7 @@ export function KioskActivity({ events, disabled, error, onUndo, onClose }: {
   </Modal>
 }
 
-export function KioskInventory({ roomId, healthy, onClose }: { roomId?: string; healthy: boolean; onClose: () => void }) {
+export function KioskInventory({ roomId, healthy, notice, onClose }: { roomId?: string; healthy: boolean; notice: string; onClose: () => void }) {
   const [items, setItems] = useState<Stack[]>([]), [filter, setFilter] = useState('ready'), [project, setProject] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true), [now, setNow] = useState(serverNow())
   useEffect(() => {
@@ -54,13 +53,12 @@ export function KioskInventory({ roomId, healthy, onClose }: { roomId?: string; 
       finally { if (active && current === revision) setLoading(false) }
     }
     setLoading(true); void load()
-    const refresh = setInterval(() => void load(), 10000), clock = setInterval(() => setNow(serverNow()), 1000)
-    return () => { active = false; clearInterval(refresh); clearInterval(clock) }
+    const refresh = setInterval(() => void load(), 10000)
+    return () => { active = false; clearInterval(refresh) }
   }, [healthy, roomId])
   const rows = useMemo(() => items.map(stack => {
     const inside = stack.specimens.filter(s => s.state === 'IN' && s.room_id === roomId)
-    const ready = inside.filter(s => !!s.due_at && Date.parse(s.due_at) <= now)
-    const conditioning = inside.filter(s => !ready.includes(s))
+    const ready = inside.filter(s => isReady(s, now)), conditioning = inside.filter(s => !isReady(s, now))
     const due = conditioning.map(s => Date.parse(s.due_at || '')).filter(Number.isFinite).sort((a, b) => a - b)[0]
     const oldest = Math.min(...inside.map(s => Date.parse(entryOf(s) || '')).filter(Number.isFinite))
     return { stack, inside, ready, conditioning, due, oldest }
@@ -81,6 +79,7 @@ export function KioskInventory({ roomId, healthy, onClose }: { roomId?: string; 
           <option value="">All projects</option>{[...new Set(rows.map(row => row.stack.project_number))].sort().map(value => <option key={value}>{value}</option>)}
         </select>
       </div>
+      {notice && healthy && <div className="notice error" role="alert">{notice}</div>}
       {!healthy ? <p className="notice error" role="alert">Offline</p> : error ? <p className="notice error" role="alert">{error}</p> :
         <div className="inventory-list">
           {visible.map(({ stack, inside, ready, conditioning, due, oldest }) => <article key={stack.id} className={'inventory-item ' + (ready.length ? 'ready' : '')} data-stack-id={stack.id}>
@@ -92,8 +91,8 @@ export function KioskInventory({ roomId, healthy, onClose }: { roomId?: string; 
               <span aria-hidden="true">{expanded === stack.id ? '−' : '+'}</span>
             </button>
             {expanded === stack.id && <div className="inventory-pieces">
-              {!!ready.length && <p><b>Ready</b><span>{numbers(ready.map(s => s.number))}</span></p>}
-              {!!conditioning.length && <p><b>Conditioning</b><span>{numbers(conditioning.map(s => s.number))}</span></p>}
+              {!!ready.length && <p><b>Ready</b><span>{specimenNumbers(ready.map(s => s.number))}</span></p>}
+              {!!conditioning.length && <p><b>Conditioning</b><span>{specimenNumbers(conditioning.map(s => s.number))}</span></p>}
             </div>}
           </article>)}
           {!visible.length && <p className="panel-empty">{loading ? 'Loading…' : filter === 'ready' ? 'No ready specimens' : filter === 'soon' ? 'None due in 2h' : 'Room empty'}</p>}

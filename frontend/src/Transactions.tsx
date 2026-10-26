@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, localTimeInput, post, serverNow } from './api'
+import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, localTimeInput, post, serverNow, specimenNumber, specimenNumbers } from './api'
 import type { AuditEvent, Config, Specimen, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 
@@ -16,7 +16,7 @@ function labelFor(event: AuditEvent) {
   return event.kind === 'movement' ? event.direction : event.kind.replaceAll('_', ' ')
 }
 function numbers(stack: Stack, ids: string[]) {
-  return stack.specimens.filter(specimen => ids.includes(specimen.id)).map(specimen => String(specimen.number).padStart(2, '0')).join(', ')
+  return specimenNumbers(stack.specimens.filter(specimen => ids.includes(specimen.id)).map(specimen => specimen.number))
 }
 function eligible(specimen: Specimen, direction: string | undefined) {
   return direction === 'IN' ? !entryOf(specimen) : specimen.state === 'IN'
@@ -267,7 +267,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
                 onChange={e => setEditor(previous => previous && {
                   ...previous, ids: e.target.checked ? [...previous.ids, specimen.id] : previous.ids.filter(id => id !== specimen.id),
                 })} />
-              <b>{String(specimen.number).padStart(2, '0')}</b><small>{specimen.state === 'IN' ? 'Inside' : entryOf(specimen) ? 'Finished' : 'Awaiting'}</small>
+              <b>{specimenNumber(specimen.number)}</b><small>{specimen.state === 'IN' ? 'Inside' : entryOf(specimen) ? 'Finished' : 'Awaiting'}</small>
             </label>
           })}
         </div>
@@ -344,7 +344,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
               <input type="checkbox" disabled={busy || !allowed} checked={missed.ids.includes(specimen.id)}
                 onChange={e => setMissed(previous => previous && {
                   ...previous, ids: e.target.checked ? [...previous.ids, specimen.id] : previous.ids.filter(id => id !== specimen.id),
-                })} /><b>{String(specimen.number).padStart(2, '0')}</b>
+                })} /><b>{specimenNumber(specimen.number)}</b>
               <small>{specimen.state === 'IN' ? 'Inside' : entryOf(specimen) ? 'Finished' : 'Awaiting'}</small>
             </label>
           })}</div>

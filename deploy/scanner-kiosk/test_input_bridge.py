@@ -255,6 +255,7 @@ class HubTests(unittest.TestCase):
                 self.assertGreater(status["now_ms"], 0)
                 self.assertEqual(status["scanner"], "starting")
                 self.assertIn("scanner_error", status)
+                self.assertEqual(status["local_ips"], [])
             stream.close()
         finally:
             server.shutdown()
@@ -455,6 +456,37 @@ class NfcWorkerTests(unittest.TestCase):
                          [("scan", PAYLOAD), ("reject", None)])
         self.assertEqual(hub.status["nfc"], "error")
         self.assertIn("stopped", hub.status["nfc_error"])
+
+
+class LocalAddressTests(unittest.TestCase):
+    def test_only_non_loopback_ipv4_addresses_are_reported(self):
+        output = "192.168.1.50 127.0.1.1 10.0.0.7 fd12:3456::1 2001:db8::7\n"
+        with patch.object(bridge.subprocess, "check_output", return_value=output):
+            self.assertEqual(bridge.local_ips(), ["192.168.1.50", "10.0.0.7"])
+        with patch.object(bridge.subprocess, "check_output", side_effect=bridge.subprocess.TimeoutExpired("hostname", 1)):
+            self.assertEqual(bridge.local_ips(), [])
+
+    def test_late_lease_reaches_status_and_live_stream_once(self):
+        hub = bridge.Hub()
+        page, snapshot = hub.subscribe()
+        self.assertEqual(snapshot["local_ips"], [])
+        # Boot before DHCP, an unexpected reader failure, the lease, then an unchanged refresh.
+        answers = [[], ValueError("unreadable hostname output"), ["192.168.1.50"], ["192.168.1.50"]]
+
+        def read():
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        def sleep(_seconds):
+            if not answers:
+                raise StopWorker
+        with self.assertLogs(bridge.log, level="WARNING"), self.assertRaises(StopWorker):
+            bridge.local_ips_worker(hub, read=read, sleep=sleep)
+        messages = [page.get_nowait() for _ in range(page.qsize())]
+        self.assertEqual([(m["kind"], m["local_ips"]) for m in messages], [("status", ["192.168.1.50"])])
+        self.assertEqual(hub.status["local_ips"], ["192.168.1.50"])
 
 
 if __name__ == "__main__":

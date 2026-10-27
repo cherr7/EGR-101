@@ -108,6 +108,7 @@ class FrameDecoder:
         self.enter_keys = {ecodes.KEY_ENTER, ecodes.KEY_KPENTER}
         self.num_lock = getattr(ecodes, "KEY_NUMLOCK", 69)
         self.down_key = getattr(ecodes, "KEY_DOWN", 108)
+        self.esc_key = getattr(ecodes, "KEY_ESC", 1)
         self.held_shift = set()
         self.completed_at = None
         self.terminated_at = None
@@ -142,13 +143,17 @@ class FrameDecoder:
             return None
         if value != 1:                        # key-down only
             return None
+        if code == self.esc_key and self.started is None:
+            # With the Eyoyo suffix set to "None" each scan arrives as ESC, payload, ESC.
+            # The leading ESC carries no character; the trailing one ends the frame like Enter.
+            return None
         if self.started is None:
             self.started = at
         if self.last is not None and (at < self.last or at - self.last > MAX_GAP):
             self.invalid = True               # interrupted/out-of-order frame: reject at Enter
             self.invalid_reasons.append("key_gap_or_order")
         self.last = at
-        if code in self.enter_keys:
+        if code in self.enter_keys or code == self.esc_key:
             text, invalid = "".join(self.buffer), self.invalid
             if env_flag("SCANNER_DEBUG"):
                 log.info("USB frame text=%s length=%s invalid=%s reasons=%s", json.dumps(text), len(text), invalid,

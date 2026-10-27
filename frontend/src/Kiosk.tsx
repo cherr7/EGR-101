@@ -6,7 +6,7 @@ import { attachScanner } from './scannerCapture'
 import { attachInputBridge, INITIAL_INPUT_STATUS } from './inputBridge'
 import type { InputBridgeStatus } from './inputBridge'
 import './kiosk.css'
-import { KioskActivity, KioskInventory } from './KioskPanels'
+import { KioskActivity, KioskInventory, KioskScannerSetup } from './KioskPanels'
 import type { ActivityItem } from './KioskPanels'
 
 const PENDING_KEY = 'fabric-tracker.pending-movement.v2', UNDO_KEY = 'fabric-tracker.pending-undo.v1', LEGACY_LAST_KEY = 'fabric-tracker.last-movement.v2'
@@ -38,7 +38,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => stored<PendingUndo>(UNDO_KEY)), [undoMessage, setUndoMessage] = useState(''), [noticeVersion, setNoticeVersion] = useState(0), [errorKind, setErrorKind] = useState<ErrorKind>('scan')
   const [selection, setSelection] = useState<Selection | null>(null), [acknowledge, setAcknowledge] = useState<Acknowledgment | null>(null)
   const [detail, setDetail] = useState<Stack | null>(null), [events, setEvents] = useState<ActivityItem[]>([])
-  const [panel, setPanel] = useState<'activity' | 'inventory' | null>(null)
+  const [panel, setPanel] = useState<'activity' | 'inventory' | 'setup' | null>(null)
   const [result, setResult] = useState<MovementResult | null>(null), [resultDirection, setResultDirection] = useState<'IN' | 'OUT'>('IN'), [green, setGreen] = useState(false), [error, setError] = useState(''), [focused, setFocused] = useState(document.hasFocus())
   const inFlight = useRef(false), active = useRef(true), greenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), historyRef = useRef<HTMLDivElement>(null)
   const activityRevision = useRef(0), activityFetch = useRef(0), feedbackRevision = useRef(0)
@@ -243,6 +243,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
             onClick={() => { clearFeedback(); setScope('specimen') }}>Individual</button>
         </div>
         <div className="scanner-network"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
+          <button type="button" className="scanner-setup-button" disabled={blocked} onClick={() => setPanel('setup')}>Scanner setup</button>
           {!!inputStatus.localIps.length && <small className="scanner-ip" aria-label="Station IP address">{inputStatus.localIps.join(' · ')}</small>}</div>
       </header>
 
@@ -300,6 +301,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
 
       {panel === 'activity' && <KioskActivity events={events} disabled={!healthy || transactionBlocked} error={error} onClose={() => setPanel(null)}
         onUndo={event => void undo(toUndoTarget(event))} />}
+      {panel === 'setup' && <KioskScannerSetup onClose={() => setPanel(null)} />}
       {panel === 'inventory' && <KioskInventory roomId={currentRoomId} healthy={healthy} notice={error} onClose={() => setPanel(null)} />}
 
       {selection && <Modal title="Choose the specimens moving" onClose={() => !busy && setSelection(null)} wide>

@@ -245,7 +245,7 @@ def test_restore_name_switch_rolls_back_if_promotion_fails(client, stack_factory
     def broken_admin():
         admin = real_admin()
         def before(_conn, _cursor, statement, _parameters, _context, _many):
-            if statement.startswith('ALTER DATABASE "fabric_restore_') and ' RENAME TO ' in statement:
+            if '_restore_' in statement.split(' RENAME TO ')[0] and statement.startswith('ALTER DATABASE'):
                 raise RuntimeError("Injected failure after the first database rename")
         event.listen(admin, "before_cursor_execute", before)
         return admin

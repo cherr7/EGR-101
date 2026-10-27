@@ -35,8 +35,8 @@ QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
 class LabelPreviewBody(BaseModel):
     stack_ids: list[UUID] = Field(min_length=1, max_length=100)
     selected_specimen_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=5000)
-    width_mm: float = Field(default=50.8, ge=40, le=150)
-    height_mm: float = Field(default=25.4, ge=25, le=150)
+    width_mm: float = Field(default=62, ge=40, le=150)      # Brother QL 62 mm continuous roll
+    height_mm: float = Field(default=31, ge=25, le=150)
 
     @field_validator("stack_ids")
     @classmethod

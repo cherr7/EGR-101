@@ -6,7 +6,7 @@ import { attachScanner } from './scannerCapture'
 import { attachInputBridge, INITIAL_INPUT_STATUS } from './inputBridge'
 import type { InputBridgeStatus } from './inputBridge'
 import './kiosk.css'
-import { KioskActivity, KioskInventory } from './KioskPanels'
+import { KioskActivity, KioskInventory, KioskScannerSetup } from './KioskPanels'
 import type { ActivityItem } from './KioskPanels'
 
 const PENDING_KEY = 'fabric-tracker.pending-movement.v2', UNDO_KEY = 'fabric-tracker.pending-undo.v1', LEGACY_LAST_KEY = 'fabric-tracker.last-movement.v2'
@@ -38,7 +38,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => stored<PendingUndo>(UNDO_KEY)), [undoMessage, setUndoMessage] = useState(''), [noticeVersion, setNoticeVersion] = useState(0), [errorKind, setErrorKind] = useState<ErrorKind>('scan')
   const [selection, setSelection] = useState<Selection | null>(null), [acknowledge, setAcknowledge] = useState<Acknowledgment | null>(null)
   const [detail, setDetail] = useState<Stack | null>(null), [events, setEvents] = useState<ActivityItem[]>([])
-  const [panel, setPanel] = useState<'activity' | 'inventory' | null>(null)
+  const [panel, setPanel] = useState<'activity' | 'inventory' | 'setup' | null>(null)
   const [result, setResult] = useState<MovementResult | null>(null), [resultDirection, setResultDirection] = useState<'IN' | 'OUT'>('IN'), [green, setGreen] = useState(false), [error, setError] = useState(''), [focused, setFocused] = useState(document.hasFocus())
   const inFlight = useRef(false), active = useRef(true), greenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), historyRef = useRef<HTMLDivElement>(null)
   const activityRevision = useRef(0), activityFetch = useRef(0), feedbackRevision = useRef(0)
@@ -50,6 +50,36 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const top = events.find(event => event.actor === station)
   const undoTarget = top && !top.undone && top.can_undo !== false ? toUndoTarget(top) : null
   useEffect(() => { active.current = true; return () => { active.current = false; clearTimeout(greenTimer.current) } }, [])
+  useEffect(() => {
+    // The Pi touchscreen reaches Chromium as a mouse, so lists scroll by dragging and a drag never counts as a tap.
+    let drag: { element: HTMLElement; y: number; top: number; moved: boolean } | null = null
+    const scroller = (target: EventTarget | null) => {
+      for (let element = target as HTMLElement | null; element && element !== document.body; element = element.parentElement) {
+        const overflow = getComputedStyle(element).overflowY
+        if ((overflow === 'auto' || overflow === 'scroll') && element.scrollHeight > element.clientHeight) return element
+      }
+      return null
+    }
+    const down = (event: PointerEvent) => {
+      const element = event.pointerType === 'mouse' && event.button === 0 ? scroller(event.target) : null
+      drag = element && { element, y: event.clientY, top: element.scrollTop, moved: false }
+    }
+    const move = (event: PointerEvent) => {
+      if (!drag || (!drag.moved && Math.abs(event.clientY - drag.y) < 8)) return
+      drag.moved = true; drag.element.scrollTop = drag.top - (event.clientY - drag.y); event.preventDefault()
+    }
+    const swallow = (event: Event) => { event.preventDefault(); event.stopPropagation() }
+    const up = () => {
+      if (drag?.moved) { window.addEventListener('click', swallow, { capture: true, once: true }); setTimeout(() => window.removeEventListener('click', swallow, true)) }
+      drag = null
+    }
+    window.addEventListener('pointerdown', down, true); window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true)
+    return () => {
+      window.removeEventListener('pointerdown', down, true); window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true)
+    }
+  }, [])
   useEffect(() => {
     // Setup errors block every scan, so they stay visible until the operator acts again.
     if ((!error && !undoMessage) || pending || pendingUndo || (error && errorKind === 'setup')) return
@@ -242,8 +272,13 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
           <button type="button" aria-pressed={scope === 'specimen'} disabled={blocked}
             onClick={() => { clearFeedback(); setScope('specimen') }}>Individual</button>
         </div>
-        <div className="scanner-network"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
-          {!!inputStatus.localIps.length && <small className="scanner-ip" aria-label="Station IP address">{inputStatus.localIps.join(' · ')}</small>}</div>
+        <div className="scanner-network">
+          <div className="scanner-status"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
+            {bridgeConfigured && <small className={'scanner-ip ' + (inputStatus.localIps.length ? '' : 'missing')} aria-label="Station IP address">
+              {inputStatus.localIps.length ? inputStatus.localIps.join(' · ') : inputStatus.connected ? 'No network' : 'IP unknown'}</small>}</div>
+          <button type="button" className="scanner-setup-button" aria-label="Scanner setup" title="Scanner setup" disabled={blocked} onClick={() => setPanel('setup')}>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+          </button></div>
       </header>
 
       <div className="kiosk-middle">
@@ -300,6 +335,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
 
       {panel === 'activity' && <KioskActivity events={events} disabled={!healthy || transactionBlocked} error={error} onClose={() => setPanel(null)}
         onUndo={event => void undo(toUndoTarget(event))} />}
+      {panel === 'setup' && <KioskScannerSetup onClose={() => setPanel(null)} />}
       {panel === 'inventory' && <KioskInventory roomId={currentRoomId} healthy={healthy} notice={error} onClose={() => setPanel(null)} />}
 
       {selection && <Modal title="Choose the specimens moving" onClose={() => !busy && setSelection(null)} wide>

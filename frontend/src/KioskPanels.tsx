@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, elapsed, entryOf, formatTime, isReady, serverNow, specimenNumbers } from './api'
 import { Modal } from './App'
 import type { AuditEvent, Stack } from './types'
+import { SCANNER_SETUP_CODES } from './scannerSetupCodes'
 
 export type ActivityItem = AuditEvent & { project_number?: string; material_ref?: string; test_code?: string; preconditioning_code?: string; specimen_numbers?: number[]; note?: string }
 
@@ -99,4 +100,17 @@ export function KioskInventory({ roomId, healthy, notice, onClose }: { roomId?: 
         </div>}
     </div>
   </Modal>
+}
+
+export function KioskScannerSetup({ onClose }: { onClose: () => void }) {
+  return <section className="scanner-setup-strip" role="dialog" aria-label="Scanner setup">
+    <ol>
+      {SCANNER_SETUP_CODES.map(code => <li key={code.payload}>
+        <svg viewBox={`0 0 ${code.size} ${code.size}`} role="img" aria-label={code.label + ' setup code'} shapeRendering="crispEdges"><rect width={code.size} height={code.size} fill="#fff" /><path d={code.path} fill="#000" /></svg>
+        <b>{code.label}</b>
+      </li>)}
+    </ol>
+    <div className="scanner-setup-side"><p>Scan in order. Scans are not recorded while this is open.</p>
+      <button type="button" className="button secondary" onClick={onClose}>Done</button></div>
+  </section>
 }

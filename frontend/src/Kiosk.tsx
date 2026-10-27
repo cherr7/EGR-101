@@ -51,6 +51,36 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const undoTarget = top && !top.undone && top.can_undo !== false ? toUndoTarget(top) : null
   useEffect(() => { active.current = true; return () => { active.current = false; clearTimeout(greenTimer.current) } }, [])
   useEffect(() => {
+    // The Pi touchscreen reaches Chromium as a mouse, so lists scroll by dragging and a drag never counts as a tap.
+    let drag: { element: HTMLElement; y: number; top: number; moved: boolean } | null = null
+    const scroller = (target: EventTarget | null) => {
+      for (let element = target as HTMLElement | null; element && element !== document.body; element = element.parentElement) {
+        const overflow = getComputedStyle(element).overflowY
+        if ((overflow === 'auto' || overflow === 'scroll') && element.scrollHeight > element.clientHeight) return element
+      }
+      return null
+    }
+    const down = (event: PointerEvent) => {
+      const element = event.pointerType === 'mouse' && event.button === 0 ? scroller(event.target) : null
+      drag = element && { element, y: event.clientY, top: element.scrollTop, moved: false }
+    }
+    const move = (event: PointerEvent) => {
+      if (!drag || (!drag.moved && Math.abs(event.clientY - drag.y) < 8)) return
+      drag.moved = true; drag.element.scrollTop = drag.top - (event.clientY - drag.y); event.preventDefault()
+    }
+    const swallow = (event: Event) => { event.preventDefault(); event.stopPropagation() }
+    const up = () => {
+      if (drag?.moved) { window.addEventListener('click', swallow, { capture: true, once: true }); setTimeout(() => window.removeEventListener('click', swallow, true)) }
+      drag = null
+    }
+    window.addEventListener('pointerdown', down, true); window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true)
+    return () => {
+      window.removeEventListener('pointerdown', down, true); window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true)
+    }
+  }, [])
+  useEffect(() => {
     // Setup errors block every scan, so they stay visible until the operator acts again.
     if ((!error && !undoMessage) || pending || pendingUndo || (error && errorKind === 'setup')) return
     const timer = setTimeout(() => { setError(''); setUndoMessage('') }, NOTICE_HOLD_MS)
@@ -242,9 +272,12 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
           <button type="button" aria-pressed={scope === 'specimen'} disabled={blocked}
             onClick={() => { clearFeedback(); setScope('specimen') }}>Individual</button>
         </div>
-        <div className="scanner-network"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
-          <button type="button" className="scanner-setup-button" disabled={blocked} onClick={() => setPanel('setup')}>Scanner setup</button>
-          {!!inputStatus.localIps.length && <small className="scanner-ip" aria-label="Station IP address">{inputStatus.localIps.join(' · ')}</small>}</div>
+        <div className="scanner-network">
+          <div className="scanner-status"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
+            {!!inputStatus.localIps.length && <small className="scanner-ip" aria-label="Station IP address">{inputStatus.localIps.join(' · ')}</small>}</div>
+          <button type="button" className="scanner-setup-button" aria-label="Scanner setup" title="Scanner setup" disabled={blocked} onClick={() => setPanel('setup')}>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+          </button></div>
       </header>
 
       <div className="kiosk-middle">

@@ -103,15 +103,14 @@ export function KioskInventory({ roomId, healthy, notice, onClose }: { roomId?: 
 }
 
 export function KioskScannerSetup({ onClose }: { onClose: () => void }) {
-  return <Modal title="Scanner setup" onClose={onClose} wide>
-    <div className="modal-body kiosk-panel-body">
-      <p className="modal-intro">Scan each code in order with the station scanner. It beeps as each setting is saved; scans are not recorded while this screen is open.</p>
-      <ol className="scanner-setup-codes">
-        {SCANNER_SETUP_CODES.map(code => <li key={code.payload}>
-          <svg viewBox={`0 0 ${code.size} ${code.size}`} role="img" aria-label={code.label + ' setup code'} shapeRendering="crispEdges"><rect width={code.size} height={code.size} fill="#fff" /><path d={code.path} fill="#000" /></svg>
-          <b>{code.label}</b><small>{code.note}</small>
-        </li>)}
-      </ol>
-    </div>
-  </Modal>
+  return <section className="scanner-setup-strip" role="dialog" aria-label="Scanner setup">
+    <ol>
+      {SCANNER_SETUP_CODES.map(code => <li key={code.payload}>
+        <svg viewBox={`0 0 ${code.size} ${code.size}`} role="img" aria-label={code.label + ' setup code'} shapeRendering="crispEdges"><rect width={code.size} height={code.size} fill="#fff" /><path d={code.path} fill="#000" /></svg>
+        <b>{code.label}</b>
+      </li>)}
+    </ol>
+    <div className="scanner-setup-side"><p>Scan in order. Scans are not recorded while this is open.</p>
+      <button type="button" className="button secondary" onClick={onClose}>Done</button></div>
+  </section>
 }

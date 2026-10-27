@@ -14,10 +14,10 @@ Keep identifiers as strings in JavaScript and JSON. A 128-bit ID exceeds the exa
 
 ## Scanner transport
 
-The Eyoyo EYH2 is used as a USB keyboard-wedge scanner: with its end character set to **None**, decoding a label types ESC, the decimal payload, then ESC. Program it from the kiosk's Scanner setup screen (Restore defaults, End character: None, Low volume). The kiosk also still accepts the factory Enter suffix; neither character is part of the barcode. Print the acceptance sheet with `python3 scripts/barcode-test-sheet.py`, which writes `output/qa/barcode-test-sheet.pdf`. Page 1 has production-encoder Data Matrix IDs at the 18.6 mm label size, including all-zero, leading-zero and maximum values. Page 2 has Code 128, Code 39, EAN-13, QR and Data Matrix keyboard-mapping checks. The script decodes every Data Matrix before writing the PDF. Configure and verify the actual device with a simple text editor before relying on the kiosk:
+The Eyoyo EYH2 is used as a USB keyboard-wedge scanner: decoding a label should type its decimal payload followed by Enter. Enter is a scanner suffix setting, not part of the barcode. Print the acceptance sheet with `python3 scripts/barcode-test-sheet.py`, which writes `output/qa/barcode-test-sheet.pdf`. Page 1 has production-encoder Data Matrix IDs at the 18.6 mm label size, including all-zero, leading-zero and maximum values. Page 2 has Code 128, Code 39, EAN-13, QR and Data Matrix keyboard-mapping checks. The script decodes every Data Matrix before writing the PDF. Configure and verify the actual device with a simple text editor before relying on the kiosk:
 
 1. Scan an app-generated label into a blank editor.
-2. Confirm exactly 39 digits, including leading zeroes, with no Enter after them (an editor shows nothing for the ESC characters).
+2. Confirm exactly 39 digits, including leading zeroes, and then one Enter.
 3. Check that no extra prefix/suffix, tab, character substitution, or conversion has been enabled.
 4. Repeat with multiple registered labels and the deployment's keyboard layout.
 

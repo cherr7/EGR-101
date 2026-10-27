@@ -22,7 +22,7 @@ def load(name, path):
 bridge = load("input_bridge", Path(__file__).with_name("input-bridge.py"))
 
 # Linux input-event-codes values, so tests run without python-evdev installed.
-CODES = {"KEY_ESC": 1, "KEY_1": 2, "KEY_2": 3, "KEY_3": 4, "KEY_4": 5, "KEY_5": 6, "KEY_6": 7, "KEY_7": 8, "KEY_8": 9,
+CODES = {"KEY_1": 2, "KEY_2": 3, "KEY_3": 4, "KEY_4": 5, "KEY_5": 6, "KEY_6": 7, "KEY_7": 8, "KEY_8": 9,
          "KEY_9": 10, "KEY_0": 11, "KEY_MINUS": 12, "KEY_EQUAL": 13, "KEY_Q": 16, "KEY_W": 17, "KEY_E": 18,
          "KEY_R": 19, "KEY_T": 20, "KEY_Y": 21, "KEY_U": 22, "KEY_I": 23, "KEY_O": 24, "KEY_P": 25,
          "KEY_LEFTBRACE": 26, "KEY_RIGHTBRACE": 27, "KEY_ENTER": 28, "KEY_A": 30, "KEY_S": 31, "KEY_D": 32,
@@ -75,13 +75,6 @@ class FrameDecoderTests(unittest.TestCase):
         self.assertEqual(decode(middle), [("reject", bridge.REJECT_MESSAGE)])
         events = keys(PAYLOAD) + [(108, 1, 1)] + keys(PAYLOAD, start=2)
         self.assertEqual(decode(events), [("scan", PAYLOAD), ("reject", bridge.REJECT_MESSAGE)])
-
-    def test_none_suffix_esc_framing_reads_each_scan(self):
-        # Eyoyo suffix "None": ESC, payload, ESC per scan.
-        events = []
-        for start in (0, 2):
-            events += [(ecodes.KEY_ESC, 1, start), (ecodes.KEY_ESC, 0, start + .001)] + keys(PAYLOAD, start=start + .002, step=.006, enter="KEY_ESC")
-        self.assertEqual(decode(events), [("scan", PAYLOAD)] * 2)
 
     def test_scanner_num_lock_toggle_does_not_reject_or_poison_scans(self):
         events = [(69, 1, 0), (69, 0, .001)] + keys(PAYLOAD, start=.01)

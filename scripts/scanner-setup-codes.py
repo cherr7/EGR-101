@@ -8,7 +8,7 @@ import zxingcpp
 # Applied in this order on the kiosk's Scanner setup screen.
 CODES = [
     ("Restore defaults", "Clears every earlier setting.", "@WSM00010000."),
-    ("End character: None", "Each scan is sent as ESC, label, ESC; the kiosk ends a scan on either ESC or Enter.", "@WSM05040000."),
+    ("End character: CR", "Each scan ends with Enter, which the kiosk needs.", "@WSM05040001."),
     ("Low volume", "Quiet beep for shared lab space.", "@WSM04010000."),
 ]
 

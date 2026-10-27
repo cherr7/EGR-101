@@ -35,7 +35,7 @@
 .scanner-v2 .panel-tool{min-height:48px;padding:8px 14px;border:1px solid #bdcfc2;border-radius:8px;background:#f5f9f3;color:#36564a;font-size:18px;font-weight:600}
 .scanner-v2 .expand-activity{display:grid;place-items:center;width:48px;padding:10px}
 .scanner-v2 .expand-activity svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.scanner-v2 .recent-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px;scrollbar-gutter:stable}
+.scanner-v2 .recent-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px}
 .scanner-v2 .recent-row{align-items:flex-start;padding:17px 0;gap:12px}
 .scanner-v2 .recent-row>div{min-width:0;flex:1}
 .scanner-v2 .recent-row b{display:block;overflow-wrap:anywhere;font-size:18px;line-height:1.35;color:#365448}
@@ -165,4 +165,5 @@
 /* Touch kiosk: dragging a list scrolls it and never selects text. */
 .scanner-v2,.scanner-v2 *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .scanner-v2 .recent-scroll,.scanner-v2 .expanded-activity-list,.scanner-v2 .inventory-list,.scanner-v2 .modal-body{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.scanner-v2 *{scrollbar-width:none}.scanner-v2 *::-webkit-scrollbar{display:none}
 .scanner-v2 .scanner-ip.missing{color:#b3312b;font-weight:600}

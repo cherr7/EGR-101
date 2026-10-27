@@ -175,11 +175,28 @@ def admin_engine():
     return create_engine(engine.url.set(database="postgres"), isolation_level="AUTOCOMMIT")
 
 
+def drop_databases(admin, pattern, keep):
+    """Remove this database's leftover restore copies; other databases sharing the cluster are untouched."""
+    with admin.connect() as connection:
+        names = connection.execute(text("SELECT datname FROM pg_database WHERE datname LIKE :pattern"),
+                                   {"pattern": pattern.replace("_", r"\_") + "%"}).scalars().all()
+        for name in set(names) - set(keep):
+            try:
+                connection.exec_driver_sql('DROP DATABASE IF EXISTS "' + name + '" WITH (FORCE)')
+            except Exception:
+                LOGGER.exception("Could not remove leftover restore database %s", name)
+
+
 def create_staging(content):
     manifest, snapshot = read_archive(content)
     identifier = uuid.uuid4().hex
-    name = "fabric_restore_" + identifier[:20]
+    name = engine.url.database + "_restore_" + identifier[:20]
     admin = admin_engine()
+    # Staged copies are only usable for a day; keep the ones a pending or in-flight restore still needs.
+    pending = [json.loads(path.read_text()) for path in folder().glob("*.staged.json")]
+    drop_databases(admin, engine.url.database + "_restore_", [
+        record["database"] for record in pending if record["status"] == "applying" or (
+            record["status"] == "validated" and utcnow() - datetime.fromisoformat(record["created_at"]) <= timedelta(days=1))])
     target = create_engine(engine.url.set(database=name))
     try:
         with admin.connect() as connection:
@@ -267,7 +284,7 @@ def apply_staging(identifier):
         raise HTTPException(409, "Restore validation expired. Import the backup again.")
     active = engine.url.database
     stage = record["database"]
-    previous = "fabric_previous_" + uuid.uuid4().hex[:20]
+    previous = active + "_previous_" + uuid.uuid4().hex[:20]
     if not all(re.fullmatch(r"[a-zA-Z0-9_]+", value or "") for value in [active, stage, previous]):
         raise HTTPException(409, "Database names are not supported for restore.")
     with LOCK:
@@ -303,6 +320,12 @@ def apply_staging(identifier):
             save_json(path, record)
         except OSError:
             LOGGER.exception("Restore committed; durable database marker will recover its status")
+        # Only the newest previous database is kept for recovery; older ones would otherwise pile up forever.
+        admin = admin_engine()
+        try:
+            drop_databases(admin, active + "_previous_", [previous])
+        finally:
+            admin.dispose()
         return restore_result(record)
 
 

@@ -26,7 +26,7 @@ def install_fake_cups(monkeypatch, *, timeout=False):
         if timeout:
             raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
         assert argv[1:3] == ["-d", "Brother_QL"]
-        assert "media=Custom.50.8x25.4mm" in argv
+        assert "media=Custom.62x31mm" in argv
         assert "print-scaling=none" in argv
         with open(argv[-1], "rb") as file:
             assert file.read(4) == b"%PDF"
@@ -75,8 +75,8 @@ def test_label_preview_and_pdf_codes_are_registered_ids(client, stack_factory):
     assert len(pdf.pages) == 3
     decoded_ids = []
     for page in pdf.pages:
-        assert abs(float(page.mediabox.width) - 144) < .01
-        assert abs(float(page.mediabox.height) - 72) < .01
+        assert abs(float(page.mediabox.width) - 62 / 25.4 * 72) < .01
+        assert abs(float(page.mediabox.height) - 31 / 25.4 * 72) < .01
         assert "00073-LAB" in page.extract_text()
         image = Image.open(io.BytesIO(list(page.images)[0].data))
         decoded_ids.append(payload_id(zxingcpp.read_barcode(image).text))

@@ -10,6 +10,7 @@ CODES = [
     ("Restore defaults", "Clears every earlier setting.", "@WSM00010000."),
     ("End character: CR", "Each scan ends with Enter, which the kiosk needs.", "@WSM05040001."),
     ("Low volume", "Quiet beep for shared lab space.", "@WSM04010000."),
+    ("High volume", "Loud beep for a noisy room; scan instead of Low volume.", "@WSM04010001."),
 ]
 
 

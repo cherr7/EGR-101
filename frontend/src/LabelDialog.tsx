@@ -5,8 +5,9 @@ import { ErrorNotice, Modal } from './App'
 
 const PRINT_KEY = 'fabric-tracker.pending-print.v2'
 const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
-const LABEL_WIDTH_MM = 50.8
-const LABEL_HEIGHT_MM = 25.4
+// Brother QL-810W, 62 mm continuous roll cut every 31 mm (2.44 x 1.22 in).
+const LABEL_WIDTH_MM = 62
+const LABEL_HEIGHT_MM = 31
 type LabelSelection = {
   stack_ids: string[]
   selected_specimen_ids: string[]

@@ -165,3 +165,4 @@
 /* Touch kiosk: dragging a list scrolls it and never selects text. */
 .scanner-v2,.scanner-v2 *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .scanner-v2 .recent-scroll,.scanner-v2 .expanded-activity-list,.scanner-v2 .inventory-list,.scanner-v2 .modal-body{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.scanner-v2 .scanner-ip.missing{color:#b3312b;font-weight:600}

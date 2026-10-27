@@ -274,7 +274,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         </div>
         <div className="scanner-network">
           <div className="scanner-status"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
-            {!!inputStatus.localIps.length && <small className="scanner-ip" aria-label="Station IP address">{inputStatus.localIps.join(' · ')}</small>}</div>
+            {bridgeConfigured && <small className={'scanner-ip ' + (inputStatus.localIps.length ? '' : 'missing')} aria-label="Station IP address">
+              {inputStatus.localIps.length ? inputStatus.localIps.join(' · ') : inputStatus.connected ? 'No network' : 'IP unknown'}</small>}</div>
           <button type="button" className="scanner-setup-button" aria-label="Scanner setup" title="Scanner setup" disabled={blocked} onClick={() => setPanel('setup')}>
             <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button></div>

@@ -5,9 +5,9 @@ import { ErrorNotice, Modal } from './App'
 
 const PRINT_KEY = 'fabric-tracker.pending-print.v2'
 const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
-// Brother QL-810W, 62 mm continuous roll cut every 31 mm (2.44 x 1.22 in).
+// Brother QL-810W, 62 mm continuous roll at a constant 25.4 mm per label (2.44 x 1 in).
 const LABEL_WIDTH_MM = 62
-const LABEL_HEIGHT_MM = 31
+const LABEL_HEIGHT_MM = 25.4
 type LabelSelection = {
   stack_ids: string[]
   selected_specimen_ids: string[]
@@ -18,6 +18,7 @@ type PrintIntent = LabelSelection & {
   request_id: string
   printer_queue: string
   copies: number
+  cut: 'each' | 'end'
 }
 function readPending(): PrintIntent | null {
   try {
@@ -43,6 +44,7 @@ export default function LabelDialog({
   const [selected, setSelected] = useState<string[]>(() => initialSelectedIds || stacks.flatMap(stack => stack.specimens.map(s => s.id)))
   const [expanded, setExpanded] = useState<string | null>(() => initialSelectedIds ? stacks[0]?.id || null : null)
   const [copies, setCopies] = useState(1)
+  const [cut, setCut] = useState<'each' | 'end'>('each')
   const [queue, setQueue] = useState('')
   const [printers, setPrinters] = useState<PrinterInfo | null>(null)
   const [previewURL, setPreviewURL] = useState('')
@@ -74,7 +76,9 @@ export default function LabelDialog({
     void api<PrinterInfo>('/printers').then(value => {
       if (current) {
         setPrinters(value)
-        setQueue(previous => previous || value.configured_queue || value.printers.find(p => p.is_default)?.name || '')
+        // Prefer the label printer over a default office printer.
+        setQueue(previous => previous || value.configured_queue || value.printers.find(p => /QL/i.test(p.name))?.name ||
+          value.printers.find(p => p.is_default)?.name || '')
       }
     }).catch(() => { if (current) setPrinters(null) })
     return () => { current = false }
@@ -157,7 +161,7 @@ export default function LabelDialog({
   async function print() {
     if (!healthy || printLock.current || readPending() || !valid || !queue || previewFingerprint !== fingerprint) return
     const intent: PrintIntent = {
-      ...selection, request_id: requestId(), printer_queue: queue, copies,
+      ...selection, request_id: requestId(), printer_queue: queue, copies, cut,
     }
     try { localStorage.setItem(PRINT_KEY, JSON.stringify(intent)) }
     catch { setError('This browser cannot preserve a pending print request. Enable local storage before printing.'); return }
@@ -243,6 +247,12 @@ export default function LabelDialog({
           </label>
           <label>Copies<input aria-label="Print copies" type="number" min="1" max="10"
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
+          <label>Cut
+            <select aria-label="Cut labels" value={cut} disabled={busy} onChange={e => setCut(e.target.value as 'each' | 'end')}>
+              <option value="each">After each label</option>
+              <option value="end">One strip, cut at end</option>
+            </select>
+          </label>
         </div>
         {previewURL ? <iframe className="pdf-preview" title="Actual label PDF preview" src={previewURL} /> :
           <div className="pdf-preview preview-empty" role="status">{previewing ? 'Loading preview…' : !selected.length ? 'Select labels to preview.' : !healthy ? 'Preview unavailable offline.' : 'Preview unavailable.'}</div>}

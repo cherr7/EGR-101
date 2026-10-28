@@ -29,7 +29,7 @@ test('Excel review preserves source cells, conditioning extras, unresolved mater
   const labels = page.locator('iframe[title="Actual label PDF preview"]')
   await expect(labels).toHaveAttribute('src', /^blob:/)
   const before = previews.at(-1)!
-  expect(before.width_mm).toBe(50.8); expect(before.height_mm).toBe(25.4); expect(before.selected_specimen_ids).toHaveLength(20)
+  expect(before.width_mm).toBe(62); expect(before.height_mm).toBe(25.4); expect(before.selected_specimen_ids).toHaveLength(20)
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
   await page.reload()
   await expect(page.getByRole('button', { name: 'Preview / reprint labels →' })).toBeVisible()

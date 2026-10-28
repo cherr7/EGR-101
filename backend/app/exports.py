@@ -25,6 +25,7 @@ from .services import stack_detail
 
 router = APIRouter(prefix="/api", tags=["Labels and reports"])
 MM = 72 / 25.4
+MARGIN = 3 * MM   # Brother QL: 3 mm minimum feed margin at each cut; 1.5 mm hardware minimum at the sides
 LOCAL_TZ = ZoneInfo("America/New_York")
 
 
@@ -115,18 +116,18 @@ def labels_pdf(detail: dict | list[dict], width_mm: float = 50.8,
     rows = [row for item in details for row in _label_rows(item, include_header)]
     for row in rows:
         image = datamatrix_image(row["barcode_payload"]).convert("RGB")
-        code_size = min(18.6 * MM, height - 4 * MM, width * .39)
-        pdf.drawImage(ImageReader(image), 1.7 * MM, (height - code_size) / 2,
+        code_size = min(height - 2 * MARGIN, width * .39)
+        pdf.drawImage(ImageReader(image), MARGIN, (height - code_size) / 2,
                       width=code_size, height=code_size, preserveAspectRatio=True,
                       mask="auto")
-        x = code_size + 3 * MM
-        text_width = width - x - 2 * MM
+        x = MARGIN + code_size + 2.5 * MM
+        text_width = width - x - MARGIN
         ordinal = "STACK / ALL" if row["label_kind"] == "STACK" else f'Piece {row["specimen_number"]} / {row["specimen_count"]}'
         lines = [row["project_number"], row["material_ref"], row["test_code"],
                  row["preconditioning_code"], ordinal,
                  ("DEMO " if row["is_demo"] else "") + row["identifier"][:8]]
-        line_gap = min(9, (height - 5 * MM) / 6)
-        y = height / 2 + 2.5 * line_gap
+        line_gap = min(9, (height - 2 * MARGIN) / 6)
+        y = height / 2 + 2.5 * line_gap - 2.5   # centre the six lines' cap height in the safe area
         for line in lines:
             _fit_line(pdf, line, x, y, text_width, font)
             y -= line_gap

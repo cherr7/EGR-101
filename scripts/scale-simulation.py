@@ -55,7 +55,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 from app import main, movements, services  # noqa: E402
-from app.barcodes import id_payload  # noqa: E402
+from app.barcodes import label_code  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import AuditEvent, ConditioningSession, PrepDraft, Stack  # noqa: E402
 from app.schemas import MovementBody  # noqa: E402
@@ -129,7 +129,7 @@ for day in range(1, DAYS + 1):
     waiting = []
     for at, direction, sid, station in sorted(actions, key=lambda item: item[0]):
         clock["now"] = at
-        body = MovementBody(request_id=uuid.uuid4(), station_id=station, code=id_payload(first[sid]), direction=direction)
+        body = MovementBody(request_id=uuid.uuid4(), station_id=station, code=label_code(first[sid]), direction=direction)
         t = time.perf_counter()
         with SessionLocal() as db, db.begin():
             result = movements.process_movement(db, body)
@@ -139,7 +139,7 @@ for day in range(1, DAYS + 1):
             waiting.append((at, sid, station))
         else:
             first.pop(sid)
-    recent_codes = [id_payload(first[sid]) for sid in stack_ids[-50:]]
+    recent_codes = [label_code(first[sid]) for sid in stack_ids[-50:]]
     if day in CHECKPOINTS:
         psql("VACUUM ANALYZE")
         size = int(psql("SELECT pg_database_size(current_database())"))

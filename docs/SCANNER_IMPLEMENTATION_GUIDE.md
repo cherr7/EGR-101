@@ -4,7 +4,7 @@ The room station runs Chromium in fullscreen kiosk mode on 64-bit Raspberry Pi O
 
 ## Architecture and supported hardware
 
-The target is a Raspberry Pi 5, Touch Display 2 in 1280 × 720 landscape, and an Eyoyo EYH2 USB keyboard scanner. The default labels carry a permanent 128-bit specimen ID as 39 zero-padded decimal characters in ECC200 Data Matrix. The supported physical unit already emits Enter, Down Arrow, and Num Lock; the local reader handles that observed sequence without reprogramming the scanner. Keep codes as strings; use BigInt for numeric conversion, never JavaScript Number.
+The target is a Raspberry Pi 5, Touch Display 2 in 1280 × 720 landscape, and an Eyoyo EYH2 USB keyboard scanner. The default labels carry a specimen's label code (its number plus a check digit) in a 16 × 16 ECC200 Data Matrix. The supported physical unit already emits Enter, Down Arrow, and Num Lock; the local reader handles that observed sequence without reprogramming the scanner. Keep scanned codes as strings; the server parses and verifies them.
 
 On an installed Pi, a local Python service reads the USB scanner directly through Linux evdev and an exclusive device grab. Completed frames travel through local nginx to the React page over a server-sent event stream. Chromium remains the display and the page uses the same lookup/movement API as hosted scanner pages. Reading the hardware directly removes the normal dependency on Chromium having OS keyboard focus. A visible, healthy scanner page is still required, and only a database-confirmed commit produces green success.
 
@@ -54,7 +54,7 @@ The reader requests Linux CLOCK_MONOTONIC event timestamps before grabbing the d
 
 Database availability and usable input are separate states. A connected HTTP stream alone is insufficient to show reader readiness or bypass focus recovery. A background/hidden station page does not submit bridged scans. Hosted scanner pages on staff computers continue using keyboard capture. Operators see Connect scanner, Scanner in use, or Tap to resume only when action is needed. Transport details remain in the local status endpoint and service logs. A page refused ownership cannot use fallback to compete with the owning page.
 
-Keyboard capture uses a capture-phase document listener, so no visible input field or focused text box is needed. Touching an IN/OUT button or checkbox does not lose capture. It consumes Enter/Space before controls can activate, rejects incomplete/malformed frames, and clears buffered input on focus/visibility changes. It accepts production decimal IDs, optional AIM Data Matrix prefixes, and supported UUID/legacy forms; unsupported 0x/0b text is rejected. OS keyboard capture still requires Chromium focus when used without the direct service. See [MDN key events](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event) and [document.hasFocus](https://developer.mozilla.org/en-US/docs/Web/API/Document/hasFocus).
+Keyboard capture uses a capture-phase document listener, so no visible input field or focused text box is needed. Touching an IN/OUT button or checkbox does not lose capture. It consumes Enter/Space before controls can activate, rejects incomplete/malformed frames, and clears buffered input on focus/visibility changes. It accepts 2–20 digit label codes with an optional AIM Data Matrix prefix; anything else is rejected, and the server verifies the check digit. OS keyboard capture still requires Chromium focus when used without the direct service. See [MDN key events](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event) and [document.hasFocus](https://developer.mozilla.org/en-US/docs/Web/API/Document/hasFocus).
 
 Before submitting a movement, the page saves its request UUID and exact payload in persistent browser storage. A lost response blocks another scan until the page queries/retries that same request. Changed selections or early-OUT acknowledgment use a new UUID. Pending Undo is also saved and reconciled after reload using the exact transaction status endpoint, independent of log pagination. Keep the dedicated Chromium profile; never clear storage while an outcome is unresolved.
 
@@ -135,7 +135,7 @@ When hardware testing resumes, verify:
 
 - Cold boot: visible startup feedback, automatic fullscreen scanner, measured boot-to-first-paint and boot-to-ready timing.
 - Mac unavailable at boot: local UI loads, Offline, no writes/queued scans; later reconnect recovers.
-- Actual Eyoyo stable path, exact 39 digits including leading zeroes, Enter suffix, first-read performance, and unplug/replug without a manual restart.
+- Actual Eyoyo stable path, exact label-code digits, Enter suffix, first-read performance, and unplug/replug without a manual restart.
 - Visible but unfocused browser, hidden/closed/frozen page, competing second page, service crash, and fallback recovery without duplicate movements.
 - Partial three-of-ten OUT followed by remaining-seven OUT; repeated scans preserve times; early override and one-tap Undo behave correctly.
 - Lost movement/Undo responses and reboot/reload preserve pending identity and reconcile once.

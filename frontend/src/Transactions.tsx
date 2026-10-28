@@ -3,8 +3,8 @@ import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, localTimeInpu
 import type { AuditEvent, Config, Specimen, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 
-type Editor = { event: AuditEvent; stack: Stack; ids: string[]; time: string; room: string; note: string }
-type Missed = { stackId: string; ids: string[]; direction: 'IN' | 'OUT'; time: string; room: string; note: string }
+type Editor = { event: AuditEvent; stack: Stack; ids: number[]; time: string; room: string; note: string }
+type Missed = { stackId: number; ids: number[]; direction: 'IN' | 'OUT'; time: string; room: string; note: string }
 type Context = { stackId: string; eventId: string }
 function readContext(): Context {
   const parameters = new URLSearchParams(location.hash.split('?')[1] || '')
@@ -15,7 +15,7 @@ function timeFor(event: AuditEvent) { return event.effective_occurred_at || even
 function labelFor(event: AuditEvent) {
   return event.kind === 'movement' ? event.direction : event.kind.replaceAll('_', ' ')
 }
-function numbers(stack: Stack, ids: string[]) {
+function numbers(stack: Stack, ids: number[]) {
   return specimenNumbers(stack.specimens.filter(specimen => ids.includes(specimen.id)).map(specimen => specimen.number))
 }
 function eligible(specimen: Specimen, direction: string | undefined) {
@@ -78,7 +78,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
     return () => { current = false; clearTimeout(timer) }
   }, [healthy, search, kind, roomFilter, context.stackId, limit, refresh])
 
-  async function openEvent(eventId: string, stackId: string) {
+  async function openEvent(eventId: string, stackId: number | string) {
     if (mutation.current || !healthy) return
     const token = ++serial.current
     setBusy(true)
@@ -177,7 +177,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
   }
   const visible = items.filter(event => !kind || event.kind === kind)
   const missedStack = stacks.find(stack => stack.id === missed?.stackId)
-  const scopedStack = stacks.find(stack => stack.id === context.stackId)
+  const scopedStack = stacks.find(stack => String(stack.id) === context.stackId)
   const roomName = (id?: string) => config.rooms.find(room => room.id === id)?.name || id || '—'
   const projection = editor ? projectedCounts(editor) : null
   const originalIds = editor ? idsFor(editor.event) : []
@@ -188,7 +188,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
     <PageHeader title="Transactions">
       <button className="button primary" disabled={!healthy || busy || !stacks.length} onClick={() => {
         setError('')
-        setMissed({ stackId: context.stackId, ids: [], direction: 'IN',
+        setMissed({ stackId: Number(context.stackId), ids: [], direction: 'IN',
           time: localTimeInput(new Date(serverNow()).toISOString()),
           room: config.rooms.find(room => room.id === 'shared')?.id || config.rooms[0]?.id || '', note: '' })
       }}>＋ Record missed scan</button>
@@ -220,7 +220,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
             <td>{formatTime(event.recorded_at)}<small className="id-hint">{event.id.slice(0, 8)}</small></td>
             <td><span className={'badge ' + (event.kind === 'movement' ? event.direction === 'IN' ? 'good' : 'blue' : 'muted')}>{labelFor(event)}</span>
               {event.modified && <small>Modified</small>}{event.undone && <small>Undone</small>}</td>
-            <td><b>{stack?.project_number || '—'}</b><small>{stack?.material_ref || event.stack_id?.slice(0, 8)}</small></td>
+            <td><b>{stack?.project_number || '—'}</b><small>{stack?.material_ref || 'Stack ' + event.stack_id}</small></td>
             <td><b>{event.effective_count ?? event.affected_count}</b>{event.modified && <small>Originally {event.affected_count}</small>}</td>
             <td>{formatTime(timeFor(event))}</td><td>{roomName(event.effective_room_id || event.room_id)}</td>
             <td><button className="button text" disabled={!healthy || busy}
@@ -320,7 +320,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       <div className="modal-body">
         <p className="modal-intro">Record when the movement actually happened. The time this correction is entered is retained separately.</p>
         <label>Stack<select aria-label="Missed stack" value={missed.stackId} disabled={busy}
-          onChange={e => setMissed(previous => previous && { ...previous, stackId: e.target.value, ids: [] })}>
+          onChange={e => setMissed(previous => previous && { ...previous, stackId: Number(e.target.value), ids: [] })}>
           <option value="">Choose a stack</option>{stacks.map(stack => <option key={stack.id} value={stack.id}>{stack.project_number} / {stack.material_ref} / {stack.test_code} / {stack.preconditioning_code}</option>)}
         </select></label>
         <div className="form-grid three">

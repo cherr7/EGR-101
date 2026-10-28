@@ -1,6 +1,6 @@
 import io
 import subprocess
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi import HTTPException
 from PIL import Image
@@ -8,7 +8,7 @@ from pypdf import PdfReader
 import pytest
 import zxingcpp
 
-from app.barcodes import datamatrix_image, id_payload, payload_id
+from app.barcodes import MAX_ID, code_id, datamatrix_image, label_code
 from app import printing
 
 
@@ -36,22 +36,33 @@ def install_fake_cups(monkeypatch, *, timeout=False):
     return calls
 
 
-def test_full_128_bit_datamatrix_is_lossless_and_id_only():
-    identifiers = [UUID(int=0), UUID(int=(1 << 128) - 1), uuid4()]
-    for identifier in identifiers:
-        payload = id_payload(str(identifier))
-        assert len(payload) == 39 and payload.isdecimal()
+def test_every_label_number_is_a_lossless_fixed_16_by_16_datamatrix():
+    for identifier in [1, 9, 10, 572, 123456789, MAX_ID]:
+        payload = label_code(identifier)
+        assert payload.isdecimal() and code_id(payload) == identifier
         image = datamatrix_image(payload, module_pixels=8)
-        assert image.size == (176, 176)  # 20 symbol modules + one quiet module each edge.
+        assert image.size == (144, 144)  # Always 16 symbol modules + one quiet module each edge.
         decoded = zxingcpp.read_barcode(image)
         assert decoded.format == zxingcpp.BarcodeFormat.DataMatrix
         assert decoded.text == payload
-        assert payload_id(decoded.text) == str(identifier)
         assert decoded.bytes == payload.encode("ascii")
-    with pytest.raises(ValueError):
-        payload_id(str(1 << 128))
-    with pytest.raises(ValueError):
-        payload_id("UL1:P:" + str(identifiers[2]))
+    assert label_code(572) == "5724"  # Damm check digit reference value
+
+
+def test_check_digit_rejects_typos_swaps_and_non_labels():
+    payload = label_code(4815162342)
+    for index in range(len(payload)):
+        for digit in "0123456789":
+            if digit != payload[index]:
+                with pytest.raises(ValueError):
+                    code_id(payload[:index] + digit + payload[index + 1:])
+    for index in range(len(payload) - 1):
+        if payload[index] != payload[index + 1]:
+            with pytest.raises(ValueError):
+                code_id(payload[:index] + payload[index + 1] + payload[index] + payload[index + 2:])
+    for bad in ["", "7", label_code(MAX_ID)[:-1] + "x", str(MAX_ID + 1) + str(0), "UL1:P:12", "1" * 21]:
+        with pytest.raises(ValueError):
+            code_id(bad)
 
 
 def test_printer_inventory_never_enables_default_without_configuration(monkeypatch):
@@ -79,7 +90,7 @@ def test_label_preview_and_pdf_codes_are_registered_ids(client, stack_factory):
         assert abs(float(page.mediabox.height) - 25.4 / 25.4 * 72) < .01
         assert "00073-LAB" in page.extract_text()
         image = Image.open(io.BytesIO(list(page.images)[0].data))
-        decoded_ids.append(payload_id(zxingcpp.read_barcode(image).text))
+        decoded_ids.append(code_id(zxingcpp.read_barcode(image).text))
     assert decoded_ids == [specimen["id"] for specimen in stack["specimens"]]
     after = client.get(f'/api/stacks/{stack["id"]}').json()
     assert [event["kind"] for event in after["events"]] == ["registration"]

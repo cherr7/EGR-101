@@ -20,7 +20,7 @@ export function KioskActivity({ events, disabled, error, onUndo, onClose }: {
       <div className="expanded-activity-list">
         {visible.map(event => <article key={event.id} className={'expanded-activity-row ' + (event.undone ? 'undone' : '')} data-event-id={event.id}>
           <span className={'recent-direction ' + event.direction?.toLowerCase()}>{event.direction}</span>
-          <div className="expanded-activity-details"><b>{event.project_number || event.stack_id.slice(0, 8)} / {event.material_ref}</b>
+          <div className="expanded-activity-details"><b>{event.project_number || 'Stack ' + event.stack_id} / {event.material_ref}</b>
             <p>{[event.test_code, event.preconditioning_code].filter(Boolean).join(' · ')}</p>
             {!!event.specimen_numbers?.length && <p className="activity-numbers">{specimenNumbers(event.specimen_numbers)}</p>}
             {event.note && <p>{event.note}</p>}
@@ -41,7 +41,7 @@ export function KioskActivity({ events, disabled, error, onUndo, onClose }: {
 
 export function KioskInventory({ roomId, healthy, notice, onClose }: { roomId?: string; healthy: boolean; notice: string; onClose: () => void }) {
   const [items, setItems] = useState<Stack[]>([]), [filter, setFilter] = useState('ready'), [project, setProject] = useState('')
-  const [expanded, setExpanded] = useState<string | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true), [now, setNow] = useState(serverNow())
+  const [expanded, setExpanded] = useState<number | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true), [now, setNow] = useState(serverNow())
   useEffect(() => {
     if (!healthy || !roomId) { setItems([]); setLoading(false); return }
     let active = true, revision = 0

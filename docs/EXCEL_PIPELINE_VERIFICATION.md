@@ -23,8 +23,10 @@ The verification completed these checks:
 - Confirmed all seven nonempty imported drafts blocked registration before required review fields were completed. The training matrix and other reference worksheets created no specimen candidates.
 - Filled missing project/material fields with explicit TEST values in the isolated database. For the board, one example from each of its two work worksheets received an explicitly synthetic count of one; this does not interpret the original aggregate quantity.
 - Registered every prep test/treatment candidate, the two reviewed board examples, and five deliberate repeat-batch examples: 119 DEMO-marked test stacks containing 709 test specimens.
-- Generated 709 default 2 × 1 inch PDF label pages and decoded every embedded Data Matrix image back to the exact registered specimen ID. Generated and decoded another 709 pages for reprinting; all IDs remained unchanged.
-- Verified each decoded ID contains only its 128-bit identifier as 39 decimal digits, and checked first/last member lookup against the API's registered stack membership.
+- Generated 709 PDF label pages and decoded every embedded Data Matrix image back to the exact registered specimen ID. Generated and decoded another 709 pages for reprinting; all IDs remained unchanged.
+- Verified each decoded label contains only its specimen's label code, and checked first/last member lookup against the API's registered stack membership.
+
+These counts come from a run before the switch to sequential label codes; rerun `scripts/verify-real-workbooks.py` to reproduce them with the current labels.
 - Repeated file imports 35 times and commits 12 times without duplicating the associated registration. Five explicitly new batches with identical prep values received distinct specimen IDs.
 - Confirmed no conditioning sessions, printer jobs, or unmarked production stacks were created by the verification.
 - Compared SHA-256 hashes before and after reading all six source files; their contents remained unchanged.

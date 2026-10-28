@@ -2,7 +2,7 @@
 
 The working application runs on one MacBook Neo: PostgreSQL, the FastAPI HTTP API, the React staff app, and label-print submission. Staff computers and three Raspberry Pi scanner stations use that same database through the API. The scanner is a separate fullscreen interface; its Pi deployment keeps its own compiled UI locally.
 
-The current workflow uses **one permanent 128-bit ID per physical specimen**, linked to a stack. Labels encode only that ID as a 39-digit decimal ECC200 Data Matrix. Each specimen has one effective ENTRY and one EXIT for the designated 24-hour conditioning step. Obsolete galleries and screenshots have been removed. The active interfaces are built from frontend/src; fresh local captures are described in output/README.md.
+The current workflow gives **every physical specimen a permanent sequential number**, linked to a stack. Labels encode only that number plus a check digit, in a 16 × 16 ECC200 Data Matrix. Each specimen has one effective ENTRY and one EXIT for the designated 24-hour conditioning step. Obsolete galleries and screenshots have been removed. The active interfaces are built from frontend/src; fresh local captures are described in output/README.md.
 
 ## Start on the Mac
 
@@ -75,7 +75,7 @@ The SQL model stores projects, materials, treatments, stacks, specimens, conditi
 - [Code audit and interface update](docs/CODE_AUDIT.md): verified fixes, upstream integration findings, and current UI organization.
 - [Real Excel pipeline verification](docs/EXCEL_PIPELINE_VERIFICATION.md): source-file coverage, reviewed missing fields, and decoded labels.
 - [Current state and possible improvements](docs/PROJECT_STATUS.md): implemented features, deployment checks, known gaps, and proposed interface priorities.
-- [Barcode and Brother printer guide](docs/BARCODE_AND_PRINTER.md): 128-bit identity encoding, 20 × 20 Data Matrix symbols, 1 × 2 layout, actual roll dimensions, preview/print, and physical acceptance checks.
+- [Barcode and Brother printer guide](docs/BARCODE_AND_PRINTER.md): sequential label codes with a check digit, 16 × 16 Data Matrix symbols, the 62 × 25.4 mm Brother QL layout, preview/print, and physical acceptance checks.
 - [Backup and restore guide](docs/BACKUPS.md): consistent ZIP checkpoints, SHA-256 validation, daily 2 a.m. Eastern snapshots, 30-day local retention, staged restore, and retained previous databases.
 - [Mac host guide](deploy/macos/README.md): local app launcher and system startup installation.
 - [Local input protocol](docs/SCANNER_INPUT_PROTOCOL.md): ownership, monotonic freshness, reconnects, reader health, and fallback.

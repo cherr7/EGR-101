@@ -1,6 +1,6 @@
-/** Decimal ECC200 payloads, UUIDs, and the legacy labeled UUID format. */
+/** A specimen label code: its number plus a check digit, optionally after a Data Matrix AIM prefix. */
 export function validScannerCode(code: string) {
-  return /^(?:\]d[0-9])?\d{1,39}$/.test(code) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code) || /^(?:UL1:[PS]:)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code)
+  return /^(?:\]d[0-9])?\d{2,20}$/.test(code)
 }
 
 /** Keyboard-wedge capture: page-wide, without a visible input or browser USB permission. */

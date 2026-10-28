@@ -1,11 +1,11 @@
 from datetime import timedelta
-from uuid import UUID
 
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import select, or_
 from sqlalchemy.dialects.postgresql import insert
 
+from .barcodes import code_id, label_code
 from .models import (AuditEvent, ConditioningSession, Material, PrepDraft, Project,
                      Room, Specimen, Stack, Station, Treatment, utcnow, uuid_str)
 
@@ -44,10 +44,6 @@ def conditioning_period(db, specimen_id):
         .execution_options(populate_existing=True))
 
 
-def barcode_value(identifier):
-    return str(UUID(str(identifier)).int).zfill(39)
-
-
 def transaction_effective(db, event):
     amendment = db.scalar(select(AuditEvent).where(
         AuditEvent.kind == "modification", AuditEvent.payload["event_id"].astext == event.id
@@ -61,7 +57,8 @@ def transaction_effective(db, event):
 
 
 def snapshot(db, specimens):
-    return {p.id: [session_dict(s) for s in sessions_for(db, p.id, include_voided=True)] for p in specimens}
+    # JSON object keys are strings, so audit snapshots are keyed by str(specimen id).
+    return {str(p.id): [session_dict(s) for s in sessions_for(db, p.id, include_voided=True)] for p in specimens}
 
 
 def event_dict(db, event):
@@ -106,8 +103,8 @@ def specimen_time_log(db, specimen_id):
              "recorded_at": iso(event.recorded_at),
              "occurred_at": event.payload.get("occurred_at", iso(event.recorded_at)),
              "original_transaction_id": event.payload.get("event_id"), "note": event.reason or "",
-             "before": event.payload.get("before", {}).get(specimen_id),
-             "after": event.payload.get("after", {}).get(specimen_id)} for event in events]
+             "before": event.payload.get("before", {}).get(str(specimen_id)),
+             "after": event.payload.get("after", {}).get(str(specimen_id))} for event in events]
 
 
 def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
@@ -124,7 +121,7 @@ def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
                           "entry_at": iso(period.entered_at) if period else None,
                           "exit_at": iso(period.exited_at) if period else None,
                           "ENTRY": iso(period.entered_at) if period else None, "EXIT": iso(period.exited_at) if period else None,
-                          "barcode_value": barcode_value(specimen.id),
+                          "barcode_value": label_code(specimen.id),
                           "status": "READY" if due and due <= now else "CONDITIONING" if active else "FINISHED" if period else "WAITING",
                           "elapsed_seconds": max(0, (now - active.entered_at).total_seconds()) if active else 0,
                           "ready": bool(due and due <= now), "revision": specimen.revision,
@@ -182,29 +179,18 @@ def query_stacks(db, q=None, project_number=None, material_ref=None, test_code=N
 
 
 def resolve_code(db, code):
+    """Return (stack, specimen) for a scanned or typed specimen label code."""
     value = code.strip()
     if value.startswith("]d") and len(value) > 3:
         value = value[3:]  # Optional Data Matrix AIM symbology identifier from configured scanners.
-    parts = value.split(":")
-    kind = "P"
-    if len(parts) == 3 and parts[0] == "UL1" and parts[1] in {"P", "S"}:
-        kind, value = parts[1], parts[2]
     try:
-        if value.isascii() and value.isdecimal():
-            if len(value) > 39 or int(value) >= 2 ** 128:
-                raise ValueError()
-            identifier = str(UUID(int=int(value)))
-        else:
-            identifier = str(UUID(value))
-    except (ValueError, AttributeError):
-        raise HTTPException(400, "Invalid label identifier.")
-    specimen = db.get(Specimen, identifier) if kind == "P" else None
-    # Optional stack headers also carry only an opaque ID, so an unprefixed
-    # registered stack ID must resolve without changing specimen label payloads.
-    stack = db.get(Stack, specimen.stack_id if specimen else identifier) if kind == "S" or specimen or len(parts) == 1 else None
-    if stack is None:
+        identifier = code_id(value)
+    except ValueError as error:
+        raise HTTPException(400, "Invalid label code. " + str(error))
+    specimen = db.get(Specimen, identifier)
+    if specimen is None:
         raise HTTPException(404, "This label is not registered.")
-    return stack, specimen
+    return db.get(Stack, specimen.stack_id), specimen
 
 
 def draft_dict(draft):

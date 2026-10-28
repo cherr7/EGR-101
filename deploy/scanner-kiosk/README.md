@@ -70,9 +70,9 @@ For hardware testing, add `SCANNER_DEBUG=true` to `/opt/fabric-scanner/scanner.e
 
 The installer preserves an existing `/opt/fabric-scanner/scanner.env` on updates. It regenerates `input.env` with `ENABLE_NFC=true` or `false`; `scanner.env` is read afterward and can override those service settings. Use that override deliberately. Do not put account passwords or API credentials in these world-readable station files.
 
-USB unplug/replug, discovery errors, permissions failures, and grab failures are retried and shown as reader status. The Linux reader requests monotonic kernel event timestamps and rejects old buffered frames; an unsupported timestamp configuration stays visibly unavailable rather than accepting unverified input. Device discovery failures do not silently kill the reader thread. A gap or oversized frame is rejected; neither a rejected fragment nor a queued late scan becomes an automatic movement. Configure the physical scanner's Enter suffix; the Data Matrix itself contains the specimen's 128-bit ID as 39 decimal characters. The service reads those keystrokes directly and does not depend on a visible text box.
+USB unplug/replug, discovery errors, permissions failures, and grab failures are retried and shown as reader status. The Linux reader requests monotonic kernel event timestamps and rejects old buffered frames; an unsupported timestamp configuration stays visibly unavailable rather than accepting unverified input. Device discovery failures do not silently kill the reader thread. A gap or oversized frame is rejected; neither a rejected fragment nor a queued late scan becomes an automatic movement. Configure the physical scanner's Enter suffix; the Data Matrix itself contains only the specimen's label code (its number plus a check digit). The service reads those keystrokes directly and does not depend on a visible text box.
 
-Physical Eyoyo testing on ULScanner1 confirmed that it reports as `USB HIDKeyboard`; pin its by-id path rather than broadening discovery to every keyboard. This unit also sends Num Lock (Linux key 69) around the scan. The decoder ignores that non-character toggle. With `SCANNER_DEBUG=true`, `USB frame` logs preserve the assembled text, its length, and rejection causes even for a rejected frame. A 39-digit physical scan was verified through a single 12-specimen IN transaction in the shared room; reboot, printer output, and the rest of the physical movement workflow still need acceptance testing.
+Physical Eyoyo testing on ULScanner1 confirmed that it reports as `USB HIDKeyboard`; pin its by-id path rather than broadening discovery to every keyboard. This unit also sends Num Lock (Linux key 69) around the scan. The decoder ignores that non-character toggle. With `SCANNER_DEBUG=true`, `USB frame` logs preserve the assembled text, its length, and rejection causes even for a rejected frame. A physical scan was verified through a single 12-specimen IN transaction in the shared room; reboot, printer output, and the rest of the physical movement workflow still need acceptance testing.
 
 The same unit emits Down Arrow after the terminating Enter. The decoder consumes this observed trailer only while no payload is active and within 350 ms after Enter. Down Arrow inside a payload, unrelated controls, partial frames, stale data, and lost kernel events still reject the scan. All eight physical diagnostic Data Matrix scans matched their expected payloads, including leading zeros, case, punctuation, URL, and repeat identity. Their 528-key-event capture is a regression fixture. Use this observed keyboard configuration as the station baseline; reprogramming the scanner is not a setup requirement. `SCANNER_TRACE_KEYS=true` adds bounded ordered payload-key/timing diagnostics; normally leave it off. Full hardware movement acceptance remains necessary. Virtual-COM and HID-POS are not implemented transports.
 
@@ -93,12 +93,12 @@ Hat wiring: I1=H, I0=L, RSTPDN→D20; DIP 1–4 (SCK/MISO/MOSI/D4) ON, 5–8 OFF
 
 ```sh
 systemctl --user stop fabric-scanner.target
-/opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py write 4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15
+/opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py write 123459
 /opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/nfc_tags.py read
 systemctl --user start fabric-scanner.target
 ```
 
-The write command accepts a UUID or its 39-digit payload and verifies the written tag. The example UUID above is only an example: use the registered specimen's actual ID. Truncated or invalid NDEF data is rejected.
+The write command takes the label code printed as "No." on the specimen's label and verifies the written tag. `123459` above is only an example. Truncated or invalid NDEF data is rejected.
 
 ## Startup, focus, and recovery
 

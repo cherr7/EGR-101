@@ -23,7 +23,7 @@ def test_session_undone_after_loading_cannot_be_corrected(client, db, stack_fact
 
     stack = stack_factory(count=1)
     movement = client.post("/api/movements", json={"request_id": str(uuid4()), "station_id": "shared-door",
-        "code": f'UL1:S:{stack["id"]}', "direction": "IN", "scope": "stack"}).json()
+        "code": stack["specimens"][0]["barcode_value"], "direction": "IN", "scope": "stack"}).json()
     detail = client.get(f'/api/stacks/{stack["id"]}').json()
     session_id = detail["specimens"][0]["sessions"][0]["id"]
     # Keep an earlier ORM observation alive, as can happen while waiting for a lock.

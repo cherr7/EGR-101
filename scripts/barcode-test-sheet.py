@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Print a scanner acceptance sheet: production Data Matrix IDs plus keyboard-mapping checks.
 
-Page 1 uses the app's own label encoder (backend/app/barcodes.py): 128-bit specimen IDs as
-39 zero-padded decimal digits, at the 18.6 mm size the 2 x 1 inch labels print. Scanning
-each into a blank editor must type exactly the digits shown, then one Enter.
+Page 1 uses the app's own label encoder (backend/app/barcodes.py): specimen numbers plus a
+check digit in a fixed 16 x 16 symbol, at the 19.4 mm size the 62 x 25.4 mm labels print.
+Scanning each into a blank editor must type exactly the digits shown, then one Enter.
 
 Page 2 checks scanner setup with other symbologies: case, punctuation, and Code 39/EAN
 handling. Those payloads are not specimen IDs; the kiosk should reject them.
@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
-from uuid import UUID
 
 from PIL import Image
 from reportlab.graphics import renderPDF
@@ -32,18 +31,18 @@ import zxingcpp
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.barcodes import datamatrix_image, id_payload  # noqa: E402
+from app.barcodes import MAX_ID, datamatrix_image, label_code  # noqa: E402
 
-LABEL_CODE_SIZE = 18.6 * mm  # matches labels_pdf() on the default 50.8 x 25.4 mm label
+LABEL_CODE_SIZE = 19.4 * mm  # matches labels_pdf() on the default 62 x 25.4 mm label
 
-# (specimen ID, printed size, note)
+# (specimen number, printed size, note)
 SPECIMEN_TILES = [
-    (str(UUID(int=0)), LABEL_CODE_SIZE, "All zeros: leading zeroes must survive"),
-    (str(UUID(int=42)), LABEL_CODE_SIZE, "37 leading zeroes"),
-    (str(UUID(int=10**20)), LABEL_CODE_SIZE, "Mid-length value, 18 leading zeroes"),
-    ("4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15", LABEL_CODE_SIZE, "Typical random specimen ID"),
-    (str(UUID(int=(1 << 128) - 1)), LABEL_CODE_SIZE, "Largest 128-bit ID: no leading zeroes"),
-    ("4d2a1c3b-9e57-4f60-8b1a-2f6c0d7e9a15", 30 * mm, "Same ID enlarged, for aiming/distance checks"),
+    (1, LABEL_CODE_SIZE, "First specimen: shortest code (2 digits)"),
+    (42, LABEL_CODE_SIZE, "Two-digit number"),
+    (1000000000, LABEL_CODE_SIZE, "Zeros inside the number must survive"),
+    (4815162342, LABEL_CODE_SIZE, "Typical ten-digit number"),
+    (MAX_ID, LABEL_CODE_SIZE, "Largest bigint: longest code (20 digits)"),
+    (4815162342, 30 * mm, "Same code enlarged, for aiming/distance checks"),
 ]
 
 # (symbology, payload, note)
@@ -158,9 +157,9 @@ def build(path):
     c.setTitle("Scanner Acceptance Sheet")
 
     page_header(c, "Scanner Acceptance Sheet: specimen IDs",
-                "Scan each into a blank editor. Output must be exactly the 39 digits shown, then one Enter.")
+                "Scan each into a blank editor. Output must be exactly the digits shown, then one Enter.")
     for i, (identifier, size, note) in enumerate(SPECIMEN_TILES):
-        payload = id_payload(identifier)
+        payload = label_code(identifier)
         image = checked_datamatrix(payload)
         heading = f"Data Matrix, {size / mm:.1f} mm" + (" (label size)" if size == LABEL_CODE_SIZE else "")
         draw_tile(c, *tile_origin(i), heading, image, size, size, payload, note)

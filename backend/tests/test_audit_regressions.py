@@ -13,14 +13,14 @@ from sqlalchemy import event, select
 import zxingcpp
 
 from app import backups, printing
-from app.barcodes import payload_id
+from app.barcodes import code_id
 from test_printing_labels import install_fake_cups
 from test_tracker import detail, move
 
 
 def decode_pdf(content):
     document = PdfReader(io.BytesIO(content))
-    return document, [payload_id(zxingcpp.read_barcode(Image.open(io.BytesIO(list(page.images)[0].data))).text)
+    return document, [code_id(zxingcpp.read_barcode(Image.open(io.BytesIO(list(page.images)[0].data))).text)
                       for page in document.pages]
 
 
@@ -40,7 +40,7 @@ def test_prep_compare_and_swap_prevents_registration_of_another_review(client):
     committed = client.post("/api/prep-drafts/" + draft["id"] + "/commit",
                             json={"expected_rows": [first]})
     assert committed.status_code == 200
-    record = client.get("/api/stacks/" + committed.json()["stack_ids"][0]).json()
+    record = client.get("/api/stacks/" + str(committed.json()["stack_ids"][0])).json()
     assert record["material_ref"] == first["material_ref"]
     assert client.post("/api/prep-drafts/" + draft["id"] + "/commit",
                        json={"expected_rows": [first]}).json() == committed.json()
@@ -159,7 +159,7 @@ def test_locked_movement_refreshes_stale_session_after_room_correction(client, d
         "room_id": "ppe", "entered_at": period["entered_at"]})
     assert corrected.is_success
     result = process_movement(db, MovementBody(request_id=uuid4(), station_id="shared-door",
-        code=stack["specimens"][0]["id"], direction="OUT", acknowledge_early=True,
+        code=stack["specimens"][0]["barcode_value"], direction="OUT", acknowledge_early=True,
         expected_version=corrected.json()["version"]))
     assert result["status"] == "rejected" and "another room" in result["message"]
     db.rollback()

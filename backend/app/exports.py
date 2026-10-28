@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .barcodes import datamatrix_image, id_payload
+from .barcodes import datamatrix_image, label_code
 from .models import AuditEvent, Stack
 from .services import stack_detail
 
@@ -29,7 +29,7 @@ MARGIN = 3 * MM   # Brother QL: 3 mm minimum feed margin at each cut; 1.5 mm har
 LOCAL_TZ = ZoneInfo("America/New_York")
 
 
-def _stack(db: Session, stack_id: str) -> Stack:
+def _stack(db: Session, stack_id: int) -> Stack:
     stack = db.get(Stack, stack_id)
     if stack is None:
         raise HTTPException(404, "Stack not found")
@@ -65,21 +65,14 @@ def _csv_response(headers: list[str], rows: list[dict], filename: str) -> Respon
     })
 
 
-def _label_rows(detail: dict, include_header: bool) -> list[dict]:
+def _label_rows(detail: dict) -> list[dict]:
     base = {key: detail.get(key) for key in (
         "project_number", "material_ref", "test_code", "preconditioning_code", "is_demo"
     )}
     base.update(stack_id=detail["id"], specimen_count=detail.get("specimen_count", len(detail["specimens"])))
-    rows = []
-    if include_header:
-        rows.append({**base, "label_kind": "STACK", "barcode_payload": id_payload(detail["id"]),
-                     "barcode_format": "DataMatrix", "identifier": detail["id"],
-                     "specimen_id": "", "specimen_number": ""})
-    rows.extend({**base, "label_kind": "SPECIMEN", "barcode_payload": id_payload(specimen["id"]),
-                 "barcode_format": "DataMatrix", "identifier": specimen["id"],
-                 "specimen_id": specimen["id"], "specimen_number": specimen["number"]}
-                for specimen in detail["specimens"])
-    return rows
+    return [{**base, "barcode_payload": label_code(specimen["id"]), "barcode_format": "DataMatrix",
+             "specimen_id": specimen["id"], "specimen_number": specimen["number"]}
+            for specimen in detail["specimens"]]
 
 
 def _font() -> str:
@@ -105,15 +98,14 @@ def _fit_line(pdf: canvas.Canvas, text: str, x: float, y: float, width: float, f
     pdf.drawString(x, y, text)
 
 
-def labels_pdf(detail: dict | list[dict], width_mm: float = 50.8,
-               height_mm: float = 25.4, include_header: bool = False) -> bytes:
+def labels_pdf(detail: dict | list[dict], width_mm: float = 62, height_mm: float = 25.4) -> bytes:
     stream = io.BytesIO()
     width, height = width_mm * MM, height_mm * MM
     pdf = canvas.Canvas(stream, pagesize=(width, height))
     pdf.setTitle("Fabric Conditioning Tracker - labels")
     font = _font()
     details = detail if isinstance(detail, list) else [detail]
-    rows = [row for item in details for row in _label_rows(item, include_header)]
+    rows = [row for item in details for row in _label_rows(item)]
     for row in rows:
         image = datamatrix_image(row["barcode_payload"]).convert("RGB")
         code_size = min(height - 2 * MARGIN, width * .39)
@@ -122,10 +114,9 @@ def labels_pdf(detail: dict | list[dict], width_mm: float = 50.8,
                       mask="auto")
         x = MARGIN + code_size + 2.5 * MM
         text_width = width - x - MARGIN
-        ordinal = "STACK / ALL" if row["label_kind"] == "STACK" else f'Piece {row["specimen_number"]} / {row["specimen_count"]}'
-        lines = [row["project_number"], row["material_ref"], row["test_code"],
-                 row["preconditioning_code"], ordinal,
-                 ("DEMO " if row["is_demo"] else "") + row["identifier"][:8]]
+        lines = [row["project_number"], row["material_ref"], row["test_code"], row["preconditioning_code"],
+                 f'Piece {row["specimen_number"]} / {row["specimen_count"]}',
+                 ("DEMO " if row["is_demo"] else "") + "No. " + row["barcode_payload"]]
         line_gap = min(9, (height - 2 * MARGIN) / 6)
         y = height / 2 + 2.5 * line_gap - 2.5   # centre the six lines' cap height in the safe area
         for line in lines:
@@ -137,20 +128,19 @@ def labels_pdf(detail: dict | list[dict], width_mm: float = 50.8,
 
 
 @router.get("/stacks/{stack_id}/labels.pdf")
-def label_pdf(stack_id: str, width_mm: float = Query(50.8, ge=40, le=150),
-              height_mm: float = Query(25.4, ge=25, le=150), include_header: bool = False,
-              db: Session = Depends(get_db)):
+def label_pdf(stack_id: int, width_mm: float = Query(62, ge=40, le=150),
+              height_mm: float = Query(25.4, ge=25, le=150), db: Session = Depends(get_db)):
     detail = stack_detail(db, _stack(db, stack_id))
-    return Response(labels_pdf(detail, width_mm, height_mm, include_header), media_type="application/pdf",
+    return Response(labels_pdf(detail, width_mm, height_mm), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="labels-{stack_id}.pdf"', "Cache-Control": "no-store"})
 
 
 @router.get("/stacks/{stack_id}/labels.csv")
-def label_csv(stack_id: str, include_header: bool = False, db: Session = Depends(get_db)):
+def label_csv(stack_id: int, db: Session = Depends(get_db)):
     detail = stack_detail(db, _stack(db, stack_id))
-    headers = ["label_kind", "barcode_format", "barcode_payload", "stack_id", "specimen_id", "project_number", "material_ref",
+    headers = ["barcode_format", "barcode_payload", "stack_id", "specimen_id", "project_number", "material_ref",
                "test_code", "preconditioning_code", "specimen_number", "specimen_count", "is_demo"]
-    return _csv_response(headers, _label_rows(detail, include_header), f"labels-{stack_id}.csv")
+    return _csv_response(headers, _label_rows(detail), f"labels-{stack_id}.csv")
 
 
 def session_rows(details: list[dict]) -> list[dict]:
@@ -249,8 +239,8 @@ def _audit_article(event: dict, detail: dict) -> str:
     after = payload.get("after") or {}
     changes = []
     for specimen_id in specimen_ids:
-        previous = {s["id"]: s for s in before.get(specimen_id, [])}
-        current = {s["id"]: s for s in after.get(specimen_id, [])}
+        previous = {s["id"]: s for s in before.get(str(specimen_id), [])}
+        current = {s["id"]: s for s in after.get(str(specimen_id), [])}
         for session_id in sorted(set(previous) | set(current)):
             old, new = previous.get(session_id), current.get(session_id)
             if old == new:

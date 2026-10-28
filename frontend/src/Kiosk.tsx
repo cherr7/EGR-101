@@ -13,7 +13,7 @@ const PENDING_KEY = 'fabric-tracker.pending-movement.v2', UNDO_KEY = 'fabric-tra
 function stored<T>(key: string): T | null { try { return JSON.parse(localStorage.getItem(key) || 'null') as T | null } catch { return null } }
 type Last = { event_id: string; count: number; version?: number }
 type PendingUndo = Last & { body: { expected_version?: number }; submitted_at: string }
-type Selection = { stack: Stack; code: string; direction: 'IN' | 'OUT'; ids: string[] }
+type Selection = { stack: Stack; code: string; direction: 'IN' | 'OUT'; ids: number[] }
 type Acknowledgment = { stack: Stack; request: Movement; result: MovementResult }
 type ErrorKind = 'scan' | 'undo' | 'setup'
 const ERROR_TITLES: Record<ErrorKind, string> = { scan: 'Scan not recorded', undo: 'Undo not applied', setup: 'Storage unavailable' }
@@ -313,7 +313,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
             {events.map(event => <div className={'recent-row ' + (event.undone ? 'undone' : '')} key={event.id}
               id={'activity-' + event.id} data-event-id={event.id} data-undo-target={undoTarget?.event_id === event.id}>
               <span className={'recent-direction ' + (event.direction === 'IN' ? 'in' : 'out')}>{event.direction}</span>
-              <div><b>{event.project_number || 'Stack ' + event.stack_id.slice(0, 8)}</b>
+              <div><b>{event.project_number || 'Stack ' + event.stack_id}</b>
                 <p>{event.material_ref || ''}{event.preconditioning_code ? ' · ' + event.preconditioning_code : ''}</p>
                 <small>{event.effective_count ?? event.affected_count} specimens
                   {event.undone ? ' · Undone' : event.modified ? ' · Modified' : ''}</small>

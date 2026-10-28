@@ -3,13 +3,15 @@ from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from uuid import uuid4
 
+from app.barcodes import label_code
+
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
 
 def move(client, stack, direction="IN", scope="stack", **extra):
-    data = {"request_id": str(uuid4()), "station_id": "shared-door", "code": "UL1:P:" + stack["specimens"][2 if len(stack["specimens"]) > 2 else 0]["id"],
+    data = {"request_id": str(uuid4()), "station_id": "shared-door", "code": stack["specimens"][2 if len(stack["specimens"]) > 2 else 0]["barcode_value"],
             "direction": direction, "scope": scope, **extra}
     response = client.post("/api/movements", json=data)
     assert response.status_code == 200, response.text
@@ -17,7 +19,7 @@ def move(client, stack, direction="IN", scope="stack", **extra):
 
 
 def detail(client, stack):
-    return client.get("/api/stacks/" + stack["id"]).json()
+    return client.get("/api/stacks/" + str(stack["id"])).json()
 
 
 def test_registration_identity_and_csv_preserve_project(client, stack_factory):
@@ -86,7 +88,7 @@ def test_concurrent_and_stale_selection_are_atomic(client, stack_factory):
     from app.movements import process_movement
     from app.schemas import MovementBody
     stack = stack_factory()
-    request = {"request_id": str(uuid4()), "station_id": "shared-door", "code": "UL1:P:" + stack["specimens"][0]["id"],
+    request = {"request_id": str(uuid4()), "station_id": "shared-door", "code": stack["specimens"][0]["barcode_value"],
                "direction": "IN", "scope": "stack", "expected_version": 0}
     def invoke(payload):
         with SessionLocal.begin() as db:
@@ -105,7 +107,7 @@ def test_concurrent_same_uuid_creates_exactly_one_movement(client, stack_factory
     from app.movements import process_movement
     from app.schemas import MovementBody
     stack = stack_factory(count=2)
-    request = MovementBody(request_id=uuid4(), station_id="shared-door", code="UL1:P:" + stack["specimens"][0]["id"], direction="IN")
+    request = MovementBody(request_id=uuid4(), station_id="shared-door", code=stack["specimens"][0]["barcode_value"], direction="IN")
     def invoke(_):
         with SessionLocal.begin() as db:
             return process_movement(db, request)
@@ -123,7 +125,7 @@ def test_room_mismatch_and_unknown_labels_do_not_change_state(client, stack_fact
     assert all(p["state"] == "IN" for p in detail(client, stack)["specimens"])
     bad, _ = move(client, stack, code="not-a-label")
     assert bad["status"] == "rejected"
-    assert client.post("/api/lookup", json={"code": "UL1:P:" + str(uuid4())}).status_code == 404
+    assert client.post("/api/lookup", json={"code": label_code(10 ** 12)}).status_code == 404   # well-formed, unregistered
 
 
 def test_corrections_auth_history_and_undo_guard(client, stack_factory, supervisor):
@@ -136,7 +138,7 @@ def test_corrections_auth_history_and_undo_guard(client, stack_factory, supervis
     after = detail(client, stack)
     assert after["specimens"][0]["ready"]
     original_event = next(e for e in after["events"] if e["id"] == entered["event_id"])
-    assert original_event["payload"]["after"][stack["specimens"][0]["id"]][0]["entered_at"] != after["specimens"][0]["entered_at"]
+    assert original_event["payload"]["after"][str(stack["specimens"][0]["id"])][0]["entered_at"] != after["specimens"][0]["entered_at"]
     denied = client.post("/api/corrections", json={"kind": "undo", "event_id": entered["event_id"], "reason": "Try stale undo"})
     assert denied.status_code == 409
     # A later movement affecting only the second specimen can safely be undone.

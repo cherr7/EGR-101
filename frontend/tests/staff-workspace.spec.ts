@@ -10,11 +10,10 @@ async function stack(request: APIRequestContext, count = 5, project = 'DEMO-AUDI
   expect(commit.ok()).toBe(true)
   return (await request.get('/api/stacks/' + (await commit.json()).stack_ids[0])).json()
 }
-const code = (id: string) => BigInt('0x' + id.replaceAll('-', '')).toString().padStart(39, '0')
 async function move(request: APIRequestContext, value: { specimens: { id: string }[] }, direction = 'IN', station = 'shared-door') {
-  const current = await (await request.post('/api/lookup', { data: { code: code(value.specimens[0].id) } })).json()
+  const current = await (await request.post('/api/lookup', { data: { code: value.specimens[0].barcode_value } })).json()
   const response = await request.post('/api/movements', { data: {
-    request_id: randomUUID(), station_id: station, code: code(value.specimens[0].id), direction, scope: 'stack', acknowledge_early: true, expected_version: current.version,
+    request_id: randomUUID(), station_id: station, code: value.specimens[0].barcode_value, direction, scope: 'stack', acknowledge_early: true, expected_version: current.version,
   } })
   expect(response.ok()).toBe(true)
   const result = await response.json()
@@ -139,7 +138,7 @@ test('specimen history opens only that piece and offers its existing label', asy
   await page.getByLabel('Search records').fill(value.project_number)
   await page.getByRole('button', { name: 'History specimen 3 ' + value.material_ref, exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Specimen 03 · history' })
-  await expect(dialog).toContainText(code(value.specimens[2].id))
+  await expect(dialog).toContainText(value.specimens[2].barcode_value)
   await expect(dialog).toContainText('This specimen’s observations & changes')
   await dialog.getByRole('button', { name: 'Reprint this specimen’s label' }).click()
   await expect(page.getByTestId('label-scope')).toHaveText('1 selected')

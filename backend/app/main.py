@@ -172,7 +172,7 @@ def list_stacks(q: str | None = None, project_number: str | None = None, materia
 
 
 @app.get("/api/stacks/{stack_id}")
-def get_stack(stack_id: str, db=Depends(get_db)):
+def get_stack(stack_id: int, db=Depends(get_db)):
     stack = db.get(Stack, stack_id)
     if not stack:
         raise HTTPException(404, "Stack not found.")
@@ -180,10 +180,11 @@ def get_stack(stack_id: str, db=Depends(get_db)):
 
 
 @app.get("/api/specimens/{specimen_id}")
-def get_specimen(specimen_id: str, db=Depends(get_db)):
-    stack, specimen = resolve_code(db, specimen_id)
+def get_specimen(specimen_id: int, db=Depends(get_db)):
+    specimen = db.get(Specimen, specimen_id)
     if specimen is None:
         raise HTTPException(404, "Specimen not found.")
+    stack = db.get(Stack, specimen.stack_id)
     detail = stack_detail(db, stack, specimen.id, include_events=False)
     item = next(p for p in detail["specimens"] if p["id"] == specimen.id)
     return {**item, "stack_id": stack.id, "project_number": detail["project_number"],
@@ -235,7 +236,7 @@ def logout(request: Request):
 
 @app.get("/api/transactions")
 @app.get("/api/events")
-def events(stack_id: str | None = None, room_id: str | None = None, station_id: str | None = None,
+def events(stack_id: int | None = None, room_id: str | None = None, station_id: str | None = None,
            limit: int = Query(default=100, ge=1, le=500), q: str | None = None,
            kind: str | None = Query(default=None, max_length=32), db=Depends(get_db)):
     query = select(AuditEvent).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id.desc())

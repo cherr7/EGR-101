@@ -38,7 +38,6 @@ export const elapsed = (value?: string | null, end?: string | null) => {
   const minutes = Math.max(0, Math.floor(((end ? Date.parse(end) : serverNow()) - Date.parse(value)) / 60000))
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
-export function codeFor(id: string, _stack = false) { try { return BigInt(`0x${id.replaceAll('-', '')}`).toString(10).padStart(39, '0') } catch { return id } }
 export const entryOf = (s: import('./types').Specimen) => s.ENTRY ?? s.entry_at ?? s.sessions?.[0]?.entered_at ?? s.entered_at
 export const exitOf = (s: import('./types').Specimen) => s.EXIT ?? s.exit_at ?? s.sessions?.[0]?.exited_at ?? null
 export const specimenNumber = (value: number) => String(value).padStart(2, '0')

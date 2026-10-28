@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Identity, Index, Integer, String,
+                        Text, UniqueConstraint, text)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -67,7 +68,7 @@ class PrepDraft(Base):
 
 class Stack(Base):
     __tablename__ = "stacks"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     material_id: Mapped[str] = mapped_column(ForeignKey("materials.id"), index=True)
     test_code: Mapped[str] = mapped_column(String(120), index=True)
@@ -84,8 +85,9 @@ class Stack(Base):
 class Specimen(Base):
     __tablename__ = "specimens"
     __table_args__ = (UniqueConstraint("stack_id", "number"), CheckConstraint("number > 0"))
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
-    stack_id: Mapped[str] = mapped_column(ForeignKey("stacks.id"), index=True)
+    # The specimen number is the label: printed and scanned with a check digit (see barcodes.label_code).
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    stack_id: Mapped[int] = mapped_column(ForeignKey("stacks.id"), index=True)
     number: Mapped[int] = mapped_column(Integer)
     revision: Mapped[int] = mapped_column(Integer, default=0)
     last_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -101,7 +103,7 @@ class ConditioningSession(Base):
         Index("one_conditioning_period_per_specimen", "specimen_id", unique=True, postgresql_where=text("voided = false")),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
-    specimen_id: Mapped[str] = mapped_column(ForeignKey("specimens.id"), index=True)
+    specimen_id: Mapped[int] = mapped_column(ForeignKey("specimens.id"), index=True)
     room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id"))
     entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     exited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -126,7 +128,7 @@ class MovementRequest(Base):
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
-    stack_id: Mapped[str] = mapped_column(ForeignKey("stacks.id"), index=True)
+    stack_id: Mapped[int] = mapped_column(ForeignKey("stacks.id"), index=True)
     kind: Mapped[str] = mapped_column(String(32))
     direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
     actor: Mapped[str] = mapped_column(String(120))

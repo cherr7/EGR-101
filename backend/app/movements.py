@@ -48,7 +48,7 @@ def process_movement(db, body):
     if body.expected_version is not None and body.expected_version != stack.version:
         return finish("rejected", "The stack changed. Scan again and review the current selection.", stack)
     if body.scope == "selection":
-        ids = [str(value) for value in body.selected_specimen_ids or []]
+        ids = list(body.selected_specimen_ids or [])
         if not ids or len(ids) != len(set(ids)) or any(p not in by_id for p in ids):
             return finish("rejected", "Select valid, unique specimens from this stack.", stack)
         if body.expected_version is None:

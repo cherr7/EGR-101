@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, codeFor, elapsed, entryOf, exitOf, formatTime, isReady, specimenStatus } from './api'
+import { api, elapsed, entryOf, exitOf, formatTime, isReady, specimenStatus } from './api'
 import type { Config, Specimen, SpecimenRecord, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 import LabelDialog from './LabelDialog'
@@ -30,7 +30,7 @@ function SpecimenHistory({
           </div>
           <Status specimen={record} />
         </div>
-        <div className="specimen-identity"><span>Permanent label ID</span><code>{record.barcode_value || codeFor(record.id)}</code></div>
+        <div className="specimen-identity"><span>Permanent label ID</span><code>{record.barcode_value}</code></div>
         <div className="specimen-time-grid">
           <div><span>ENTRY</span><b>{formatTime(entryOf(record))}</b></div>
           <div><span>EXIT</span><b>{formatTime(exitOf(record))}</b></div>
@@ -80,7 +80,7 @@ export function StackDetail({ stack, config, healthy = true }: { stack: Stack; c
   const alive = useRef(true), operation = useRef(0)
   useEffect(() => { alive.current = true; return () => { alive.current = false; operation.current++ } }, [])
   useEffect(() => { operation.current++; setFocused(null); setError(''); setLoading(false) }, [stack.id])
-  async function openSpecimen(id: string) {
+  async function openSpecimen(id: number) {
     const token = ++operation.current
     setLoading(true)
     setError('')
@@ -103,7 +103,7 @@ export function StackDetail({ stack, config, healthy = true }: { stack: Stack; c
       <thead><tr><th>Specimen</th><th>Status</th><th>Room</th><th>ENTRY</th><th>EXIT</th><th>Residence time</th><th /></tr></thead>
       <tbody>{stack.specimens.map(specimen => <tr key={specimen.id}>
         <td><b>#{String(specimen.number).padStart(2, '0')}</b>
-          <small className="id-hint" title={specimen.barcode_value || codeFor(specimen.id)}>{specimen.barcode_value || codeFor(specimen.id)}</small></td>
+          <small className="id-hint" title={specimen.barcode_value}>{specimen.barcode_value}</small></td>
         <td><Status specimen={specimen} /></td>
         <td>{roomName(specimen.room_id || specimen.sessions?.[0]?.room_id)}</td>
         <td>{formatTime(entryOf(specimen))}</td><td>{formatTime(exitOf(specimen))}</td>
@@ -139,7 +139,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
   const [project, setProject] = useState('')
   const [stackFilter, setStackFilter] = useState(() => new URLSearchParams(location.hash.split('?')[1] || '').get('stack') || '')
   const [selectedStack, setSelectedStack] = useState<Stack | null>(null)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [focused, setFocused] = useState<{ record: SpecimenRecord; stack: Stack } | null>(null)
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState('')
@@ -169,13 +169,13 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
     return () => { current = false }
   }, [healthy, revision])
   const records = items.flatMap(stack => stack.specimens.map(specimen => ({ stack, specimen }))).filter(({ stack, specimen }) =>
-    (!stackFilter || stack.id === stackFilter) &&
+    (!stackFilter || String(stack.id) === stackFilter) &&
     (!search || (stack.project_number + ' ' + stack.material_ref + ' ' + stack.test_code + ' ' + stack.preconditioning_code +
-      ' ' + specimen.id + ' ' + (specimen.barcode_value || codeFor(specimen.id)) + ' #' + specimen.number).toLowerCase().includes(search.toLowerCase())) &&
+      ' ' + specimen.id + ' ' + specimen.barcode_value + ' #' + specimen.number).toLowerCase().includes(search.toLowerCase())) &&
     (!status || (status === 'READY' ? isReady(specimen) : specimenStatus(specimen) === status)) &&
     (!roomId || specimen.room_id === roomId || specimen.sessions?.[0]?.room_id === roomId) &&
     (!project || stack.project_number.includes(project)))
-  async function selectSpecimen(stack: Stack, id: string) {
+  async function selectSpecimen(stack: Stack, id: number) {
     const token = ++openSerial.current
     setOpening(true)
     setError('')
@@ -185,7 +185,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
     } catch (err) { if (alive.current && token === openSerial.current) setError((err as Error).message) }
     finally { if (alive.current && token === openSerial.current) setOpening(false) }
   }
-  async function openStack(id: string) {
+  async function openStack(id: number) {
     const token = ++openSerial.current
     setOpening(true)
     try {
@@ -238,7 +238,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
         <tbody>{records.map(({ stack, specimen }) => <tr key={specimen.id} className={selectedIds.includes(specimen.id) ? 'selected-record' : ''}>
           <td><input type="checkbox" aria-label={'Select label ' + specimen.number + ' ' + stack.material_ref}
             checked={selectedIds.includes(specimen.id)} onChange={e => setSelectedIds(previous => e.target.checked ? [...previous, specimen.id] : previous.filter(id => id !== specimen.id))} /></td>
-          <td><b>#{String(specimen.number).padStart(2, '0')}</b><small className="id-hint" title={specimen.barcode_value || codeFor(specimen.id)}>{specimen.barcode_value || codeFor(specimen.id)}</small></td>
+          <td><b>#{String(specimen.number).padStart(2, '0')}</b><small className="id-hint" title={specimen.barcode_value}>{specimen.barcode_value}</small></td>
           <td><b>{stack.project_number}</b><small>{stack.material_ref}</small><button className="button text small-action" disabled={!healthy || opening} onClick={() => void openStack(stack.id)}>Stack details</button></td>
           <td>{stack.test_code}<small>{stack.preconditioning_code}</small></td>
           <td><Status specimen={specimen} /></td><td>{formatTime(entryOf(specimen))}</td><td>{formatTime(exitOf(specimen))}</td>

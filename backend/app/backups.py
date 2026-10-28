@@ -224,6 +224,10 @@ def create_staging(content):
                     converted.append(row)
                 if converted:
                     connection.execute(table.insert(), converted)
+            # Restored rows keep their numbers; new registrations continue after the highest one.
+            for counted in ("stacks", "specimens"):
+                connection.exec_driver_sql(f"SELECT setval(pg_get_serial_sequence('{counted}', 'id'), "
+                                           f"COALESCE((SELECT max(id) FROM {counted}), 0) + 1, false)")
         record = {"id": identifier, "status": "validated", "counts": manifest["counts"],
                   "created_at": utcnow().isoformat(), "snapshot_at": manifest["created_at"],
                   "database": name}

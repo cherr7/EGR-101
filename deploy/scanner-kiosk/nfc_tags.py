@@ -6,36 +6,27 @@ validated as a specimen ID and streamed to the kiosk page like a barcode scan. T
 hold anything else are reported as rejected scans, never as IDs.
 
     nfc_tags.py read          print each tapped tag's ID (stop fabric-scanner.target first)
-    nfc_tags.py write ID      write a specimen ID (39 digits or UUID) to one NTAG tag
+    nfc_tags.py write CODE    write a specimen label code (as printed on its label) to one NTAG tag
 
 Hat wiring: I1=H, I0=L, RSTPDN->D20, DIP 1-4 (SCK/MISO/MOSI/D4) ON, 5-8 (SCL/SDA/TX/RX) OFF.
 """
 import sys
 import time
-from uuid import UUID
 
 POLL_TIMEOUT = 0.1    # seconds per detection attempt
 REARM_AFTER = 0.75    # a tag must be off the coil this long before it reports again
 RETRY_DELAY = 2.0     # seconds before reconnecting a hat that failed
-ID_DIGITS = 39
 MAX_READ_ERRORS = 10  # reconnect after persistent hardware failure rather than spinning forever
 
 
 # --- specimen IDs -----------------------------------------------------------
 
 def normalize_id(text):
-    """Return the 39-digit decimal payload for a decimal or UUID specimen ID, else raise ValueError."""
+    """Return a specimen label code (number + check digit, verified by the server), else raise ValueError."""
     value = str(text).strip()
-    if value.isascii() and value.isdecimal() and 1 <= len(value) <= ID_DIGITS:
-        number = int(value)
-    else:
-        try:
-            number = UUID(value).int
-        except ValueError:
-            raise ValueError(f"not a specimen ID: {value[:60]!r}") from None
-    if number >= 1 << 128:
-        raise ValueError("specimen ID exceeds 128 bits")
-    return f"{number:0{ID_DIGITS}d}"
+    if not (value.isascii() and value.isdecimal() and 2 <= len(value) <= 20):
+        raise ValueError(f"not a specimen label code: {value[:60]!r}")
+    return value
 
 
 class TagFilter:
@@ -143,7 +134,7 @@ def decode_text_record(message):
 
 
 def read_tag_id(pn532, uid):
-    """Return the 39-digit specimen ID stored on a tag, or raise ValueError/RuntimeError."""
+    """Return the specimen label code stored on a tag, or raise ValueError/RuntimeError."""
     if len(uid) != 7:
         raise ValueError("not an NTAG21x tag (expected a 7-byte UID)")
     message = read_ndef_message(pn532)

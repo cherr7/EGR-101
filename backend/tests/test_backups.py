@@ -8,7 +8,7 @@ def test_snapshot_download_and_checked_staged_restore(client, stack_factory, mon
     monkeypatch.setenv("FABRIC_STATE_DIR", str(tmp_path))
     stack = stack_factory(count=3)
     payload = {"request_id": str(uuid4()), "station_id": "shared-door",
-               "code": str(int(stack["specimens"][0]["id"].replace("-", ""), 16)),
+               "code": stack["specimens"][0]["barcode_value"],
                "direction": "IN", "scope": "stack"}
     moved = client.post("/api/movements", json=payload)
     assert moved.status_code == 200, moved.text

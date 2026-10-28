@@ -200,7 +200,7 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
         // Preserve the authoritative import ID before the commit can lose its response.
         localStorage.setItem(REVIEW_KEY, JSON.stringify({ draft: value, rows: reviewed.rows }))
         if (alive.current) setDraft(value)
-        const result = await post<{ stack_ids: string[] }>('/prep-drafts/' + value.id + '/commit', { expected_rows: value.rows })
+        const result = await post<{ stack_ids: number[] }>('/prep-drafts/' + value.id + '/commit', { expected_rows: value.rows })
         saved = { ...value, committed: true, stack_ids: result.stack_ids }
         localStorage.setItem(REVIEW_KEY, JSON.stringify({ draft: saved, rows: saved.rows }))
       }

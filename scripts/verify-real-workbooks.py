@@ -120,7 +120,7 @@ def run(downloads: Path, report_path: Path):
         from pypdf import PdfReader
         import zxingcpp
         from fastapi.testclient import TestClient
-        from app.barcodes import id_payload, payload_id
+        from app.barcodes import code_id, label_code
         from app.db import SessionLocal, engine
         from app.main import app
         from app.models import Stack
@@ -207,16 +207,15 @@ def run(downloads: Path, report_path: Path):
                 require(len(pdf.pages) == len(expected), "PDF label count differs from registered specimen count.")
                 decoded_ids = []
                 for page, identifier in zip(pdf.pages, expected):
-                    require(abs(float(page.mediabox.width) - 144) < .01 and abs(float(page.mediabox.height) - 72) < .01,
-                            "PDF pages do not use the default 2x1-inch dimensions.")
+                    require(abs(float(page.mediabox.width) - 62 / 25.4 * 72) < .01 and abs(float(page.mediabox.height) - 72) < .01,
+                            "PDF pages do not use the default 62 x 25.4 mm dimensions.")
                     require("DEMO" in page.extract_text(), "Verification label is not visibly marked DEMO.")
                     images = list(page.images)
                     require(len(images) == 1, "Expected exactly one Data Matrix image per label.")
                     code = zxingcpp.read_barcode(Image.open(io.BytesIO(images[0].data)))
                     require(code is not None and code.format == zxingcpp.BarcodeFormat.DataMatrix, "A printed-label image did not decode as Data Matrix.")
-                    require(code.text == id_payload(identifier), "Label payload contains anything other than its 128-bit ID.")
-                    require(len(code.text) == 39 and code.text.isascii() and code.text.isdecimal(), "Wrong barcode transport format.")
-                    decoded_ids.append(payload_id(code.text))
+                    require(code.text == label_code(identifier), "Label payload contains anything other than its label code.")
+                    decoded_ids.append(code_id(code.text))
                 require(decoded_ids == expected, "Decoded PDF identities do not match the registered specimens.")
                 return decoded_ids
 
@@ -307,7 +306,7 @@ def run(downloads: Path, report_path: Path):
                     # Verify transport IDs against the real API and stack linkage.
                     for stack in stacks:
                         for specimen in (stack["specimens"][0], stack["specimens"][-1]):
-                            lookup = successful(client.post("/api/lookup", json={"code": id_payload(specimen["id"])}), "Decoded-label lookup")
+                            lookup = successful(client.post("/api/lookup", json={"code": label_code(specimen["id"])}), "Decoded-label lookup")
                             require(lookup["id"] == stack["id"] and lookup["scanned_specimen_id"] == specimen["id"],
                                     "Decoded specimen did not resolve to the registered stack.")
                     if kind == "ppe_prep":

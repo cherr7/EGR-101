@@ -6,7 +6,8 @@ test('printable report preserves identity and readable before/after observations
   const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: 'Thermal barrier', test_code: 'FLAME', preconditioning_code: '50L', specimen_count: 3 }] } })).json()
   const registered = await (await request.post(`/api/prep-drafts/${draft.id}/commit`)).json()
   const id = registered.stack_ids[0]
-  const base = { station_id: 'shared-door', code: `UL1:S:${id}`, scope: 'stack' }
+  const stack = await (await request.get(`/api/stacks/${id}`)).json()
+  const base = { station_id: 'shared-door', code: stack.specimens[0].barcode_value, scope: 'stack' }
   const entered = await (await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'IN' } })).json()
   expect(entered.status).toBe('committed')
   const removed = await (await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'OUT', acknowledge_early: true, expected_version: entered.version } })).json()

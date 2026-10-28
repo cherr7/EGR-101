@@ -3,7 +3,6 @@ from pathlib import Path
 import unittest
 import types
 from unittest.mock import patch
-from uuid import UUID
 
 
 def load(name, path):
@@ -15,7 +14,7 @@ def load(name, path):
 
 bridge = load("nfc_tags", Path(__file__).with_name("nfc_tags.py"))
 NTAG_UID = bytes(range(1, 8))
-SPECIMEN = "4d2a1c3b-0000-4000-8000-00000000002a"
+SPECIMEN = "123459"   # specimen 12345 + its check digit
 
 
 class FakeTag:
@@ -43,15 +42,12 @@ class FakeTag:
 
 
 class IdentifierTests(unittest.TestCase):
-    def test_uuid_and_short_decimal_become_the_label_payload(self):
-        payload = f"{UUID(SPECIMEN).int:039d}"
-        self.assertEqual(bridge.normalize_id(SPECIMEN), payload)
-        self.assertEqual(bridge.normalize_id(UUID(SPECIMEN).hex), payload)
-        self.assertEqual(bridge.normalize_id(" 42\n"), "0" * 37 + "42")
-        self.assertEqual(bridge.normalize_id(str((1 << 128) - 1)), str((1 << 128) - 1))
+    def test_label_codes_are_the_payload(self):
+        self.assertEqual(bridge.normalize_id(" 123459\n"), SPECIMEN)
+        self.assertEqual(bridge.normalize_id("92233720368547758077"), "92233720368547758077")
 
     def test_non_ids_are_rejected(self):
-        for text in ["", "UL-FAB-0001", "http://10.0.0.1/test", str(1 << 128), "1" * 40, "١٢٣"]:
+        for text in ["", "7", "UL-FAB-0001", "http://10.0.0.1/test", "1" * 21, "4d2a1c3b-0000-4000-8000-00000000002a", "١٢٣"]:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 bridge.normalize_id(text)
 
@@ -75,7 +71,7 @@ class TagTests(unittest.TestCase):
     def test_written_id_reads_back_as_the_payload(self):
         tag = FakeTag()
         payload = bridge.write_tag_id(tag, tag.uid, SPECIMEN)
-        self.assertEqual(len(payload), 39)
+        self.assertEqual(payload, SPECIMEN)
         self.assertEqual(bridge.read_tag_id(tag, tag.uid), payload)
 
     def test_unusable_tags_are_reported_not_typed(self):
@@ -88,7 +84,7 @@ class TagTests(unittest.TestCase):
         tag = FakeTag()
         message = bridge.encode_ndef_text("UL-FAB-0001")
         tag.pages[16:16 + len(message)] = message
-        with self.assertRaisesRegex(ValueError, "not a specimen ID"):
+        with self.assertRaisesRegex(ValueError, "not a specimen label code"):
             bridge.read_tag_id(tag, NTAG_UID)
         with self.assertRaisesRegex(ValueError, "refusing"):
             bridge.write_tag_id(FakeTag(formatted=False), NTAG_UID, SPECIMEN)

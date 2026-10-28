@@ -19,7 +19,7 @@ test('50/50 layout and expanded Activity undo the chosen older transaction despi
   const row = dialog.locator('[data-event-id="' + entered.event_id + '"]')
   await expect(row).toContainText('Older transaction')
   await expect(row).toContainText('01, 02, 03')
-  await scan(page, untouched.specimens[0].id)
+  await scan(page, untouched.specimens[0].barcode_value)
   expect((await (await request.get('/api/stacks/' + untouched.id)).json()).inside_count).toBe(0)
   let posts = 0
   await page.route('**/api/transactions/' + entered.event_id + '/undo', async route => { posts++; const response = await route.fetch(); expect(response.ok()).toBe(true); await route.abort('failed') })
@@ -55,7 +55,7 @@ test('room inventory prioritizes ready pieces, filters project and due-soon, and
   await row.getByRole('button').click()
   await expect(row.locator('.inventory-pieces')).toContainText('01, 02')
   await expect(row.locator('.inventory-pieces')).toContainText('03')
-  await scan(page, untouched.specimens[0].id)
+  await scan(page, untouched.specimens[0].barcode_value)
   expect((await (await request.get('/api/stacks/' + untouched.id)).json()).inside_count).toBe(0)
   await dialog.getByRole('button', { name: 'Next 2h', exact: true }).click()
   await expect(row).toBeVisible()

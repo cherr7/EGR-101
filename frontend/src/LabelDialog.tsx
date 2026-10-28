@@ -9,8 +9,8 @@ const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
 const LABEL_WIDTH_MM = 62
 const LABEL_HEIGHT_MM = 25.4
 type LabelSelection = {
-  stack_ids: string[]
-  selected_specimen_ids: string[]
+  stack_ids: number[]
+  selected_specimen_ids: number[]
   width_mm: number
   height_mm: number
 }
@@ -37,12 +37,12 @@ export default function LabelDialog({
   stacks, initialSelectedIds, healthy, onClose,
 }: {
   stacks: Stack[]
-  initialSelectedIds?: string[]
+  initialSelectedIds?: number[]
   healthy: boolean
   onClose: () => void
 }) {
-  const [selected, setSelected] = useState<string[]>(() => initialSelectedIds || stacks.flatMap(stack => stack.specimens.map(s => s.id)))
-  const [expanded, setExpanded] = useState<string | null>(() => initialSelectedIds ? stacks[0]?.id || null : null)
+  const [selected, setSelected] = useState<number[]>(() => initialSelectedIds || stacks.flatMap(stack => stack.specimens.map(s => s.id)))
+  const [expanded, setExpanded] = useState<number | null>(() => initialSelectedIds ? stacks[0]?.id ?? null : null)
   const [copies, setCopies] = useState(1)
   const [cut, setCut] = useState<'each' | 'end'>('each')
   const [queue, setQueue] = useState('')
@@ -63,8 +63,8 @@ export default function LabelDialog({
   }, [])
 
   const selection = useMemo<LabelSelection>(() => ({
-    stack_ids: stacks.filter(stack => stack.specimens.some(s => selected.includes(s.id))).map(stack => stack.id).sort(),
-    selected_specimen_ids: [...selected].sort(),
+    stack_ids: stacks.filter(stack => stack.specimens.some(s => selected.includes(s.id))).map(stack => stack.id).sort((a, b) => a - b),
+    selected_specimen_ids: [...selected].sort((a, b) => a - b),
     width_mm: LABEL_WIDTH_MM,
     height_mm: LABEL_HEIGHT_MM,
   }), [stacks, selected])
@@ -192,7 +192,7 @@ export default function LabelDialog({
     }
   }
   const allIds = stacks.flatMap(stack => stack.specimens.map(s => s.id))
-  function toggle(ids: string[], checked: boolean) {
+  function toggle(ids: number[], checked: boolean) {
     if (busy) return
     setSelected(previous => checked ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)))
   }

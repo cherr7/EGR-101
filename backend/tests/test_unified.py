@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
-from uuid import UUID, uuid4
+from uuid import uuid4
+
+from app.barcodes import label_code
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -22,11 +24,13 @@ def test_decimal_uuid_lookup_and_draft_source_metadata(client):
     assert stack["specimen_count"] == 25 and stack["waiting_count"] == 25
     assert stack["metadata"]["labware"] == "000012"
     specimen = stack["specimens"][0]
-    assert len(specimen["barcode_value"]) == 39 and int(specimen["barcode_value"]) == UUID(specimen["id"]).int
-    for code in [specimen["barcode_value"], specimen["id"], UUID(specimen["id"]).hex, "]d1" + specimen["barcode_value"]]:
+    assert specimen["barcode_value"] == label_code(specimen["id"])
+    for code in [specimen["barcode_value"], "]d1" + specimen["barcode_value"]]:
         response = client.post("/api/lookup", json={"code": code})
         assert response.is_success and response.json()["scanned_specimen_id"] == specimen["id"]
-    assert client.post("/api/lookup", json={"code": str(2**128)}).status_code == 400
+    typo = str(specimen["id"]) + str((int(specimen["barcode_value"][-1]) + 1) % 10)
+    for bad in [str(specimen["id"]), typo, str(2 ** 63) + "0", "UL1:P:" + str(specimen["id"])]:
+        assert client.post("/api/lookup", json={"code": bad}).status_code == 400, bad
     assert client.post(f'/api/prep-drafts/{draft["id"]}/commit').json() == committed
 
 

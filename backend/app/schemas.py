@@ -50,7 +50,7 @@ class MovementBody(BaseModel):
     code: str
     direction: Literal["IN", "OUT"]
     scope: Literal["stack", "specimen", "selection"] = "stack"
-    selected_specimen_ids: list[UUID] | None = None
+    selected_specimen_ids: list[int] | None = None
     expected_version: int | None = Field(default=None, ge=0)
     acknowledge_early: bool = False
 
@@ -64,7 +64,7 @@ class CorrectionBody(BaseModel):
     kind: Literal["edit_session", "missed_session", "undo"]
     reason: str = Field(default="", max_length=2000)
     session_id: UUID | None = None
-    specimen_ids: list[UUID] | None = None
+    specimen_ids: list[int] | None = None
     room_id: str | None = None
     entered_at: datetime | None = None
     exited_at: datetime | None = None
@@ -84,7 +84,7 @@ class CorrectionBody(BaseModel):
 
 
 class TransactionEditBody(BaseModel):
-    specimen_ids: list[UUID] | None = None
+    specimen_ids: list[int] | None = None
     occurred_at: datetime | None = None
     room_id: str | None = None
     note: str = Field(default="", max_length=2000)
@@ -104,8 +104,8 @@ class TransactionUndoBody(BaseModel):
 
 
 class MissedMovementBody(BaseModel):
-    stack_id: UUID
-    specimen_ids: list[UUID] = Field(min_length=1, max_length=500)
+    stack_id: int
+    specimen_ids: list[int] = Field(min_length=1, max_length=500)
     direction: Literal["IN", "OUT"]
     occurred_at: datetime
     room_id: str

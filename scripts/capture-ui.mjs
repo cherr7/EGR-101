@@ -28,8 +28,7 @@ try {
   const registered = await json(await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} }));
   const first = await json(await request.get('/api/stacks/' + registered.stack_ids[0]));
   const second = await json(await request.get('/api/stacks/' + registered.stack_ids[1]));
-  const code = id => BigInt('0x' + id.replaceAll('-', '')).toString().padStart(39, '0');
-  const base = { station_id: 'shared-door', code: code(first.specimens[0].id), scope: 'stack' };
+  const base = { station_id: 'shared-door', code: first.specimens[0].barcode_value, scope: 'stack' };
   const entered = await json(await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'IN' } }));
   await json(await request.patch('/api/transactions/' + entered.event_id, {
     data: { occurred_at: new Date(Date.now() - 25 * 3600000).toISOString(), expected_version: entered.version },
@@ -80,13 +79,13 @@ try {
   await page.getByRole('button', { name: 'Shared', exact: true }).click();
   await page.getByRole('button', { name: 'IN', exact: true }).click();
   await capture('scanner-ready.png');
-  await page.keyboard.type(code(second.specimens[0].id));
+  await page.keyboard.type(second.specimens[0].barcode_value);
   await page.keyboard.press('Enter');
   await page.getByRole('heading', { name: 'IN confirmed', exact: true }).waitFor();
   await capture('scanner-confirmed.png');
   await page.getByRole('button', { name: 'OUT', exact: true }).click();
   await page.getByRole('button', { name: 'Individual' }).click();
-  await page.keyboard.type(code(second.specimens[0].id));
+  await page.keyboard.type(second.specimens[0].barcode_value);
   await page.keyboard.press('Enter');
   await page.getByRole('dialog', { name: 'Choose the specimens moving' }).waitFor();
   await capture('scanner-partial.png');

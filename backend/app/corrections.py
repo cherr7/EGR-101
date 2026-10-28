@@ -46,7 +46,7 @@ def process_correction(db, body, username):
         ids = [session.specimen_id]
         stack_id = db.get(Specimen, session.specimen_id).stack_id
     else:
-        ids = [str(i) for i in body.specimen_ids or []]
+        ids = list(body.specimen_ids or [])
         if not ids or len(set(ids)) != len(ids) or body.entered_at is None or body.room_id is None:
             raise HTTPException(422, "Choose specimens, a room, and the claimed entry time.")
         first = db.get(Specimen, ids[0])
@@ -67,7 +67,7 @@ def process_correction(db, body, username):
         if any(p.last_event_id != target.id for p in specimens):
             raise HTTPException(409, "Cannot undo: an affected specimen has an intervening movement or correction.")
         for specimen in specimens:
-            original = {s["id"]: s for s in target.payload["before"][specimen.id]}
+            original = {s["id"]: s for s in target.payload["before"][str(specimen.id)]}
             existing = sessions_for(db, specimen.id, include_voided=True)
             for s in existing:
                 if s.id not in original:
@@ -190,7 +190,7 @@ def undo_transaction(db, event_id, body, username="project-staff"):
         raise HTTPException(409, "Cannot undo: an affected specimen has an intervening movement or correction.")
     before = snapshot(db, specimens)
     for specimen in specimens:
-        _restore(db, specimen, effective["base_before"][specimen.id])
+        _restore(db, specimen, effective["base_before"][str(specimen.id)])
     now = utcnow()
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="undo", direction=target.direction,
                        actor=username, reason=body.note or None, recorded_at=now,
@@ -205,7 +205,7 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     target, stack, by_id = _lock_transaction(db, event_id)
     _check_version(stack, body.expected_version)
     effective = transaction_effective(db, target)
-    ids = [str(identifier) for identifier in body.specimen_ids] if body.specimen_ids is not None else list(effective["specimen_ids"])
+    ids = list(body.specimen_ids) if body.specimen_ids is not None else list(effective["specimen_ids"])
     if not ids or len(ids) != len(set(ids)) or any(identifier not in by_id for identifier in ids):
         raise HTTPException(422, "Choose unique numbered specimens from this stack. Use Undo to cancel a transaction.")
     current_ids = set(effective["specimen_ids"])
@@ -231,9 +231,9 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     before = snapshot(db, specimens)
     base_before = dict(effective["base_before"])
     for identifier in set(ids) - current_ids:
-        base_before[identifier] = before[identifier]
+        base_before[str(identifier)] = before[str(identifier)]
     for identifier in current_ids:
-        _restore(db, by_id[identifier], base_before[identifier])
+        _restore(db, by_id[identifier], base_before[str(identifier)])
     for identifier in ids:
         if target.direction == "IN":
             if conditioning_period(db, identifier) is not None:
@@ -267,11 +267,11 @@ def edit_transaction(db, event_id, body, username="project-staff"):
 
 
 def record_missed_movement(db, body, username="project-staff"):
-    stack = db.scalar(select(Stack).where(Stack.id == str(body.stack_id)).with_for_update().execution_options(populate_existing=True))
+    stack = db.scalar(select(Stack).where(Stack.id == body.stack_id).with_for_update().execution_options(populate_existing=True))
     if stack is None:
         raise HTTPException(404, "Stack not found.")
     _check_version(stack, body.expected_version)
-    ids = [str(identifier) for identifier in body.specimen_ids]
+    ids = list(body.specimen_ids)
     specimens = list(db.scalars(select(Specimen).where(Specimen.id.in_(ids)).order_by(Specimen.id)
                                .with_for_update().execution_options(populate_existing=True)))
     if len(ids) != len(set(ids)) or len(specimens) != len(ids) or any(p.stack_id != stack.id for p in specimens):

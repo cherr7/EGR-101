@@ -151,6 +151,7 @@ for day in range(1, DAYS + 1):
             "staff transactions": timed("transactions", lambda: client.get("/api/events?limit=100")),
             "kiosk inventory": timed("inventory", lambda: client.get("/api/stacks?room_id=shared"), runs=3),
             "staff stack search": timed("search", lambda: client.get("/api/stacks?q=Material%20123"), runs=3),
+            "staff stack list (all)": timed("all", lambda: client.get("/api/stacks"), runs=1),
         }
         day_moves = movement_ms[-len(actions):]
         point = {"day": day, "specimens": total_specimens, "events": int(psql("SELECT count(*) FROM audit_events")),

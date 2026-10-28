@@ -10,8 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from urllib.parse import urlencode
 from pydantic import ValidationError
-from sqlalchemy import func, or_, select, text
-from sqlalchemy.orm import aliased
+from sqlalchemy import or_, select, text
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import current_user, require_supervisor, valid_credentials
@@ -243,13 +242,10 @@ def events(stack_id: int | None = None, room_id: str | None = None, station_id: 
     if stack_id:
         query = query.where(AuditEvent.stack_id == stack_id)
     if room_id:
-        modification = aliased(AuditEvent)
-        latest_room = select(modification.payload["effective_movement"]["room_id"].astext).where(
-            modification.kind == "modification", modification.payload["event_id"].astext == AuditEvent.id
-        ).order_by(modification.recorded_at.desc(), modification.id.desc()).limit(1).correlate(AuditEvent).scalar_subquery()
-        effective_room = func.coalesce(latest_room, AuditEvent.payload["room_id"].astext)
-        legacy_room = text("jsonb_path_exists(audit_events.payload, '$.after.*[*] ? (@.room_id == $room)', jsonb_build_object('room', CAST(:event_room AS text)))").bindparams(event_room=room_id)
-        query = query.where(or_(effective_room == room_id, (effective_room.is_(None) & legacy_room)))
+        # Events recorded in this room, plus events a staff modification moved into it (both indexed).
+        moved_here = select(AuditEvent.payload["event_id"].astext).where(
+            AuditEvent.kind == "modification", AuditEvent.room_id == room_id)
+        query = query.where(or_(AuditEvent.room_id == room_id, AuditEvent.id.in_(moved_here)))
     if station_id:
         query = query.where(AuditEvent.payload["station_id"].astext == station_id)
     if kind:
@@ -260,10 +256,11 @@ def events(stack_id: int | None = None, room_id: str | None = None, station_id: 
             Project.project_number.ilike(pattern, escape="\\"), Material.material_ref.ilike(pattern, escape="\\"),
             Stack.test_code.ilike(pattern, escape="\\"), Stack.preconditioning_code.ilike(pattern, escape="\\"),
             AuditEvent.id.ilike(pattern, escape="\\")))
-    matching_count = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
     rows = list(db.scalars(query.limit(limit + 1)))
-    return {"items": [event_dict(db, event) for event in rows[:limit]], "limit": limit,
-            "has_more": len(rows) > limit, "matching_count": matching_count, "server_time": iso(utcnow())}
+    items = [event_dict(db, event) for event in rows[:limit]]
+    if room_id:  # a later modification may have moved an event recorded here to another room
+        items = [item for item in items if item["room_id"] == room_id]
+    return {"items": items, "limit": limit, "has_more": len(rows) > limit, "server_time": iso(utcnow())}
 
 
 @app.get("/api/transactions/{event_id}")

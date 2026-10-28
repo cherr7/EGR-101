@@ -89,7 +89,7 @@ def process_movement(db, body):
             session.early_exit_acknowledged = specimen in early
     db.flush()
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="movement", direction=body.direction,
-                       actor=station.id, recorded_at=now, specimen_ids=[p.id for p in changed],
+                       actor=station.id, recorded_at=now, specimen_ids=[p.id for p in changed], room_id=station.room_id,
                        payload={"request_id": request_id, "station_id": station.id, "room_id": station.room_id,
                                 "occurred_at": iso(now),
                                 "scope": body.scope, "early_exit_acknowledged": bool(early),

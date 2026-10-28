@@ -101,6 +101,7 @@ class ConditioningSession(Base):
         CheckConstraint("exited_at IS NULL OR exited_at >= entered_at", name="valid_session_chronology"),
         Index("one_open_session_per_specimen", "specimen_id", unique=True, postgresql_where=text("exited_at IS NULL AND voided = false")),
         Index("one_conditioning_period_per_specimen", "specimen_id", unique=True, postgresql_where=text("voided = false")),
+        Index("open_sessions_by_room", "room_id", postgresql_where=text("exited_at IS NULL AND voided = false")),  # inventory
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     specimen_id: Mapped[int] = mapped_column(ForeignKey("specimens.id"), index=True)
@@ -127,6 +128,11 @@ class MovementRequest(Base):
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("events_by_room", "room_id", "kind", "recorded_at"),                    # kiosk activity
+        Index("events_by_target", text("(payload ->> 'event_id')")),                 # undo / modification of an event
+        Index("events_by_specimen", "specimen_ids", postgresql_using="gin"),         # specimen history
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     stack_id: Mapped[int] = mapped_column(ForeignKey("stacks.id"), index=True)
     kind: Mapped[str] = mapped_column(String(32))
@@ -134,6 +140,7 @@ class AuditEvent(Base):
     actor: Mapped[str] = mapped_column(String(120))
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     specimen_ids: Mapped[list] = mapped_column(JSONB)
+    room_id: Mapped[str | None] = mapped_column(String(36), nullable=True)   # room the movement or correction is in
     payload: Mapped[dict] = mapped_column(JSONB)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 

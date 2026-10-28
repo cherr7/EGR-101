@@ -118,7 +118,7 @@ def process_correction(db, body, username):
         kind = "correction"
     db.flush()
     event = AuditEvent(id=uuid_str(), stack_id=stack_id, kind=kind, actor=username, reason=body.reason,
-                       recorded_at=now, specimen_ids=ids,
+                       recorded_at=now, specimen_ids=ids, room_id=room_id,
                        payload={"correction_kind": body.kind, "event_id": target.id if target else None,
                                 "room_id": room_id, "occurred_at": iso(body.entered_at),
                                 "before": before, "after": snapshot(db, specimens)})
@@ -193,7 +193,7 @@ def undo_transaction(db, event_id, body, username="project-staff"):
         _restore(db, specimen, effective["base_before"][str(specimen.id)])
     now = utcnow()
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="undo", direction=target.direction,
-                       actor=username, reason=body.note or None, recorded_at=now,
+                       actor=username, reason=body.note or None, recorded_at=now, room_id=effective["room_id"],
                        specimen_ids=[p.id for p in specimens],
                        payload={"event_id": target.id, "correction_kind": "undo", "before": before,
                                 "room_id": effective["room_id"], "station_id": target.payload.get("station_id"),
@@ -258,7 +258,7 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     note = body.note if "note" in body.model_fields_set else effective["note"]
     updated["note"] = note
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="modification", direction=target.direction,
-                       actor=username, reason=note or None, recorded_at=now,
+                       actor=username, reason=note or None, recorded_at=now, room_id=room_id,
                        specimen_ids=[p.id for p in specimens],
                        payload={"event_id": target.id, "effective_movement": updated, "base_before": base_before,
                                 "room_id": room_id, "station_id": target.payload.get("station_id"),
@@ -303,7 +303,7 @@ def record_missed_movement(db, body, username="project-staff"):
             period.incomplete = occurred_at - period.entered_at < timedelta(hours=room.required_hours)
     db.flush()
     event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="movement", direction=body.direction,
-                       actor=username, reason=body.note or None, recorded_at=now, specimen_ids=ids,
+                       actor=username, reason=body.note or None, recorded_at=now, specimen_ids=ids, room_id=room.id,
                        payload={"source": "missed", "scope": "selection", "room_id": room.id,
                                 "occurred_at": iso(occurred_at), "before": before, "after": snapshot(db, specimens)})
     return _finish_transaction_change(db, stack, specimens, event)

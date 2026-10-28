@@ -141,7 +141,7 @@ def test_old_transaction_search_precedes_limit_and_direct_lookup_is_unbounded(cl
     db.commit()
     assert moved["event_id"] not in {row["id"] for row in client.get("/api/transactions").json()["items"]}
     searched = client.get("/api/transactions?q=OLD-UNIQUE-PROJECT&kind=movement&limit=1").json()
-    assert searched["matching_count"] == 1 and searched["items"][0]["id"] == moved["event_id"]
+    assert len(searched["items"]) == 1 and searched["items"][0]["id"] == moved["event_id"]
     assert client.get(f'/api/transactions?q={moved["event_id"]}&limit=1').json()["items"][0]["id"] == moved["event_id"]
     assert client.get(f'/api/transactions/{moved["event_id"]}').json()["id"] == moved["event_id"]
 

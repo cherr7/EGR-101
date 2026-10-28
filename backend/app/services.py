@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert
 
 from .barcodes import code_id, label_code
@@ -110,8 +111,14 @@ def specimen_time_log(db, specimen_id):
 def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
     now = utcnow()
     specimens = []
-    for specimen in db.scalars(select(Specimen).where(Specimen.stack_id == stack.id).order_by(Specimen.number)):
-        sessions = sessions_for(db, specimen.id)
+    rows = list(db.scalars(select(Specimen).where(Specimen.stack_id == stack.id).order_by(Specimen.number)))
+    by_specimen = {specimen.id: [] for specimen in rows}
+    for session in db.scalars(select(ConditioningSession).options(selectinload(ConditioningSession.room)).where(
+            ConditioningSession.specimen_id.in_(by_specimen), ConditioningSession.voided.is_(False))
+            .order_by(ConditioningSession.entered_at, ConditioningSession.id).execution_options(populate_existing=True)):
+        by_specimen[session.specimen_id].append(session)
+    for specimen in rows:
+        sessions = by_specimen[specimen.id]
         active = next((s for s in sessions if s.exited_at is None), None)
         period = sessions[0] if sessions else None
         due = active.entered_at + timedelta(hours=active.room.required_hours) if active else None
@@ -159,6 +166,10 @@ def query_stacks(db, q=None, project_number=None, material_ref=None, test_code=N
                          (Stack.test_code, test_code), (Stack.preconditioning_code, preconditioning_code)]:
         if value:
             query = query.where(field == value)
+    if room_id:  # only stacks with a piece inside this room now (indexed open sessions), not all history
+        query = query.where(Stack.id.in_(select(Specimen.stack_id).join(ConditioningSession).where(
+            ConditioningSession.room_id == room_id, ConditioningSession.exited_at.is_(None),
+            ConditioningSession.voided.is_(False))))
     items = []
     for stack in db.scalars(query.order_by(Stack.created_at.desc(), Stack.id)):
         detail = stack_detail(db, stack, include_events=False)

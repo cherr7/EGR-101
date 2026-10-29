@@ -24,7 +24,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .exports import labels_pdf
+from .exports import label_height_mm, labels_pdf
 from .models import AuditEvent, PrintJob, Stack, utcnow
 from .services import stack_detail
 
@@ -35,8 +35,7 @@ QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
 class LabelPreviewBody(BaseModel):
     stack_ids: list[int] = Field(min_length=1, max_length=100)
     selected_specimen_ids: list[int] | None = Field(default=None, min_length=1, max_length=5000)
-    width_mm: float = Field(default=62, ge=40, le=150)      # Brother QL 62 mm continuous roll
-    height_mm: float = Field(default=25.4, ge=25, le=150)
+    width_mm: float = Field(default=62, ge=40, le=150)      # Brother QL 62 mm continuous roll; length fits the content
 
     @field_validator("stack_ids")
     @classmethod
@@ -140,7 +139,7 @@ def list_printers():
 @router.post("/labels/preview")
 def preview_labels(body: LabelPreviewBody, db: Session = Depends(get_db)):
     document = labels_pdf(_details(db, body.stack_ids, body.selected_specimen_ids),
-                          body.width_mm, body.height_mm)
+                          body.width_mm)
     return Response(document, media_type="application/pdf", headers={
         "Content-Disposition": 'inline; filename="specimen-labels.pdf"', "Cache-Control": "no-store"})
 
@@ -167,11 +166,12 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
             raise HTTPException(409, "This host is configured for a different printer queue.")
         stack_ids = body.stack_ids
         details = _details(db, stack_ids, body.selected_specimen_ids)
-        document = labels_pdf(details, body.width_mm, body.height_mm)
+        document = labels_pdf(details, body.width_mm)
+        height_mm = label_height_mm(details, body.width_mm)
         job = PrintJob(id=request_id, fingerprint=fingerprint, status="submitting",
                        printer_queue=body.printer_queue, stack_ids=stack_ids,
                        options={"copies": body.copies, "width_mm": body.width_mm,
-                                "height_mm": body.height_mm, "barcode_format": "DataMatrix",
+                                "height_mm": height_mm, "barcode_format": "DataMatrix",
                                 "selected_specimen_ids": [specimen["id"] for detail in details for specimen in detail["specimens"]],
                                 "label_count": sum(len(item["specimens"]) for item in details) * body.copies})
         db.add(job)
@@ -194,7 +194,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
         completed = subprocess.run([
             lp, "-d", body.printer_queue, "-n", str(body.copies),
             "-t", "Fabric Labels " + request_id, "-o",
-            f"media=Custom.{body.width_mm:g}x{body.height_mm:g}mm",
+            f"media=Custom.{body.width_mm:g}x{height_mm:g}mm",
             "-o", "print-scaling=none", "-o", "fit-to-page=false",
             "-o", "CutMedia=EndOfPage", str(temporary),   # continuous roll: cut every label
         ], capture_output=True, text=True, timeout=20, check=False,

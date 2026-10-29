@@ -26,7 +26,7 @@ def install_fake_cups(monkeypatch, *, timeout=False):
         if timeout:
             raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
         assert argv[1:3] == ["-d", "Brother_QL"]
-        assert "media=Custom.62x25.4mm" in argv
+        assert "media=Custom.62x25.4mm" in argv   # 62 mm roll; length = the 19.4 mm code + 3 mm at each end
         assert "print-scaling=none" in argv and "CutMedia=EndOfPage" in argv
         with open(argv[-1], "rb") as file:
             assert file.read(4) == b"%PDF"

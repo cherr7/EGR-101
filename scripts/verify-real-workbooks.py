@@ -207,8 +207,8 @@ def run(downloads: Path, report_path: Path):
                 require(len(pdf.pages) == len(expected), "PDF label count differs from registered specimen count.")
                 decoded_ids = []
                 for page, identifier in zip(pdf.pages, expected):
-                    require(abs(float(page.mediabox.width) - 62 / 25.4 * 72) < .01 and abs(float(page.mediabox.height) - 72) < .01,
-                            "PDF pages do not use the default 62 x 25.4 mm dimensions.")
+                    require(abs(float(page.mediabox.width) - 62 / 25.4 * 72) < .01,
+                            "PDF pages are not 62 mm wide.")
                     require("DEMO" in page.extract_text(), "Verification label is not visibly marked DEMO.")
                     images = list(page.images)
                     require(len(images) == 1, "Expected exactly one Data Matrix image per label.")

@@ -15,7 +15,7 @@ async function current(request: APIRequestContext, id: string) { return (await r
 function eastern(value: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(value).replace(' ', 'T') }
 
 test('Excel review preserves source cells, conditioning extras, unresolved material and permanent reprints', async ({ page, request }) => {
-  const previews: { selected_specimen_ids: string[]; width_mm: number; height_mm: number }[] = []
+  const previews: { selected_specimen_ids: string[] }[] = []
   page.on('request', value => { if (value.method() === 'POST' && value.url().endsWith('/api/labels/preview')) previews.push(value.postDataJSON()) })
   await page.goto('/#prep'); await expect(page.getByText('Database connected')).toBeVisible()
   await page.getByLabel('Import prep workbook').setInputFiles({ name: 'DEMO-prep.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.concat([await readFile(fileURLToPath(new URL('./fixtures/DEMO-prep.xlsx', import.meta.url))), Buffer.from(randomUUID())]) })
@@ -28,7 +28,7 @@ test('Excel review preserves source cells, conditioning extras, unresolved mater
   const labels = page.locator('iframe[title="Actual label PDF preview"]')
   await expect(labels).toHaveAttribute('src', /^blob:/)
   const before = previews.at(-1)!
-  expect(before.width_mm).toBe(62); expect(before.height_mm).toBe(25.4); expect(before.selected_specimen_ids).toHaveLength(20)
+  expect(before.selected_specimen_ids).toHaveLength(20)
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
   await page.reload()
   await expect(page.getByRole('button', { name: 'Preview / reprint labels →' })).toBeVisible()

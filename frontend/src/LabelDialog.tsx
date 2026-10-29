@@ -5,14 +5,10 @@ import { ErrorNotice, Modal } from './App'
 
 const PRINT_KEY = 'fabric-tracker.pending-print.v2'
 const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
-// Brother QL-810W, 62 mm continuous roll at a constant 25.4 mm per label (2.44 x 1 in).
-const LABEL_WIDTH_MM = 62
-const LABEL_HEIGHT_MM = 25.4
+// The host sizes labels for the Brother QL-810W's 62 mm continuous roll.
 type LabelSelection = {
   stack_ids: number[]
   selected_specimen_ids: number[]
-  width_mm: number
-  height_mm: number
 }
 type PrintIntent = LabelSelection & {
   request_id: string
@@ -63,8 +59,6 @@ export default function LabelDialog({
   const selection = useMemo<LabelSelection>(() => ({
     stack_ids: stacks.filter(stack => stack.specimens.some(s => selected.includes(s.id))).map(stack => stack.id).sort((a, b) => a - b),
     selected_specimen_ids: [...selected].sort((a, b) => a - b),
-    width_mm: LABEL_WIDTH_MM,
-    height_mm: LABEL_HEIGHT_MM,
   }), [stacks, selected])
   const fingerprint = JSON.stringify(selection)
   const valid = selected.length > 0

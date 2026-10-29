@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
-from reportlab.lib.utils import ImageReader
+from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -25,7 +25,12 @@ from .services import stack_detail
 
 router = APIRouter(prefix="/api", tags=["Labels and reports"])
 MM = 72 / 25.4
-MARGIN = 3 * MM   # Brother QL: 3 mm minimum feed margin at each cut; 1.5 mm hardware minimum at the sides
+# Brother QL continuous tape cannot print the first and last 3 mm of a page (1.5 mm at the sides), so every
+# label keeps a 3 mm margin on all four sides, and a page is as long as its content plus those margins.
+SIDE = 3 * MM
+CODE = 19.4 * MM             # Data Matrix side, quiet zone included
+GAP = 2.5 * MM               # between code and text
+FONT_SIZE, LEADING = 7, 8.5  # points
 LOCAL_TZ = ZoneInfo("America/New_York")
 
 
@@ -86,52 +91,52 @@ def _font() -> str:
     return "Helvetica"
 
 
-def _fit_line(pdf: canvas.Canvas, text: str, x: float, y: float, width: float, font: str, size=7):
-    text = " ".join(str(text).split())
-    while size > 6 and pdfmetrics.stringWidth(text, font, size) > width:
-        size -= .25
-    if pdfmetrics.stringWidth(text, font, size) > width:
-        while text and pdfmetrics.stringWidth(text + "...", font, size) > width:
-            text = text[:-1]
-        text += "..."
-    pdf.setFont(font, size)
-    pdf.drawString(x, y, text)
+def _text_lines(row: dict, font: str, width_mm: float) -> list[str]:
+    """Every field in full, wrapped to the text column instead of cut off."""
+    fields = [row["project_number"], row["material_ref"], row["test_code"], row["preconditioning_code"],
+              f'Piece {row["specimen_number"]} / {row["specimen_count"]}',
+              ("DEMO " if row["is_demo"] else "") + "No. " + row["barcode_payload"]]
+    width = width_mm * MM - 2 * SIDE - CODE - GAP
+    return [line for field in fields for line in simpleSplit(" ".join(str(field).split()), font, FONT_SIZE, width) or [""]]
 
 
-def labels_pdf(detail: dict | list[dict], width_mm: float = 62, height_mm: float = 25.4) -> bytes:
+def _text_height(lines: list[str]) -> float:
+    return (len(lines) - 1) * LEADING + 1.05 * FONT_SIZE   # first ascender to last descender
+
+
+def label_height_mm(details: list[dict], width_mm: float = 62) -> float:
+    """One page length for the whole job (one media size per job): the tallest label's content."""
+    font = _font()
+    tallest = max((_text_height(_text_lines(row, font, width_mm)) for item in details for row in _label_rows(item)), default=0)
+    return round((max(CODE, tallest) + 2 * SIDE) / MM + .05, 1)
+
+
+def labels_pdf(detail: dict | list[dict], width_mm: float = 62) -> bytes:
+    details = detail if isinstance(detail, list) else [detail]
+    width, height = width_mm * MM, label_height_mm(details, width_mm) * MM
     stream = io.BytesIO()
-    width, height = width_mm * MM, height_mm * MM
     pdf = canvas.Canvas(stream, pagesize=(width, height))
     pdf.setTitle("Fabric Conditioning Tracker - labels")
     font = _font()
-    details = detail if isinstance(detail, list) else [detail]
-    rows = [row for item in details for row in _label_rows(item)]
-    for row in rows:
+    for row in (row for item in details for row in _label_rows(item)):
         image = datamatrix_image(row["barcode_payload"]).convert("RGB")
-        code_size = min(height - 2 * MARGIN, width * .39)
-        pdf.drawImage(ImageReader(image), MARGIN, (height - code_size) / 2,
-                      width=code_size, height=code_size, preserveAspectRatio=True,
-                      mask="auto")
-        x = MARGIN + code_size + 2.5 * MM
-        text_width = width - x - MARGIN
-        lines = [row["project_number"], row["material_ref"], row["test_code"], row["preconditioning_code"],
-                 f'Piece {row["specimen_number"]} / {row["specimen_count"]}',
-                 ("DEMO " if row["is_demo"] else "") + "No. " + row["barcode_payload"]]
-        line_gap = min(9, (height - 2 * MARGIN) / 6)
-        y = height / 2 + 2.5 * line_gap - 2.5   # centre the six lines' cap height in the safe area
+        pdf.drawImage(ImageReader(image), SIDE, (height - CODE) / 2, width=CODE, height=CODE,
+                      preserveAspectRatio=True, mask="auto")
+        lines = _text_lines(row, font, width_mm)
+        y = (height + _text_height(lines)) / 2 - .85 * FONT_SIZE   # first baseline of the vertically centred block
+        pdf.setFont(font, FONT_SIZE)
         for line in lines:
-            _fit_line(pdf, line, x, y, text_width, font)
-            y -= line_gap
+            pdf.drawString(SIDE + CODE + GAP, y, line)
+            y -= LEADING
         pdf.showPage()
     pdf.save()
     return stream.getvalue()
 
 
 @router.get("/stacks/{stack_id}/labels.pdf")
-def label_pdf(stack_id: int, width_mm: float = Query(62, ge=40, le=150),
-              height_mm: float = Query(25.4, ge=25, le=150), db: Session = Depends(get_db)):
+def label_pdf(stack_id: int, width_mm: float = Query(62, ge=40, le=150), db: Session = Depends(get_db)):
     detail = stack_detail(db, _stack(db, stack_id))
-    return Response(labels_pdf(detail, width_mm, height_mm), media_type="application/pdf",
+    return Response(labels_pdf(detail, width_mm), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="labels-{stack_id}.pdf"', "Cache-Control": "no-store"})
 
 

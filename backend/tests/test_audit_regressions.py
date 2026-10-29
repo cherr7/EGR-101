@@ -57,10 +57,11 @@ def test_selective_preview_print_and_audit_use_identical_registered_ids(client, 
     assert "Piece 3 / 10" in document.pages[0].extract_text()
     calls = install_fake_cups(monkeypatch)
     original_run = printing.subprocess.run
+    sent = []
     def check_job(argv, **kwargs):
         if argv[0].endswith("/lp"):
             with open(argv[-1], "rb") as stream:
-                assert decode_pdf(stream.read())[1] == ids
+                sent.extend(decode_pdf(stream.read())[1])
         return original_run(argv, **kwargs)
     monkeypatch.setattr(printing.subprocess, "run", check_job)
     request = {**body, "request_id": str(uuid4()), "printer_queue": "Brother_QL", "copies": 2}
@@ -70,7 +71,7 @@ def test_selective_preview_print_and_audit_use_identical_registered_ids(client, 
     assert printed.json()["options"]["selected_specimen_ids"] == ids
     assert client.post("/api/print-jobs", json=request).json()["status"] == "submitted"
     assert client.post("/api/print-jobs", json={**request, "selected_specimen_ids": ids[:1]}).status_code == 409
-    assert sum(call[0].endswith("/lp") for call in calls) == 1
+    assert sum(call[0].endswith("/lp") for call in calls) == 4 and sent == [ids[0], ids[0], ids[1], ids[1]]
     logs = client.get(f'/api/transactions?stack_id={stack["id"]}').json()["items"]
     printed_events = [row for row in logs if row["kind"] in {"label_print_requested", "label_print"}]
     assert len(printed_events) == 2

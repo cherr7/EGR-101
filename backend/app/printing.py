@@ -144,6 +144,38 @@ def preview_labels(body: LabelPreviewBody, db: Session = Depends(get_db)):
         "Content-Disposition": 'inline; filename="specimen-labels.pdf"', "Cache-Control": "no-store"})
 
 
+class PrintRejected(Exception):
+    pass
+
+
+class PrintAmbiguous(PrintRejected):
+    pass
+
+
+def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str:
+    """Send one label as its own CUPS job, sized to its content; return the CUPS job ID."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="conditioning-label-", suffix=".pdf", delete=False) as output:
+            output.write(labels_pdf([label], body.width_mm))
+            temporary = Path(output.name)
+        completed = subprocess.run([
+            lp, "-d", body.printer_queue, "-t", "Fabric Labels " + request_id,
+            "-o", f"media=Custom.{body.width_mm:g}x{label_height_mm([label], body.width_mm):g}mm",
+            "-o", "print-scaling=none", "-o", "fit-to-page=false",
+            "-o", "CutMedia=EndOfPage", str(temporary),   # continuous roll: cut every label
+        ], capture_output=True, text=True, timeout=20, check=False, env={**os.environ, "LC_ALL": "C"})
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    match = re.search(r"request id is\s+(\S+)", completed.stdout or "")
+    if completed.returncode == 0 and match:
+        return match.group(1)
+    if completed.returncode == 0:
+        raise PrintAmbiguous("CUPS returned without a recognizable job ID. Check the print queue before reprinting.")
+    raise PrintRejected((completed.stderr or completed.stdout or "Printer rejected the job.").strip())
+
+
 def submit_print_job(db: Session, body: PrintBody) -> dict:
     request_id = str(body.request_id)
     values = body.model_dump(mode="json")
@@ -166,7 +198,6 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
             raise HTTPException(409, "This host is configured for a different printer queue.")
         stack_ids = body.stack_ids
         details = _details(db, stack_ids, body.selected_specimen_ids)
-        document = labels_pdf(details, body.width_mm)
         height_mm = label_height_mm(details, body.width_mm)
         job = PrintJob(id=request_id, fingerprint=fingerprint, status="submitting",
                        printer_queue=body.printer_queue, stack_ids=stack_ids,
@@ -182,38 +213,24 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
                                        "printer_queue": body.printer_queue, "copies": body.copies,
                                        "physical_print_confirmed": False}))
         db.flush()
-    status, cups_job_id, error = "unknown", None, None
-    temporary = None
+    # One CUPS job per label: within a multi-page job the QL feeds extra blank tape before every label
+    # after the first, so only a job's first label comes out with even margins.
+    labels = [{**detail, "specimens": [specimen]} for detail in details for specimen in detail["specimens"]]
+    status, error, cups_ids = "unknown", None, []
     try:
-        with tempfile.NamedTemporaryFile(prefix="conditioning-labels-", suffix=".pdf", delete=False) as output:
-            output.write(document)
-            temporary = Path(output.name)
         lp = shutil.which("lp")
         if not lp:
             raise OSError("CUPS submission command is unavailable.")
-        completed = subprocess.run([
-            lp, "-d", body.printer_queue, "-n", str(body.copies),
-            "-t", "Fabric Labels " + request_id, "-o",
-            f"media=Custom.{body.width_mm:g}x{height_mm:g}mm",
-            "-o", "print-scaling=none", "-o", "fit-to-page=false",
-            "-o", "CutMedia=EndOfPage", str(temporary),   # continuous roll: cut every label
-        ], capture_output=True, text=True, timeout=20, check=False,
-            env={**os.environ, "LC_ALL": "C"})
-        match = re.search(r"request id is\s+(\S+)", completed.stdout or "")
-        if completed.returncode == 0 and match:
-            status, cups_job_id = "submitted", match.group(1)
-        elif completed.returncode == 0:
-            error = "CUPS returned without a recognizable job ID. Check the print queue before reprinting."
-        else:
-            status = "failed"
-            error = (completed.stderr or completed.stdout or "Printer rejected the job.").strip()[:1000]
+        for label in labels:
+            for _ in range(body.copies):
+                cups_ids.append(_submit_label(lp, body, request_id, label))
+        status = "submitted"
     except subprocess.TimeoutExpired:
         error = "Print submission timed out. Check the queue before creating another print job."
-    except OSError as failure:
-        status, error = "failed", str(failure)[:1000]
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    except (OSError, PrintRejected) as failure:
+        status = "unknown" if cups_ids or isinstance(failure, PrintAmbiguous) else "failed"
+        error = str(failure)[:1000] + (f" {len(cups_ids)} label(s) were already sent; check the queue." if cups_ids else "")
+    cups_job_id = ",".join(cups_ids) or None
     with db.begin():
         job = db.scalar(select(PrintJob).where(PrintJob.id == request_id).with_for_update())
         job.status, job.cups_job_id, job.error, job.updated_at = status, cups_job_id, error, utcnow()

@@ -103,11 +103,11 @@ def test_print_submission_idempotence_and_audit(client, stack_factory, monkeypat
     response = client.post("/api/print-jobs", json=body)
     assert response.is_success, response.text
     assert response.json()["status"] == "submitted"
-    assert response.json()["cups_job_id"] == "Brother_QL-42"
+    assert response.json()["cups_job_id"] == "Brother_QL-42,Brother_QL-42"   # one CUPS job per label
     assert response.json()["physical_print_confirmed"] is False
     retry = client.post("/api/print-jobs", json=body)
     assert retry.is_success and retry.json()["id"] == body["request_id"]
-    assert len([call for call in calls if call[0].endswith("/lp")]) == 1
+    assert len([call for call in calls if call[0].endswith("/lp")]) == 2
     status = client.get(f'/api/print-jobs/{body["request_id"]}')
     assert status.json()["status"] == "submitted"
     assert client.post("/api/print-jobs", json={**body, "copies": 2}).status_code == 409

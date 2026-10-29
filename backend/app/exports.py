@@ -97,7 +97,15 @@ def _text_lines(row: dict, font: str, width_mm: float) -> list[str]:
               f'Piece {row["specimen_number"]} / {row["specimen_count"]}',
               ("DEMO " if row["is_demo"] else "") + "No. " + row["barcode_payload"]]
     width = width_mm * MM - 2 * SIDE - CODE - GAP
-    return [line for field in fields for line in simpleSplit(" ".join(str(field).split()), font, FONT_SIZE, width) or [""]]
+    lines = []
+    for field in fields:
+        for line in simpleSplit(" ".join(str(field).split()), font, FONT_SIZE, width) or [""]:
+            while pdfmetrics.stringWidth(line, font, FONT_SIZE) > width:   # a word longer than the column
+                cut = max(n for n in range(1, len(line) + 1) if pdfmetrics.stringWidth(line[:n], font, FONT_SIZE) <= width)
+                lines.append(line[:cut])
+                line = line[cut:]
+            lines.append(line)
+    return lines
 
 
 def _text_height(lines: list[str]) -> float:

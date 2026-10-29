@@ -278,6 +278,21 @@ def staged_record(identifier):
     return path, record
 
 
+def carry_counters(stage):
+    """Never issue a stack or specimen number twice: the restored database continues after the highest number
+    the current one has issued (labels may already be printed with numbers newer than the backup)."""
+    target = create_engine(engine.url.set(database=stage))
+    try:
+        with engine.connect() as active, target.begin() as restored:
+            for table in ("stacks", "specimens"):
+                sequence = active.execute(text(f"SELECT pg_get_serial_sequence('{table}', 'id')")).scalar()
+                issued = active.execute(text(f"SELECT CASE WHEN is_called THEN last_value ELSE last_value - 1 END FROM {sequence}")).scalar()
+                restored.execute(text(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                                      f"GREATEST((SELECT max(id) FROM {table}), :issued, 0) + 1, false)"), {"issued": issued})
+    finally:
+        target.dispose()
+
+
 def apply_staging(identifier):
     path, record = staged_record(identifier)
     if record["status"] == "restored":
@@ -294,6 +309,7 @@ def apply_staging(identifier):
     with LOCK:
         # Keep both a downloadable pre-restore checkpoint and the whole previous database.
         checkpoint = make_backup()
+        carry_counters(stage)   # API traffic is drained here, so no number can be issued after this read
         record.update(status="applying", previous_database=previous, pre_restore_backup=checkpoint["id"])
         save_json(path, record)  # Durable intent must succeed before changing database names.
         engine.dispose()

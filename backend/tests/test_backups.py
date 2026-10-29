@@ -70,3 +70,17 @@ def test_destination_export_settings_and_daily_state(client, monkeypatch, tmp_pa
     overview = client.get("/api/backups").json()
     assert overview["settings"]["last_day"]
     assert overview["items"][0]["id"] == backup["id"]
+
+
+def test_restoring_an_older_backup_never_reissues_label_numbers(client, stack_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FABRIC_STATE_DIR", str(tmp_path))
+    stack_factory(count=2)
+    saved = client.post("/api/backups").json()
+    newer = stack_factory(count=3, material="Printed after the backup")
+    archive = client.get(f'/api/backups/{saved["id"]}/download').content
+    staged = client.post("/api/backups/import", files={"file": ("older.zip", archive)}).json()
+    assert client.post(f'/api/backups/imports/{staged["id"]}/restore', json={"confirmation": "RESTORE"}).is_success
+    after = stack_factory(count=2, material="Registered after the restore")
+    issued = [p["id"] for p in newer["specimens"]]
+    assert min(p["id"] for p in after["specimens"]) > max(issued)
+    assert after["id"] > newer["id"]

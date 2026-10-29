@@ -1,0 +1,185 @@
+{
+  "schema_version": "1.0",
+  "source_file": "TEST-Garment-NFPA 1970-QGVO-Datasheet-Final.docx",
+  "project_id": null,
+  "jobs": [
+    {
+      "project_id": null,
+      "test": "Test",
+      "condition": "Sample Prep.",
+      "stack_size": 1,
+      "sample_ids": [
+        "ID"
+      ],
+      "source": {
+        "source_row": 2,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Flame Resistance Test",
+      "condition": "AR",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 3,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Flame Resistance Test",
+      "condition": "100L",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 4,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Heat and Thermal Shrinkage Resistance Test (Prior to Marking)",
+      "condition": "AR",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 5,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Heat and Thermal Shrinkage Resistance Test (Prior to Marking)",
+      "condition": "25L",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 6,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Seam Breaking Strength Test",
+      "condition": "AR",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 7,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Thermal Stability Test",
+      "condition": "25L",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 8,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Water Absorption Resistance Test",
+      "condition": "25L",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 9,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "Thread Melting Test",
+      "condition": "AR",
+      "stack_size": null,
+      "sample_ids": [],
+      "source": {
+        "source_row": 10,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID.",
+        "Missing confirmed stack size/sample IDs."
+      ]
+    },
+    {
+      "project_id": null,
+      "test": "The “Label Print Durability Test” has no conditioning requirements prior to evaluation.",
+      "condition": "The “Label Print Durability Test” has no conditioning requirements prior to evaluation.",
+      "stack_size": 12,
+      "sample_ids": [
+        "The",
+        "“Label",
+        "Print",
+        "Durability",
+        "Test”",
+        "has",
+        "no",
+        "conditioning",
+        "requirements",
+        "prior",
+        "to",
+        "evaluation."
+      ],
+      "source": {
+        "source_row": 11,
+        "source_table": 2
+      },
+      "status": "review_required",
+      "warnings": [
+        "Missing LabWare project ID."
+      ]
+    }
+  ],
+  "warnings": [
+    "No LabWare project ID was found. The supplied Word template's conditioning-log 'ID' column is for sample IDs, not the LabWare project ID.",
+    "The document lists test/condition pairs but does not establish physical stack sizes. Confirm each stack size or provide explicit sample IDs (for example A1-A9)."
+  ],
+  "extraction_status": "partial_review_required"
+}

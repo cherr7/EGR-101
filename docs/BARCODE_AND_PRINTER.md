@@ -25,7 +25,7 @@ The app does not assume that Data Matrix means binary USB input, request browser
 
 Labels are printed on the Brother QL-810W's **62 mm continuous roll** at a constant **62 × 25.4 mm** (2.44 × 1 in), one label per PDF page. Brother's raster reference for this printer gives a 58.9 mm printable width (1.5 mm minimum side margins), a 3 mm minimum margin at each cut, and 12.7–1000 mm label lengths. Every label keeps a **3 mm margin on all four sides**. The left side holds the 19.4 mm Data Matrix; the right side shows project, material, test, treatment, "Piece n / N", and the label code as "No.". [Brother QL-800/810W/820NWB Raster Command Reference](https://download.brother.com/welcome/docp100278/cv_ql800_eng_raster_101.pdf)
 
-The print dialog can **cut after each label** (default) or print **one strip, cut at end**. A strip is faster for the printer, but each label then has to be cut by hand.
+The printer cuts after every label (`CutMedia=EndOfPage`), as a continuous roll requires. Staff do not choose a cut mode; revisit this only if the final stock changes to pre-cut labels.
 
 The QL-810W is a direct-thermal printer. Turn off its Editor Lite mode (green LED); otherwise it appears as a USB drive instead of a printer. The application prints black only. Adhesion, heat/laundering durability, and fabric compatibility have not been established by software tests.
 

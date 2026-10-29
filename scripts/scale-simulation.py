@@ -5,8 +5,10 @@ Uses the app's own registration (commit_draft) and movement (process_movement) c
 against <db_name>_scale on the local host's PostgreSQL. The live database is never touched.
 
 Usage (from the repo root, with the local host running):
-    .venv/bin/python scripts/scale-simulation.py DAYS [SPECIMENS_PER_ROOM_PER_DAY]
+    .venv/bin/python scripts/scale-simulation.py DAYS [SPECIMENS_PER_ROOM_PER_DAY] [--extend-to TOTAL_DAYS]
     .venv/bin/python scripts/scale-simulation.py --drop   # delete the scratch database
+--extend-to copies the simulated days forward (same row shapes, shifted IDs and times) until TOTAL_DAYS,
+then simulates one more real day at that size, so a 5-year database can be measured in minutes.
 Writes output/scale/results.json and prints one line per checkpoint.
 """
 import importlib.util
@@ -38,8 +40,11 @@ if sys.argv[1:] == ["--drop"]:
     print("Dropped", NAME)
     sys.exit()
 
-DAYS = int(sys.argv[1])
-PER_ROOM = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
+args = sys.argv[1:]
+EXTEND_TO = int(args.pop(args.index("--extend-to") + 1)) if "--extend-to" in args else None
+args = [a for a in args if a != "--extend-to"]
+DAYS = int(args[0])
+PER_ROOM = int(args[1]) if len(args) > 1 else 1000
 ROOMS = [("ppe", "ppe-door"), ("shared", "shared-door"), ("footwear", "footwear-door")]
 SIZES = list(range(1, 21))
 WEIGHTS = [8, 4, 4, 4, 9, 3, 2, 3, 2, 9, 1, 1, 1, 1, 3, 1, 1, 1, 1, 6]      # singles, 5s, 10s and 20s are common
@@ -102,9 +107,10 @@ def timed(label, call, runs=7):
     return round(statistics.median(times), 1)
 
 
-for day in range(1, DAYS + 1):
+def simulate_day(day):
+    """Register PER_ROOM specimens per room at 07:00, scan them IN during the day, and yesterday's OUT."""
+    global waiting, recent_codes, total_specimens
     base = start + timedelta(days=day - 1)
-    # 07:00 prep registers the day's stacks: PER_ROOM specimens for each room.
     clock["now"] = base + timedelta(hours=7)
     rows, rooms = [], []
     for room, station in ROOMS:
@@ -140,26 +146,82 @@ for day in range(1, DAYS + 1):
         else:
             first.pop(sid)
     recent_codes = [label_code(first[sid]) for sid in stack_ids[-50:]]
+    return len(actions)
+
+
+def checkpoint(day, moves):
+    psql("VACUUM ANALYZE")
+    size = int(psql("SELECT pg_database_size(current_database())"))
+    tables = dict(line.split("|") for line in psql(
+        "SELECT relname, pg_total_relation_size(relid) FROM pg_stat_user_tables ORDER BY 2 DESC LIMIT 6").splitlines())
+    oldest = psql("SELECT min(id) FROM specimens")
+    latency = {
+        "scan lookup": timed("lookup", lambda: client.post("/api/lookup", json={"code": rng.choice(recent_codes)})),
+        "oldest record lookup": timed("oldest", lambda: client.post("/api/lookup", json={"code": label_code(int(oldest))})),
+        "kiosk activity poll": timed("events", lambda: client.get("/api/events?limit=40&kind=movement&room_id=shared")),
+        "staff transactions": timed("transactions", lambda: client.get("/api/events?limit=100")),
+        "kiosk inventory": timed("inventory", lambda: client.get("/api/stacks?room_id=shared"), runs=3),
+        "staff stack search": timed("search", lambda: client.get("/api/stacks?q=Material%20123"), runs=3),
+        "staff stack list (all)": timed("all", lambda: client.get("/api/stacks"), runs=1),
+    }
+    day_moves = movement_ms[-moves:]
+    point = {"day": day, "specimens": int(psql("SELECT count(*) FROM specimens")),
+             "events": int(psql("SELECT count(*) FROM audit_events")),
+             "db_mb": round(size / 2**20, 1), "tables_mb": {k: round(int(v) / 2**20, 1) for k, v in tables.items()},
+             "movements_timed": len(day_moves),
+             "movement_ms_p50": round(statistics.median(day_moves), 1),
+             "movement_ms_p95": round(sorted(day_moves)[int(len(day_moves) * .95)], 1),
+             "movement_ms_max": round(max(day_moves), 1),
+             "latency_ms": latency, "elapsed_min": round((time.time() - began) / 60, 1)}
+    results.append(point)
+    print(json.dumps(point), flush=True)
+    (ROOT / "output/scale").mkdir(parents=True, exist_ok=True)
+    (ROOT / "output/scale/results.json").write_text(json.dumps(results, indent=2))
+
+
+def extend(total_days):
+    """Copy the simulated days forward until total_days: the same rows with shifted IDs and timestamps."""
+    stacks, specimens = int(psql("SELECT max(id) FROM stacks")), int(psql("SELECT max(id) FROM specimens"))
+    psql("CREATE TABLE base_projects AS SELECT id FROM projects")
+    for k in range(1, -(-total_days // DAYS)):
+        shift = f"interval '{k * DAYS} days'"
+        psql(f"""
+            INSERT INTO projects (id, project_number) SELECT gen_random_uuid()::text, project_number || '-{k}'
+              FROM projects WHERE id IN (SELECT id FROM base_projects);
+            INSERT INTO prep_drafts (id, rows, committed, stack_ids, source, warnings, sheets, review_data, created_at)
+              SELECT gen_random_uuid()::text, rows, committed, stack_ids, source, warnings, sheets, review_data, created_at + {shift}
+              FROM prep_drafts WHERE created_at <= '{start + timedelta(days=DAYS)}';
+            INSERT INTO stacks (id, project_id, material_id, test_code, preconditioning_code, source_metadata, version, is_demo, created_at)
+              SELECT id + {k * stacks}, project_id, material_id, test_code, preconditioning_code, source_metadata, version, is_demo, created_at + {shift}
+              FROM stacks WHERE id <= {stacks};
+            INSERT INTO specimens (id, stack_id, number, revision, last_event_id)
+              SELECT id + {k * specimens}, stack_id + {k * stacks}, number, revision, last_event_id FROM specimens WHERE id <= {specimens};
+            INSERT INTO conditioning_sessions (id, specimen_id, room_id, entered_at, exited_at, recorded_at, source, corrected,
+                                               incomplete, early_exit_acknowledged, voided)
+              SELECT gen_random_uuid()::text, specimen_id + {k * specimens}, room_id, entered_at + {shift}, exited_at + {shift},
+                     recorded_at + {shift}, source, corrected, incomplete, early_exit_acknowledged, voided
+              FROM conditioning_sessions WHERE specimen_id <= {specimens};
+            INSERT INTO audit_events (id, stack_id, kind, direction, actor, reason, specimen_ids, room_id, payload, recorded_at)
+              SELECT gen_random_uuid()::text, stack_id + {k * stacks}, kind, direction, actor, reason, specimen_ids, room_id,
+                     payload, recorded_at + {shift}
+              FROM audit_events WHERE stack_id <= {stacks};
+            INSERT INTO movement_requests (id, fingerprint, result, recorded_at)
+              SELECT gen_random_uuid()::text, fingerprint, result, recorded_at + {shift}
+              FROM movement_requests WHERE recorded_at <= '{start + timedelta(days=DAYS)}';""")
+        print(f"copied through day {(k + 1) * DAYS}", flush=True)
+    psql("DROP TABLE base_projects")
+    for table in ("stacks", "specimens"):
+        psql(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT max(id) FROM {table}) + 1, false)")
+    return -(-total_days // DAYS) * DAYS
+
+
+for day in range(1, DAYS + 1):
+    moves = simulate_day(day)
     if day in CHECKPOINTS:
-        psql("VACUUM ANALYZE")
-        size = int(psql("SELECT pg_database_size(current_database())"))
-        tables = dict(line.split("|") for line in psql(
-            "SELECT relname, pg_total_relation_size(relid) FROM pg_stat_user_tables ORDER BY 2 DESC LIMIT 6").splitlines())
-        latency = {
-            "scan lookup": timed("lookup", lambda: client.post("/api/lookup", json={"code": rng.choice(recent_codes)})),
-            "kiosk activity poll": timed("events", lambda: client.get("/api/events?limit=40&kind=movement&room_id=shared")),
-            "staff transactions": timed("transactions", lambda: client.get("/api/events?limit=100")),
-            "kiosk inventory": timed("inventory", lambda: client.get("/api/stacks?room_id=shared"), runs=3),
-            "staff stack search": timed("search", lambda: client.get("/api/stacks?q=Material%20123"), runs=3),
-            "staff stack list (all)": timed("all", lambda: client.get("/api/stacks"), runs=1),
-        }
-        day_moves = movement_ms[-len(actions):]
-        point = {"day": day, "specimens": total_specimens, "events": int(psql("SELECT count(*) FROM audit_events")),
-                 "db_mb": round(size / 2**20, 1), "tables_mb": {k: round(int(v) / 2**20, 1) for k, v in tables.items()},
-                 "movement_ms_p50": round(statistics.median(day_moves), 1),
-                 "movement_ms_p95": round(sorted(day_moves)[int(len(day_moves) * .95)], 1),
-                 "latency_ms": latency, "elapsed_min": round((time.time() - began) / 60, 1)}
-        results.append(point)
-        print(json.dumps(point), flush=True)
-        (ROOT / "output/scale").mkdir(parents=True, exist_ok=True)
-        (ROOT / "output/scale/results.json").write_text(json.dumps(results, indent=2))
+        checkpoint(day, moves)
+if EXTEND_TO:
+    reached = extend(EXTEND_TO)
+    slow.add("all")   # the unfiltered staff list would take many minutes at this size
+    start += timedelta(days=reached - DAYS)   # continue the clock after the copied days
+    moves = simulate_day(DAYS + 1)
+    checkpoint(reached + 1, moves)

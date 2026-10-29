@@ -15,7 +15,6 @@ import subprocess
 import tempfile
 from datetime import timedelta
 from pathlib import Path
-from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,7 +57,6 @@ class PrintBody(LabelPreviewBody):
     request_id: UUID
     printer_queue: str = Field(min_length=1, max_length=200)
     copies: int = Field(default=1, ge=1, le=10)
-    cut: Literal["each", "end"] = "each"    # cut after every label, or print one strip and cut once
 
     @field_validator("printer_queue")
     @classmethod
@@ -172,7 +170,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
         document = labels_pdf(details, body.width_mm, body.height_mm)
         job = PrintJob(id=request_id, fingerprint=fingerprint, status="submitting",
                        printer_queue=body.printer_queue, stack_ids=stack_ids,
-                       options={"copies": body.copies, "cut": body.cut, "width_mm": body.width_mm,
+                       options={"copies": body.copies, "width_mm": body.width_mm,
                                 "height_mm": body.height_mm, "barcode_format": "DataMatrix",
                                 "selected_specimen_ids": [specimen["id"] for detail in details for specimen in detail["specimens"]],
                                 "label_count": sum(len(item["specimens"]) for item in details) * body.copies})
@@ -198,7 +196,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
             "-t", "Fabric Labels " + request_id, "-o",
             f"media=Custom.{body.width_mm:g}x{body.height_mm:g}mm",
             "-o", "print-scaling=none", "-o", "fit-to-page=false",
-            "-o", "CutMedia=" + ("EndOfPage" if body.cut == "each" else "EndOfJob"), str(temporary),
+            "-o", "CutMedia=EndOfPage", str(temporary),   # continuous roll: cut every label
         ], capture_output=True, text=True, timeout=20, check=False,
             env={**os.environ, "LC_ALL": "C"})
         match = re.search(r"request id is\s+(\S+)", completed.stdout or "")

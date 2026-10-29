@@ -56,18 +56,32 @@ app.include_router(printing_router)
 app.include_router(backups_router)
 
 
-@app.middleware("http")
-async def restore_maintenance_gate(request: Request, call_next):
-    gate = getattr(request.app.state, "traffic_gate", None)
-    restore = request.method == "POST" and request.url.path.startswith("/api/backups/imports/") and request.url.path.endswith("/restore")
-    if not gate or not request.url.path.startswith("/api/") or restore:
-        return await call_next(request)
-    if not await gate.enter():
-        return JSONResponse(status_code=503, content={"detail": "Database restore in progress; retry after maintenance."}, headers={"Retry-After": "5"})
-    try:
-        return await call_next(request)
-    finally:
-        await gate.leave()
+class RestoreMaintenanceGate:
+    """Count API requests through to the end of their response so a restore can drain them.
+
+    Plain ASGI rather than @app.middleware: Starlette's BaseHTTPMiddleware drops file response bodies
+    (the staff app, its assets and backup downloads) when uvicorn offers zero-copy file sends.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        gate = getattr(scope["app"].state, "traffic_gate", None) if scope["type"] == "http" else None
+        restore = scope.get("method") == "POST" and path.startswith("/api/backups/imports/") and path.endswith("/restore")
+        if not gate or not path.startswith("/api/") or restore:
+            return await self.app(scope, receive, send)
+        if not await gate.enter():
+            response = JSONResponse(status_code=503, content={"detail": "Database restore in progress; retry after maintenance."},
+                                    headers={"Retry-After": "5"})
+            return await response(scope, receive, send)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            await gate.leave()
+
+
+app.add_middleware(RestoreMaintenanceGate)
 
 
 @app.get("/api/health")

@@ -18,7 +18,6 @@ type PrintIntent = LabelSelection & {
   request_id: string
   printer_queue: string
   copies: number
-  cut: 'each' | 'end'
 }
 function readPending(): PrintIntent | null {
   try {
@@ -44,7 +43,6 @@ export default function LabelDialog({
   const [selected, setSelected] = useState<number[]>(() => initialSelectedIds || stacks.flatMap(stack => stack.specimens.map(s => s.id)))
   const [expanded, setExpanded] = useState<number | null>(() => initialSelectedIds ? stacks[0]?.id ?? null : null)
   const [copies, setCopies] = useState(1)
-  const [cut, setCut] = useState<'each' | 'end'>('each')
   const [queue, setQueue] = useState('')
   const [printers, setPrinters] = useState<PrinterInfo | null>(null)
   const [previewURL, setPreviewURL] = useState('')
@@ -161,7 +159,7 @@ export default function LabelDialog({
   async function print() {
     if (!healthy || printLock.current || readPending() || !valid || !queue || previewFingerprint !== fingerprint) return
     const intent: PrintIntent = {
-      ...selection, request_id: requestId(), printer_queue: queue, copies, cut,
+      ...selection, request_id: requestId(), printer_queue: queue, copies,
     }
     try { localStorage.setItem(PRINT_KEY, JSON.stringify(intent)) }
     catch { setError('This browser cannot preserve a pending print request. Enable local storage before printing.'); return }
@@ -247,12 +245,6 @@ export default function LabelDialog({
           </label>
           <label>Copies<input aria-label="Print copies" type="number" min="1" max="10"
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
-          <label>Cut
-            <select aria-label="Cut labels" value={cut} disabled={busy} onChange={e => setCut(e.target.value as 'each' | 'end')}>
-              <option value="each">After each label</option>
-              <option value="end">One strip, cut at end</option>
-            </select>
-          </label>
         </div>
         {previewURL ? <iframe className="pdf-preview" title="Actual label PDF preview" src={previewURL} /> :
           <div className="pdf-preview preview-empty" role="status">{previewing ? 'Loading preview…' : !selected.length ? 'Select labels to preview.' : !healthy ? 'Preview unavailable offline.' : 'Preview unavailable.'}</div>}

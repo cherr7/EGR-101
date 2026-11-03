@@ -1,0 +1,28 @@
+{
+  "seed": 1,
+  "days": 90,
+  "stacks": 3600,
+  "specimens": 27060,
+  "writes_by_type": {
+    "registration": 3600,
+    "scan IN": 3944,
+    "edit": 1090,
+    "missed scan": 178,
+    "undo": 1042,
+    "scan OUT": 4080,
+    "partial OUT": 905
+  },
+  "fields_checked": 126240,
+  "field_mismatches": 0,
+  "mismatch_examples": [],
+  "history_rows": 14839,
+  "history_rows_expected": 14839,
+  "history_rows_changed_after_writing": 0,
+  "update_and_delete_blocked": true,
+  "blocked_messages": [
+    "Audit events are append-only",
+    "Audit events are append-only"
+  ],
+  "db_mb": 54.0,
+  "pass": true
+}

@@ -1,0 +1,142 @@
+[
+  {
+    "day": 1,
+    "specimens": 3000,
+    "events": 754,
+    "db_mb": 12.0,
+    "tables_mb": {
+      "audit_events": 1.2,
+      "conditioning_sessions": 1.0,
+      "specimens": 0.6,
+      "movement_requests": 0.2,
+      "stacks": 0.2,
+      "projects": 0.2
+    },
+    "movements_timed": 377,
+    "movement_ms_p50": 5.9,
+    "movement_ms_p95": 14.8,
+    "movement_ms_max": 31.0,
+    "latency_ms": {
+      "scan lookup": 4.1,
+      "oldest record lookup": 4.1,
+      "kiosk activity poll": 84.1,
+      "staff transactions": 191.2,
+      "kiosk inventory": 130.2,
+      "staff stack search": 3.2,
+      "staff stack list (all)": 400.1
+    },
+    "elapsed_min": 0.1
+  },
+  {
+    "day": 7,
+    "specimens": 21000,
+    "events": 7458,
+    "db_mb": 36.0,
+    "tables_mb": {
+      "audit_events": 11.7,
+      "conditioning_sessions": 8.0,
+      "specimens": 3.8,
+      "movement_requests": 2.4,
+      "stacks": 0.9,
+      "projects": 0.6
+    },
+    "movements_timed": 747,
+    "movement_ms_p50": 7.3,
+    "movement_ms_p95": 20.2,
+    "movement_ms_max": 60.4,
+    "latency_ms": {
+      "scan lookup": 5.2,
+      "oldest record lookup": 5.4,
+      "kiosk activity poll": 89.2,
+      "staff transactions": 214.4,
+      "kiosk inventory": 137.0,
+      "staff stack search": 10.6,
+      "staff stack list (all)": 2795.7
+    },
+    "elapsed_min": 0.8
+  },
+  {
+    "day": 14,
+    "specimens": 42000,
+    "events": 15104,
+    "db_mb": 60.4,
+    "tables_mb": {
+      "audit_events": 22.3,
+      "conditioning_sessions": 14.0,
+      "specimens": 7.6,
+      "movement_requests": 4.8,
+      "stacks": 1.6,
+      "projects": 1.1
+    },
+    "movements_timed": 727,
+    "movement_ms_p50": 6.3,
+    "movement_ms_p95": 14.2,
+    "movement_ms_max": 29.9,
+    "latency_ms": {
+      "scan lookup": 5.2,
+      "oldest record lookup": 5.5,
+      "kiosk activity poll": 84.6,
+      "staff transactions": 210.8,
+      "kiosk inventory": 139.5,
+      "staff stack search": 21.4,
+      "staff stack list (all)": 5385.9
+    },
+    "elapsed_min": 1.6
+  },
+  {
+    "day": 30,
+    "specimens": 90000,
+    "events": 32730,
+    "db_mb": 119.7,
+    "tables_mb": {
+      "audit_events": 48.5,
+      "conditioning_sessions": 29.8,
+      "specimens": 16.3,
+      "movement_requests": 10.5,
+      "stacks": 3.2,
+      "projects": 2.2
+    },
+    "movements_timed": 698,
+    "movement_ms_p50": 6.5,
+    "movement_ms_p95": 14.0,
+    "movement_ms_max": 30.5,
+    "latency_ms": {
+      "scan lookup": 5.3,
+      "oldest record lookup": 5.5,
+      "kiosk activity poll": 93.5,
+      "staff transactions": 219.9,
+      "kiosk inventory": 160.0,
+      "staff stack search": 40.9,
+      "staff stack list (all)": 11155.6
+    },
+    "elapsed_min": 3.3
+  },
+  {
+    "day": 1831,
+    "specimens": 5493000,
+    "events": 1997633,
+    "db_mb": 5627.1,
+    "tables_mb": {
+      "audit_events": 2501.7,
+      "conditioning_sessions": 1345.5,
+      "specimens": 866.9,
+      "movement_requests": 641.1,
+      "projects": 131.5,
+      "stacks": 131.3
+    },
+    "movements_timed": 724,
+    "movement_ms_p50": 7.3,
+    "movement_ms_p95": 17.5,
+    "movement_ms_max": 514.2,
+    "latency_ms": {
+      "scan lookup": 5.1,
+      "oldest record lookup": 5.4,
+      "kiosk activity poll": 77.0,
+      "staff transactions": 183.1,
+      "kiosk inventory": 7478.8,
+      "staff stack search": 1935.8,
+      "staff stack list (all)": null
+    },
+    "elapsed_min": 16.6
+  }
+]

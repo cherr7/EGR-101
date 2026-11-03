@@ -1,6 +1,6 @@
 # Testing Plan Results
 
-Results against the five criteria in the Testing Plan memo (28 Oct 2026). Raw data is in [testing-data/](testing-data/); the scripts that produced it are in `scripts/`.
+Results against the five criteria in the Testing Plan memo (28 Oct 2026). Raw data is in [testing-data/](testing-data/): the Test 1 prep sheet (`test1-prep-sheet.csv`, the ground truth each run was checked against) and labels, the run sheets, per-run results, simulation results and an audit-trail export sample. The scripts that produced it are in `scripts/`.
 
 | Test | Target | Result | Status |
 |---|---|---|---|
@@ -74,4 +74,4 @@ Missed-scan entries number in the hundreds rather than thousands.
 
 ## Test 5: Outage resilience
 
-Not yet run. Procedure and the reset log sheet are on the last page of `output/test-sheets/run-sheets.pdf` (`scripts/test-run-sheets.py`).
+Not yet run. Procedure and the reset log sheet are on the last page of [testing-data/run-sheets-test1-4-5.pdf](testing-data/run-sheets-test1-4-5.pdf) (`scripts/test-run-sheets.py`); the reference labels come from `test5-reference-prep-sheet.csv`.

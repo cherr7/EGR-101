@@ -1,0 +1,53 @@
+{
+  "note": "None = over 20 s, stopped measuring",
+  "points": [
+    {
+      "day": 1,
+      "specimens": 3000,
+      "db_mb": 13,
+      "kiosk_activity_s": 0.13,
+      "kiosk_inventory_s": 0.9,
+      "staff_transactions_s": 0.2
+    },
+    {
+      "day": 7,
+      "specimens": 21000,
+      "db_mb": 47,
+      "kiosk_activity_s": 4.1,
+      "kiosk_inventory_s": 6.1,
+      "staff_transactions_s": 0.4
+    },
+    {
+      "day": 14,
+      "specimens": 42000,
+      "db_mb": 78,
+      "kiosk_activity_s": 17,
+      "kiosk_inventory_s": 12,
+      "staff_transactions_s": 0.5
+    },
+    {
+      "day": 30,
+      "specimens": 90000,
+      "db_mb": 158,
+      "kiosk_activity_s": 91,
+      "kiosk_inventory_s": 26,
+      "staff_transactions_s": 0.9
+    },
+    {
+      "day": 60,
+      "specimens": 180000,
+      "db_mb": 298,
+      "kiosk_activity_s": null,
+      "kiosk_inventory_s": null,
+      "staff_transactions_s": 2.1
+    },
+    {
+      "day": 90,
+      "specimens": 270000,
+      "db_mb": 444,
+      "kiosk_activity_s": null,
+      "kiosk_inventory_s": null,
+      "staff_transactions_s": 3.2
+    }
+  ]
+}

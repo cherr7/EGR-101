@@ -1,0 +1,91 @@
+[
+  {
+    "run": 1,
+    "started": "2026-10-29T18:11:31.172973+00:00",
+    "scans_recorded": 20,
+    "stacks_missing": [],
+    "mean_seconds_per_scan": 1.194,
+    "max_gap_seconds": 1.862,
+    "gaps_over_5_s": 0,
+    "all_records_match_prep_sheet": true,
+    "requests_by_status": {
+      "committed": 20
+    },
+    "pass": true
+  },
+  {
+    "run": 2,
+    "started": "2026-10-29T18:13:32.103621+00:00",
+    "scans_recorded": 20,
+    "stacks_missing": [],
+    "mean_seconds_per_scan": 1.084,
+    "max_gap_seconds": 1.838,
+    "gaps_over_5_s": 0,
+    "all_records_match_prep_sheet": true,
+    "requests_by_status": {
+      "committed": 20
+    },
+    "pass": true
+  },
+  {
+    "run": 3,
+    "started": "2026-10-29T18:17:19.618800+00:00",
+    "scans_recorded": 20,
+    "stacks_missing": [],
+    "mean_seconds_per_scan": 1.838,
+    "max_gap_seconds": 4.976,
+    "gaps_over_5_s": 0,
+    "all_records_match_prep_sheet": true,
+    "requests_by_status": {
+      "already_recorded": 6,
+      "committed": 20
+    },
+    "pass": true
+  },
+  {
+    "run": 4,
+    "started": "2026-10-29T18:24:35.709011+00:00",
+    "scans_recorded": 20,
+    "stacks_missing": [],
+    "mean_seconds_per_scan": 1.029,
+    "max_gap_seconds": 2.066,
+    "gaps_over_5_s": 0,
+    "all_records_match_prep_sheet": true,
+    "requests_by_status": {
+      "committed": 20
+    },
+    "pass": true
+  },
+  {
+    "run": 5,
+    "started": "2026-10-29T18:27:16.107875+00:00",
+    "scans_recorded": 20,
+    "stacks_missing": [],
+    "mean_seconds_per_scan": 1.124,
+    "max_gap_seconds": 1.958,
+    "gaps_over_5_s": 0,
+    "all_records_match_prep_sheet": true,
+    "requests_by_status": {
+      "already_recorded": 4,
+      "committed": 20
+    },
+    "pass": true
+  },
+  {
+    "run": 6,
+    "started": "2026-10-29T18:28:14.766423+00:00",
+    "scans_recorded": 19,
+    "stacks_missing": [
+      1
+    ],
+    "mean_seconds_per_scan": 1.544,
+    "max_gap_seconds": 4.293,
+    "gaps_over_5_s": 0,
+    "all_records_match_prep_sheet": true,
+    "requests_by_status": {
+      "already_recorded": 1,
+      "committed": 19
+    },
+    "pass": false
+  }
+]

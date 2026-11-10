@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -57,6 +57,33 @@ def transaction_effective(db, event):
     return effective
 
 
+def _live_periods(periods):
+    def when(value):
+        return datetime.fromisoformat(value) if value else None
+    return sorted((p["id"], p["room_id"], when(p["entered_at"]), when(p["exited_at"]), p["corrected"],
+                   p["incomplete"], p.get("early_exit_acknowledged", False)) for p in periods if not p["voided"])
+
+
+def transaction_is_latest_for(db, specimen, effective):
+    """True when undoing/editing this transaction cannot overwrite anything recorded after it.
+
+    Normally that means the specimen's last event is this transaction. A later movement that was
+    itself undone also qualifies: undo restores the exact sessions this transaction left, so the
+    earlier transaction becomes the newest live change again."""
+    latest_id = effective["latest_event_id"]
+    if specimen.last_event_id == latest_id:
+        return True
+    last = db.get(AuditEvent, specimen.last_event_id) if specimen.last_event_id else None
+    if last is None or last.kind != "undo":
+        return False
+    latest = db.get(AuditEvent, latest_id)
+    after = (latest.payload.get("after") or {}).get(str(specimen.id)) if latest else None
+    if after is None:
+        return False
+    current = [session_dict(s) for s in sessions_for(db, specimen.id, include_voided=True)]
+    return _live_periods(current) == _live_periods(after)
+
+
 def snapshot(db, specimens):
     # JSON object keys are strings, so audit snapshots are keyed by str(specimen id).
     return {str(p.id): [session_dict(s) for s in sessions_for(db, p.id, include_voided=True)] for p in specimens}
@@ -69,7 +96,7 @@ def event_dict(db, event):
     affected_ids = list(effective["specimen_ids"]) if effective else event.specimen_ids
     latest_id = effective["latest_event_id"] if effective else event.id
     can_undo = event.kind == "movement" and not undone and all(
-        db.get(Specimen, identifier).last_event_id == latest_id for identifier in affected_ids)
+        transaction_is_latest_for(db, db.get(Specimen, identifier), effective) for identifier in affected_ids)
     stack = db.get(Stack, event.stack_id)
     room_id = effective["room_id"] if effective else event.payload.get("room_id")
     if room_id is None:

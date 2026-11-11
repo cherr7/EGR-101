@@ -2,11 +2,11 @@
 """Register the 20 Test 1 stacks through the running API and save their labels for the Brother QL.
 
 Each stack gets one label, for piece 1: in Stack mode it moves the whole stack, in Single mode
-only that piece. The PDF comes from the app's own label preview (62 x 25.4 mm pages).
+only that piece. The PDF comes from the app's own label preview (62 x 29 mm pages).
 
 Usage: .venv/bin/python scripts/seed-test-labels.py [API origin, default http://127.0.0.1:8120]
 Writes output/test-labels/test-labels.csv and test-labels.pdf. Print with:
-    lp -d Brother_QL_810W -o media=Custom.62x25.4mm -o CutMedia=EndOfPage output/test-labels/test-labels.pdf
+    lp -d Brother_QL_810W -o media=Custom.62x29mm -o CutMedia=EndOfPage output/test-labels/test-labels.pdf
 """
 import csv
 import json

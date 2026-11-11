@@ -35,7 +35,7 @@ QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
 class LabelPreviewBody(BaseModel):
     stack_ids: list[int] = Field(min_length=1, max_length=100)
     selected_specimen_ids: list[int] | None = Field(default=None, min_length=1, max_length=5000)
-    width_mm: float = Field(default=62, ge=40, le=150)      # Brother QL 62 mm continuous roll; length fits the content
+    width_mm: float = Field(default=62, ge=40, le=150)      # Brother DK-1209 die-cut labels, 62 x 29 mm
 
     @field_validator("stack_ids")
     @classmethod
@@ -153,7 +153,7 @@ class PrintAmbiguous(PrintRejected):
 
 
 def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str:
-    """Send one label as its own CUPS job, sized to its content; return the CUPS job ID."""
+    """Send one label as its own CUPS job on the fixed die-cut size; return the CUPS job ID."""
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(prefix="conditioning-label-", suffix=".pdf", delete=False) as output:
@@ -161,9 +161,9 @@ def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str
             temporary = Path(output.name)
         completed = subprocess.run([
             lp, "-d", body.printer_queue, "-t", "Fabric Labels " + request_id,
-            "-o", f"media=Custom.{body.width_mm:g}x{label_height_mm([label], body.width_mm):g}mm",
+            "-o", f"media=Custom.{body.width_mm:g}x{label_height_mm():g}mm",
             "-o", "print-scaling=none", "-o", "fit-to-page=false",
-            "-o", "CutMedia=EndOfPage", str(temporary),   # continuous roll: cut every label
+            "-o", "CutMedia=EndOfPage", str(temporary),   # cut after every label
         ], capture_output=True, text=True, timeout=20, check=False, env={**os.environ, "LC_ALL": "C"})
     finally:
         if temporary is not None:

@@ -5,7 +5,7 @@ import { ErrorNotice, Modal } from './App'
 
 const PRINT_KEY = 'fabric-tracker.pending-print.v2'
 const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
-// The host sizes labels for the Brother QL-810W's 62 mm continuous roll.
+// The host sizes labels for Brother DK-1209 die-cut labels (62 x 29 mm) on the QL-810W.
 type LabelSelection = {
   stack_ids: number[]
   selected_specimen_ids: number[]

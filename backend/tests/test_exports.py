@@ -48,7 +48,7 @@ def test_labels_registered_identifiers_and_reprints(client):
     assert len(pdf.pages) == 2
     for page, specimen in zip(pdf.pages, stack["specimens"]):
         assert abs(float(page.mediabox.width) - 62 * 72 / 25.4) < .01
-        assert abs(float(page.mediabox.height) - 25.4 * 72 / 25.4) < .01
+        assert abs(float(page.mediabox.height) - 29 * 72 / 25.4) < .01
         assert "000012ABC123" in page.extract_text()
         assert len(list(page.images)) == 1
         decoded = zxingcpp.read_barcode(Image.open(io.BytesIO(list(page.images)[0].data)))

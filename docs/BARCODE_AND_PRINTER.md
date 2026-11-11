@@ -23,9 +23,9 @@ The app does not assume that Data Matrix means binary USB input, request browser
 
 ## Layout and stock
 
-Labels are printed on the Brother QL-810W's **62 mm continuous roll** at a constant **62 × 25.4 mm** (2.44 × 1 in), one label per PDF page. Brother's raster reference for this printer gives a 58.9 mm printable width (1.5 mm minimum side margins), a 3 mm minimum margin at each cut, and 12.7–1000 mm label lengths. Every label keeps a **3 mm margin on all four sides**. The left side holds the 19.4 mm Data Matrix; the right side shows project, material, test, treatment, "Piece n / N", and the label code as "No.". [Brother QL-800/810W/820NWB Raster Command Reference](https://download.brother.com/welcome/docp100278/cv_ql800_eng_raster_101.pdf)
+Labels are printed on the Brother QL-810W using **Brother DK-1209 die-cut labels, 62 mm wide × 29 mm long** (2.4 × 1.1 in), one label per PDF page. Brother's raster reference for this printer gives a 58.9 mm printable width (1.5 mm minimum side margins) and a 3 mm minimum margin at each label's leading and trailing edge. Every label keeps a **3 mm margin on all four sides**. The left side holds the 19.4 mm Data Matrix; the right side shows project, material, test, treatment, "Piece n / N", and the label code as "No.". The label length is fixed, so text that would not fit at 7 pt is printed smaller (down to 4 pt) instead of lengthening the label. [Brother QL-800/810W/820NWB Raster Command Reference](https://download.brother.com/welcome/docp100278/cv_ql800_eng_raster_101.pdf)
 
-The printer cuts after every label (`CutMedia=EndOfPage`), as a continuous roll requires. Staff do not choose a cut mode; revisit this only if the final stock changes to pre-cut labels.
+The job is sent as `media=Custom.62x29mm` with `CutMedia=EndOfPage`, so the printer cuts after every label. Staff do not choose a cut mode. The 62 × 29 mm layout has not yet been test-printed on a DK-1209 roll; print one label and scan it before relying on it.
 
 The QL-810W is a direct-thermal printer. Turn off its Editor Lite mode (green LED); otherwise it appears as a USB drive instead of a printer. The application prints black only. Adhesion, heat/laundering durability, and fabric compatibility have not been established by software tests.
 

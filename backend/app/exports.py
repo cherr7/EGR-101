@@ -25,12 +25,14 @@ from .services import stack_detail
 
 router = APIRouter(prefix="/api", tags=["Labels and reports"])
 MM = 72 / 25.4
-# Brother QL continuous tape cannot print the first and last 3 mm of a page (1.5 mm at the sides), so every
-# label keeps a 3 mm margin on all four sides, and a page is as long as its content plus those margins.
+# Brother DK-1209 die-cut labels: 62 mm wide, 29 mm long. The QL cannot print within 3 mm of a label's leading
+# and trailing edge (1.5 mm at the sides), so every label keeps a 3 mm margin on all four sides.
+LABEL_WIDTH_MM, LABEL_HEIGHT_MM = 62, 29
 SIDE = 3 * MM
 CODE = 19.4 * MM             # Data Matrix side, quiet zone included
 GAP = 2.5 * MM               # between code and text
-FONT_SIZE, LEADING = 7, 8.5  # points
+FONT_SIZE, MIN_FONT_SIZE = 7, 4   # points; long text shrinks toward the minimum to stay on the fixed label
+LEADING_RATIO = 8.5 / 7
 LOCAL_TZ = ZoneInfo("America/New_York")
 
 
@@ -91,7 +93,7 @@ def _font() -> str:
     return "Helvetica"
 
 
-def _text_lines(row: dict, font: str, width_mm: float) -> list[str]:
+def _text_lines(row: dict, font: str, width_mm: float, size: float = FONT_SIZE) -> list[str]:
     """Every field in full, wrapped to the text column instead of cut off."""
     fields = [row["project_number"], row["material_ref"], row["test_code"], row["preconditioning_code"],
               f'Piece {row["specimen_number"]} / {row["specimen_count"]}',
@@ -99,29 +101,38 @@ def _text_lines(row: dict, font: str, width_mm: float) -> list[str]:
     width = width_mm * MM - 2 * SIDE - CODE - GAP
     lines = []
     for field in fields:
-        for line in simpleSplit(" ".join(str(field).split()), font, FONT_SIZE, width) or [""]:
-            while pdfmetrics.stringWidth(line, font, FONT_SIZE) > width:   # a word longer than the column
-                cut = max(n for n in range(1, len(line) + 1) if pdfmetrics.stringWidth(line[:n], font, FONT_SIZE) <= width)
+        for line in simpleSplit(" ".join(str(field).split()), font, size, width) or [""]:
+            while pdfmetrics.stringWidth(line, font, size) > width:   # a word longer than the column
+                cut = max(n for n in range(1, len(line) + 1) if pdfmetrics.stringWidth(line[:n], font, size) <= width)
                 lines.append(line[:cut])
                 line = line[cut:]
             lines.append(line)
     return lines
 
 
-def _text_height(lines: list[str]) -> float:
-    return (len(lines) - 1) * LEADING + 1.05 * FONT_SIZE   # first ascender to last descender
+def _text_height(lines: list[str], size: float = FONT_SIZE) -> float:
+    return (len(lines) - 1) * size * LEADING_RATIO + 1.05 * size   # first ascender to last descender
 
 
-def label_height_mm(details: list[dict], width_mm: float = 62) -> float:
-    """One page length for the whole job (one media size per job): the tallest label's content."""
-    font = _font()
-    tallest = max((_text_height(_text_lines(row, font, width_mm)) for item in details for row in _label_rows(item)), default=0)
-    return round((max(CODE, tallest) + 2 * SIDE) / MM + .05, 1)
+def _fitted_text(row: dict, font: str, width_mm: float) -> tuple[list[str], float]:
+    """The largest font size at which every field fits the fixed label height; (lines, size)."""
+    available = LABEL_HEIGHT_MM * MM - 2 * SIDE
+    size = FONT_SIZE
+    while True:
+        lines = _text_lines(row, font, width_mm, size)
+        if _text_height(lines, size) <= available or size <= MIN_FONT_SIZE:
+            return lines, size
+        size -= .5
 
 
-def labels_pdf(detail: dict | list[dict], width_mm: float = 62) -> bytes:
+def label_height_mm(details: list[dict] | None = None, width_mm: float = LABEL_WIDTH_MM) -> float:
+    """Die-cut stock: every label is the same length whatever its text."""
+    return LABEL_HEIGHT_MM
+
+
+def labels_pdf(detail: dict | list[dict], width_mm: float = LABEL_WIDTH_MM) -> bytes:
     details = detail if isinstance(detail, list) else [detail]
-    width, height = width_mm * MM, label_height_mm(details, width_mm) * MM
+    width, height = width_mm * MM, LABEL_HEIGHT_MM * MM
     stream = io.BytesIO()
     pdf = canvas.Canvas(stream, pagesize=(width, height))
     pdf.setTitle("Fabric Conditioning Tracker - labels")
@@ -130,12 +141,12 @@ def labels_pdf(detail: dict | list[dict], width_mm: float = 62) -> bytes:
         image = datamatrix_image(row["barcode_payload"]).convert("RGB")
         pdf.drawImage(ImageReader(image), SIDE, (height - CODE) / 2, width=CODE, height=CODE,
                       preserveAspectRatio=True, mask="auto")
-        lines = _text_lines(row, font, width_mm)
-        y = (height + _text_height(lines)) / 2 - .85 * FONT_SIZE   # first baseline of the vertically centred block
-        pdf.setFont(font, FONT_SIZE)
+        lines, size = _fitted_text(row, font, width_mm)
+        y = (height + _text_height(lines, size)) / 2 - .85 * size   # first baseline of the vertically centred block
+        pdf.setFont(font, size)
         for line in lines:
             pdf.drawString(SIDE + CODE + GAP, y, line)
-            y -= LEADING
+            y -= size * LEADING_RATIO
         pdf.showPage()
     pdf.save()
     return stream.getvalue()

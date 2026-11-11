@@ -1,0 +1,40 @@
+NOTICE:  database "fabric_conditioning_audit" does not exist, skipping
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+seed 2: day 10, 1595 records
+seed 2: day 20, 3257 records
+seed 2: day 30, 4924 records
+seed 2: day 40, 6606 records
+seed 2: day 50, 8268 records
+seed 2: day 60, 9917 records
+seed 2: day 70, 11564 records
+seed 2: day 80, 13245 records
+seed 2: day 90, 14870 records
+{
+  "seed": 2,
+  "days": 90,
+  "stacks": 3600,
+  "specimens": 27881,
+  "writes_by_type": {
+    "registration": 3600,
+    "scan IN": 3944,
+    "undo": 1073,
+    "missed scan": 195,
+    "edit": 1067,
+    "scan OUT": 4094,
+    "partial OUT": 897
+  },
+  "fields_checked": 129524,
+  "field_mismatches": 0,
+  "mismatch_examples": [],
+  "history_rows": 14870,
+  "history_rows_expected": 14870,
+  "history_rows_changed_after_writing": 0,
+  "update_and_delete_blocked": true,
+  "blocked_messages": [
+    "Audit events are append-only",
+    "Audit events are append-only"
+  ],
+  "db_mb": 55.2,
+  "pass": true
+}

@@ -1,6 +1,6 @@
 # Testing Plan Results
 
-Results against the five criteria in the Testing Plan memo (28 Oct 2026). Raw data is in [testing-data/](testing-data/): the Test 1 prep sheet (`test1-prep-sheet.csv`, the ground truth each run was checked against) and labels, the run sheets, per-run results, simulation results and an audit-trail export sample. The scripts that produced it are in `scripts/`.
+Results against the five criteria in the Testing Plan memo (28 Oct 2026). Raw data is in [testing-data/](testing-data/): the Test 1 prep sheet (`test1-prep-sheet.csv`, the ground truth each run was checked against) and labels, the run sheets, per-run results, simulation results, audit-trail exports for all three seeds (`test3-audit-trail-sample.csv` is seed 1) and the simulation run logs in `logs/`. The scripts that produced it are in `scripts/`.
 
 | Test | Target | Result | Status |
 |---|---|---|---|
@@ -26,7 +26,7 @@ Results against the five criteria in the Testing Plan memo (28 Oct 2026). Raw da
 
 - **Run 6:** stack #1 (label 13, one piece) was never presented to the scanner; the tester missed it while moving stacks. It is counted as one manual entry, since in use it would have to be caught and entered by hand. It is a handling slip, not a read failure.
 - **Repeat reads** are re-scans of a stack that had already gone green (a label left in the scanner's view, or held under it). Each returned "already recorded", kept the original time and changed nothing, so none needed a manual entry.
-- **Voided attempts:** two earlier attempts stopped partway (4 and 6 stacks) because the scanner was plugged into the Mac rather than the Pi, so scans typed into the wrong window. They are setup errors and are kept in `run-3-void.json` and `run-4-void.json`.
+- **Voided attempts:** two earlier attempts stopped partway (4 and 6 stacks) because the scanner was plugged into the Mac rather than the Pi, so scans typed into the wrong window. They are setup errors and are kept in `run-3-void.json` and `run-4-void.json`, with their scan rows in `run-3-void.csv` and `run-4-void.csv`.
 
 ## Test 2: Confirmation speed
 

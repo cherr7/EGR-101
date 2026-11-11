@@ -2,7 +2,7 @@
 """Print a scanner acceptance sheet: production Data Matrix IDs plus keyboard-mapping checks.
 
 Page 1 uses the app's own label encoder (backend/app/barcodes.py): specimen numbers plus a
-check digit in a fixed 16 x 16 symbol, at the 19.4 mm size the 62 x 25.4 mm labels print.
+check digit in a fixed 16 x 16 symbol, at the 19.4 mm size the 62 x 29 mm labels print.
 Scanning each into a blank editor must type exactly the digits shown, then one Enter.
 
 Page 2 checks scanner setup with other symbologies: case, punctuation, and Code 39/EAN
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 from app.barcodes import MAX_ID, datamatrix_image, label_code  # noqa: E402
 
-LABEL_CODE_SIZE = 19.4 * mm  # matches labels_pdf() on the default 62 x 25.4 mm label
+LABEL_CODE_SIZE = 19.4 * mm  # matches labels_pdf() on the 62 x 29 mm DK-1209 label
 
 # (specimen number, printed size, note)
 SPECIMEN_TILES = [

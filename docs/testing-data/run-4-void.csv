@@ -1,0 +1,7 @@
+label,stack_id,label_code,recorded_at,seconds_since_previous,over_5_s,direction,specimens,station,matches_prep_sheet,duplicate
+8,8,747,2026-10-29T14:22:05.728765-04:00,,False,IN,8,shared-door,True,False
+5,5,370,2026-10-29T14:22:07.850882-04:00,2.122,False,IN,15,shared-door,True,False
+6,6,528,2026-10-29T14:22:09.246194-04:00,1.395,False,IN,2,shared-door,True,False
+9,9,822,2026-10-29T14:22:12.199770-04:00,2.954,False,IN,12,shared-door,True,False
+12,12,1156,2026-10-29T14:22:13.123701-04:00,0.924,False,IN,6,shared-door,True,False
+1,1,13,2026-10-29T14:22:13.645615-04:00,0.522,False,IN,1,shared-door,True,False

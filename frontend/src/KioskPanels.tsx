@@ -152,7 +152,7 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
       null,
       { title: 'Exit kiosk mode?', text: 'The scanner page closes and the Raspberry Pi desktop appears. Use this only for maintenance.', action: 'Continue' },
       { title: 'Are you sure?', text: `${info.roomName} cannot record any scans until this Pi is rebooted.`, action: 'Yes, I’m sure' },
-      { title: 'Last step', text: 'Restart the Pi (or run systemctl --user start fabric-scanner.target) to return to the scanner.', action: 'Exit kiosk mode' },
+      { title: 'Last step', text: 'Restart the Pi to bring the scanner back.', action: 'Exit kiosk mode' },
     ]
     const step = steps[exitStep]!
     return <Modal title="Exit kiosk mode" onClose={onClose}>

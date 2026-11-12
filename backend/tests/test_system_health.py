@@ -145,8 +145,8 @@ def test_pi_reporting_states():
     def titles(status, device):
         station = {"id": "ppe-door", "name": "PPE", "status": status, "last_seen": "earlier", "device": device}
         return {issue["title"]: issue["level"] for issue in find_issues(report_with(stations=[station]))}
-    assert titles("ready", None) == {"PPE: Pi health is not reported": "info"}
-    assert titles("ready", {"stale": True, "age_seconds": 300}) == {"PPE: Pi health agent stopped reporting": "warning"}
+    assert titles("ready", None) == {"PPE: no Pi stats": "info"}
+    assert titles("ready", {"stale": True, "age_seconds": 300}) == {"PPE: Pi stats stopped": "warning"}
     fresh = {**PI_REPORT, "stale": False, "age_seconds": 5, "clock_skew_seconds": 0}
     assert titles("offline", fresh) == {"PPE: the Pi is on but the kiosk page is not running": "warning"}
     assert titles("offline", None) == {"PPE is offline": "warning"}

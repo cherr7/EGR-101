@@ -30,13 +30,13 @@ function SpecimenHistory({
           </div>
           <Status specimen={record} />
         </div>
-        <div className="specimen-identity"><span>Permanent label ID</span><code>{record.barcode_value}</code></div>
+        <div className="specimen-identity"><span>Label code</span><code>{record.barcode_value}</code></div>
         <div className="specimen-time-grid">
           <div><span>ENTRY</span><b>{formatTime(entryOf(record))}</b></div>
           <div><span>EXIT</span><b>{formatTime(exitOf(record))}</b></div>
-          <div><span>Residence time</span><b>{elapsed(entryOf(record), exitOf(record))}</b></div>
+          <div><span>Time in room</span><b>{elapsed(entryOf(record), exitOf(record))}</b></div>
         </div>
-        <h3 className="section-title">This specimen’s observations & changes</h3>
+        <h3 className="section-title">History</h3>
         <div className="specimen-history-list">
           {history.map((item, index) => {
             const kind = String(item.type || item.kind || 'Observation')
@@ -48,7 +48,7 @@ function SpecimenHistory({
                 <span>{formatTime(String(item.recorded_at || ''))}</span>
               </div>
               {item.occurred_at && item.occurred_at !== item.recorded_at
-                ? <p>Movement claimed at {formatTime(String(item.occurred_at))}; recorded at {formatTime(String(item.recorded_at))}.</p> : null}
+                ? <p>Happened {formatTime(String(item.occurred_at))}; entered {formatTime(String(item.recorded_at))}.</p> : null}
               {(before || after) && <div className="history-before-after">
                 <div><span>Before</span><b>ENTRY {formatTime(before?.entered_at)}</b><small>EXIT {formatTime(before?.exited_at)}</small></div>
                 <div><span>After</span><b>ENTRY {formatTime(after?.entered_at)}</b><small>EXIT {formatTime(after?.exited_at)}</small></div>
@@ -60,7 +60,7 @@ function SpecimenHistory({
                 </a> : null}
             </article>
           })}
-          {!history.length && <div className="empty-inline"><h3>No observations yet</h3><p>The first movement or label print will appear here.</p></div>}
+          {!history.length && <div className="empty-inline"><p>No history yet.</p></div>}
         </div>
       </div>
       <div className="modal-actions">
@@ -100,7 +100,7 @@ export function StackDetail({ stack, config, healthy = true }: { stack: Stack; c
     </div>
     <ErrorNotice message={error} />
     <div className="table-wrap"><table>
-      <thead><tr><th>Specimen</th><th>Status</th><th>Room</th><th>ENTRY</th><th>EXIT</th><th>Residence time</th><th /></tr></thead>
+      <thead><tr><th>Specimen</th><th>Status</th><th>Room</th><th>ENTRY</th><th>EXIT</th><th>Time in room</th><th /></tr></thead>
       <tbody>{stack.specimens.map(specimen => <tr key={specimen.id}>
         <td><b>#{String(specimen.number).padStart(2, '0')}</b>
           <small className="id-hint" title={specimen.barcode_value}>{specimen.barcode_value}</small></td>
@@ -202,7 +202,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
       <button className="button secondary" disabled={!healthy || loading} onClick={() => setRevision(value => value + 1)}>↻ Refresh</button>
     </PageHeader>
     <ErrorNotice message={error} />
-    {stackFilter && <div className="context-strip"><span>Showing the selected physical stack.</span><a className="button text" href="#records">Show all registered specimens</a></div>}
+    {stackFilter && <div className="context-strip"><span>Showing one stack.</span><a className="button text" href="#records">Show all</a></div>}
     <section className="card">
       <div className="toolbar">
         <label className="search-label"><span>⌕</span><input aria-label="Search records" placeholder="Project, material, test, treatment or label ID" value={search} onChange={e => setSearch(e.target.value)} /></label>
@@ -214,19 +214,18 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
         </select>
       </div>
       <div className="card-heading compact">
-        <div><h2>Specimens <span className="count-pill">{records.length}</span></h2><p>{loading ? 'Loading records…' : 'Times are displayed in America/New_York.'}</p></div>
+        <div><h2>Specimens <span className="count-pill">{records.length}</span></h2><p>{loading ? 'Loading records…' : 'Times are Eastern.'}</p></div>
         <div className="export-actions">
-          <input aria-label="Export project number" className="small-input" placeholder="Project for exports (optional)" value={project} onChange={e => setProject(e.target.value)} />
+          <input aria-label="Export project number" className="small-input" placeholder="Exports: one project (optional)" value={project} onChange={e => setProject(e.target.value)} />
           <a className="button secondary" href={'/api/exports/sessions.csv' + query}>Session CSV</a>
           <a className="button secondary" href={'/api/exports/history.csv' + query}>Audit CSV</a>
           <a className="button secondary" target="_blank" rel="noreferrer" href={'/api/exports/report' + query}>Print report ↗</a>
         </div>
       </div>
       {selectedIds.length > 0 && <div className="record-selection-actions">
-        <b>{selectedIds.length} specimen labels selected</b>
+        <b>{selectedIds.length} selected</b>
         <button className="button primary" disabled={!healthy} onClick={() => setPrinting(true)}>Preview / reprint selected</button>
         <button className="button text" onClick={() => setSelectedIds([])}>Clear selection</button>
-        <small>Selection is kept when filtering; only the checked specimen IDs will print.</small>
       </div>}
       <div className="table-wrap"><table>
         <thead><tr>
@@ -247,7 +246,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
             onClick={() => void selectSpecimen(stack, specimen.id)}>History →</button></td>
         </tr>)}</tbody>
       </table></div>
-      {!records.length && !loading && <div className="empty-inline"><h3>No matching specimens</h3><p>Import a prep workbook or adjust the filters.</p></div>}
+      {!records.length && !loading && <div className="empty-inline"><p>No matching specimens.</p></div>}
     </section>
     {selectedStack && <Modal title="Stack & specimen details" wide onClose={() => { openSerial.current++; setSelectedStack(null) }}>
       <div className="modal-body"><StackDetail stack={selectedStack} config={config} healthy={healthy} /></div>

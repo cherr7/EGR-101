@@ -146,12 +146,12 @@ export default function LabelPrinter({
             // The original request may still be rendering/claiming its job.
             // Reuse its ID and body; never replace an ambiguous request with a new ID.
             try { acceptJob(await post<PrintJob>('/print-jobs', intent)) }
-            catch (retryError) { setError('The same saved print request is still unconfirmed. ' + (retryError as Error).message) }
+            catch (retryError) { setError('Still no answer about the last print. ' + (retryError as Error).message) }
           } else {
             setJob({ request_id: intent.request_id, status: 'unknown',
-              message: 'This older saved request has no recoverable selection. Check the Mac queue before allowing a deliberate reprint.' })
+              message: 'Can’t check this old print request. Look at the printer, then allow a reprint if nothing came out.' })
           }
-        } else setError('The previous print result is still unknown. Check again before submitting a new job.')
+        } else setError('Still no answer about the last print. Try Check again.')
       }
     } finally {
       printLock.current = false
@@ -173,7 +173,7 @@ export default function LabelPrinter({
       ...selection, request_id: requestId(), printer_queue: queue, copies,
     }
     try { localStorage.setItem(PRINT_KEY, JSON.stringify(intent)) }
-    catch { setError('This browser cannot preserve a pending print request. Enable local storage before printing.'); return }
+    catch { setError('This browser blocks local storage, which printing needs. Turn it on and try again.'); return }
     printLock.current = true
     setPending(intent)
     setBusy(true)
@@ -193,7 +193,7 @@ export default function LabelPrinter({
             }
           }
         }
-        setError('Print result not confirmed. Check the saved request before creating another print job. ' + (err as Error).message)
+        setError('No answer from the print request. ' + (err as Error).message)
       }
     } finally {
       printLock.current = false
@@ -269,7 +269,7 @@ export default function LabelPrinter({
           <label>Copies<input aria-label="Print copies" type="number" min="1" max="10"
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
         </div>
-        {previewURL ? <iframe className="pdf-preview" title="Actual label PDF preview" src={previewURL} /> :
+        {previewURL ? <iframe className="pdf-preview" title="Label preview" src={previewURL} /> :
           <div className="pdf-preview preview-empty" role="status">{previewing ? 'Loading preview…' : !selected.length ? 'Select labels to preview.' : !healthy ? 'Preview unavailable offline.' : 'Preview unavailable.'}</div>}
         {printers && !printers.available && <p className="input-help">No printer available. Open the PDF, print it, then choose “I printed these from the PDF”.</p>}
         {job && <div className={'notice ' + (job.status === 'submitted' ? 'success' : job.status === 'failed' ? 'error' : 'warning')} role="status">
@@ -277,11 +277,11 @@ export default function LabelPrinter({
         </div>}
         {manual === 'done' && <div className="notice success" role="status">Recorded: {selected.length} {selected.length === 1 ? 'label' : 'labels'} printed from the PDF.</div>}
         {pending && <div className="notice warning">
-          <b>Print result unconfirmed. Check the printer before retrying.</b>
-          <button className="button secondary" disabled={!healthy || busy} onClick={() => void checkPrevious()}>Check previous print job</button>
+          <b>No answer from the printer yet. Check whether labels came out before printing again.</b>
+          <button className="button secondary" disabled={!healthy || busy} onClick={() => void checkPrevious()}>Check again</button>
           {job?.status === 'unknown' && <button className="button text" disabled={busy} onClick={() => {
             forgetPending(); setPending(null); setJob(null)
-          }}>I checked the queue; allow a deliberate reprint</button>}
+          }}>Nothing printed: allow reprint</button>}
         </div>}
         <ErrorNotice message={error} />
       </section>

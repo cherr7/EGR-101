@@ -194,12 +194,12 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     if (inFlight.current || !healthy || stored<Movement>(PENDING_KEY) || stored<PendingUndo>(UNDO_KEY)) return
     clearTimeout(greenTimer.current); feedbackRevision.current++
     inFlight.current = true; setBusy(true); setGreen(false); setUndoMessage(''); setError(''); setResult(null)
-    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); reportError('This browser cannot preserve a pending request. Enable local storage before scanning.', 'setup'); return }
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); reportError('This browser blocks local storage, which scanning needs. Turn it on.', 'setup'); return }
     try { const value = await post<MovementResult>('/movements', request); if (active.current) await accept(value, request, loaded) }
-    catch (err) { if (!active.current) return; if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); reportError(err.message) } else reportError('Response interrupted. This same request must be confirmed before another scan.') }
+    catch (err) { if (!active.current) return; if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); reportError(err.message) } else reportError('Connection dropped. Checking whether the scan saved…') }
     finally { inFlight.current = false; if (active.current) setBusy(false) }
   }
-  const recover = useCallback(async () => { const request = stored<Movement>(PENDING_KEY); if (!request || !healthy || inFlight.current) return; inFlight.current = true; setBusy(true); try { let value: MovementResult; try { value = await api<MovementResult>(`/movement-requests/${request.request_id}`, {}, 4500) } catch (err) { if (err instanceof ApiError && err.status === 404) value = await post<MovementResult>('/movements', request); else throw err } if (active.current) await accept(value, request) } catch { if (active.current) reportError('Confirmation pending. The same request will be checked again when connected.') } finally { inFlight.current = false; if (active.current) setBusy(false) } }, [healthy, accept, reportError])
+  const recover = useCallback(async () => { const request = stored<Movement>(PENDING_KEY); if (!request || !healthy || inFlight.current) return; inFlight.current = true; setBusy(true); try { let value: MovementResult; try { value = await api<MovementResult>(`/movement-requests/${request.request_id}`, {}, 4500) } catch (err) { if (err instanceof ApiError && err.status === 404) value = await post<MovementResult>('/movements', request); else throw err } if (active.current) await accept(value, request) } catch { if (active.current) reportError('Still checking whether the scan saved.') } finally { inFlight.current = false; if (active.current) setBusy(false) } }, [healthy, accept, reportError])
   useEffect(() => { if (!pending || !healthy) return; void recover(); const timer = setInterval(() => void recover(), 5000); return () => clearInterval(timer) }, [pending, healthy, recover])
   async function scan(code: string) {
     if (!healthy || blocked || inFlight.current) return
@@ -247,22 +247,22 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     try {
       const status = await undoStatus(intent)
       if (status.undone) { await finishUndo(intent); return }
-      if (status.can_undo === false) { reject('Undo was not applied: a specimen has intervening activity. Review the transaction log.'); return }
+      if (status.can_undo === false) { reject('Can’t undo: a later scan includes these pieces.'); return }
       await post(`/transactions/${intent.event_id}/undo`, intent.body)
       if (active.current) await finishUndo(intent)
     } catch (err) {
       if (!active.current) return
       if (err instanceof ApiError && err.status < 500) {
         try { const status = await undoStatus(intent); if (status.undone) await finishUndo(intent); else reject(err.message) }
-        catch (checkError) { if (checkError instanceof ApiError && checkError.status === 404) reject(checkError.message); else reportError('Undo confirmation is pending. This transaction will be checked again before scanning resumes.', 'undo') }
-      } else reportError('Undo confirmation is pending. This transaction will be checked again before scanning resumes.', 'undo')
+        catch (checkError) { if (checkError instanceof ApiError && checkError.status === 404) reject(checkError.message); else reportError('Still checking whether Undo worked.', 'undo') }
+      } else reportError('Still checking whether Undo worked.', 'undo')
     } finally { inFlight.current = false; if (active.current) setBusy(false) }
   }, [healthy, finishUndo, reportError])
   useEffect(() => { if (!pendingUndo || !healthy) return; void reconcileUndo(); const timer = setInterval(() => void reconcileUndo(), 5000); return () => clearInterval(timer) }, [pendingUndo, healthy, reconcileUndo])
   async function undo(target: Last | null = undoTarget) {
     if (!target || !healthy || transactionBlocked || inFlight.current || stored<PendingUndo>(UNDO_KEY)) return
     const intent: PendingUndo = { ...target, body: { expected_version: target.version }, submitted_at: new Date().toISOString() }
-    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { reportError('This browser cannot preserve a pending undo. Enable local storage before continuing.', 'setup'); return }
+    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { reportError('This browser blocks local storage, which Undo needs. Turn it on.', 'setup'); return }
     setPendingUndo(intent); setGreen(false); setResult(null); setUndoMessage(''); setError('')
     await reconcileUndo()
   }
@@ -385,8 +385,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
           scanner: bridgeConfigured ? inputStatus.scannerName || inputStatus.scanner : 'Keyboard capture (this browser)' }} />}
       {panel === 'inventory' && <KioskInventory roomId={currentRoomId} healthy={healthy} notice={error} onClose={() => setPanel(null)} />}
 
-      {selection && <Modal title="Choose the specimens moving" onClose={() => !busy && setSelection(null)} wide>
-        <div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · Move <b>{selection.direction}</b>. Choose the numbered physical specimens.</p>
+      {selection && <Modal title="Choose pieces" onClose={() => !busy && setSelection(null)} wide>
+        <div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · Move <b>{selection.direction}</b>. Pick the pieces.</p>
           <div className="selection-tools"><button className="button secondary" onClick={() => setSelection(old => old && { ...old, ids: eligible.map(s => s.id) })}>Select all eligible ({eligible.length})</button>
             <button className="button text" onClick={() => setSelection(old => old && { ...old, ids: [] })}>Clear</button></div>
           <div className="selection-grid">{selection.stack.specimens.map(s => {
@@ -406,7 +406,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         </div>
       </Modal>}
       {acknowledge && <Modal title="Early checkout" onClose={() => !busy && setAcknowledge(null)}>
-        <div className="modal-body"><div className="notice warning">These specimens have not completed 24 hours. Override records their actual removal and incomplete conditioning.</div>
+        <div className="modal-body"><div className="notice warning">These haven’t finished 24 hours. Taking them out now records them as not fully conditioned.</div>
           <div className="early-list">{early.map(s => <div key={s.id}><b>Specimen {specimenNumber(s.number)}</b><span>{elapsed(entryOf(s))} of 24h</span></div>)}</div>
           {!early.length && <p>{acknowledge.result.message}</p>}
         </div>
@@ -414,7 +414,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
           <button className="button danger" disabled={!healthy || busy || !!pending} onClick={() => {
             const chosen = acknowledge
             void submit({ ...chosen.request, request_id: requestId(), acknowledge_early: true }, chosen.stack)
-          }}>Override & record OUT</button></div>
+          }}>Take out anyway</button></div>
       </Modal>}
     </div>
   )

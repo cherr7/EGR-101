@@ -18,9 +18,9 @@ const STATUS: Record<StationPresence['status'], { tone: string; label: string }>
 
 function stationTitle(s: StationPresence) {
   const state = STATUS[s.status].label
-  if (s.status === 'never_seen') return `${s.name}: no heartbeat since the host started`
+  if (s.status === 'never_seen') return `${s.name}: not seen since the Mac app started`
   const extra = s.live_clients.length > 1 ? ` · ${s.live_clients.length} devices using this station: ${s.live_clients.join(', ')}` : ''
-  return `${s.name}: ${state} · ${s.input === 'usb-bridge' ? 'Pi USB reader' : 'keyboard capture'} · last heartbeat ${formatTime(s.last_seen)}${extra}`
+  return `${s.name}: ${state} · ${s.input === 'usb-bridge' ? 'Pi USB reader' : 'keyboard capture'} · last seen ${formatTime(s.last_seen)}${extra}`
 }
 
 export default function NetworkStatus({ healthy }: { healthy: boolean | null }) {
@@ -43,7 +43,7 @@ export default function NetworkStatus({ healthy }: { healthy: boolean | null }) 
   }
   return <div className="network-status" aria-label="Network status">
     <div className="network-host">
-      <span className="network-label">This host (open on other devices)</span>
+      <span className="network-label">Open on other computers</span>
       <span className="network-host-row">
         <a href={shareUrl} target="_blank" rel="noreferrer" title={`Also at ${host.hostname_url}`} data-testid="host-address">{address}</a>
         {window.isSecureContext && <button type="button" className="network-copy" onClick={() => void copy()} aria-label="Copy host address">{copied ? '✓' : '⧉'}</button>}

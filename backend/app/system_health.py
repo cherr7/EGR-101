@@ -380,22 +380,22 @@ def find_issues(report):
         fresh = device is not None and not device["stale"]
         if station["status"] in {"offline", "never_seen"} and fresh:
             add("warning", "Scan stations", f"{name}: the Pi is on but the kiosk page is not running",
-                "The Pi is still reporting its health. The watchdog normally restarts the browser; reboot the Pi if it stays like this.")
+                "Reboot the Pi if it stays like this.")
         elif station["status"] == "offline":
             add("warning", "Scan stations", f"{name} is offline",
-                f"No heartbeat since {station['last_seen']}. Check the Pi's power and network.")
+                "Check the Pi's power and network.")
         elif station["status"] == "never_seen":
             add("info", "Scan stations", f"{name} has not checked in",
-                "No heartbeat since the host started. Older station packages do not send heartbeats.")
+                "Not seen since the Mac app started. Check that the Pi is on.")
         if station["status"] == "no_scanner":
             add("warning", "Scan stations", f"{name} has no scanner ready", "Check the USB scanner cable or tap the station screen.")
         if station["status"] in {"ready", "no_scanner"}:
             if device is None:
-                add("info", "Scan stations", f"{name}: Pi health is not reported",
-                    "Reinstall the latest station package on this Pi to add the health agent.")
+                add("info", "Scan stations", f"{name}: no Pi stats",
+                    "Reinstall this Pi from the Mac to add them.")
             elif device["stale"]:
-                add("warning", "Scan stations", f"{name}: Pi health agent stopped reporting",
-                    f"Last report {device['age_seconds'] // 60} min ago. Check fabric-scanner-agent.service on the Pi.")
+                add("warning", "Scan stations", f"{name}: Pi stats stopped",
+                    f"Last report {device['age_seconds'] // 60} min ago. Reboot the Pi; if it keeps happening, reinstall it from the Mac.")
         if fresh:
             pi_issues(add, name, device)
     printer = report["printer"]
@@ -412,7 +412,7 @@ def find_issues(report):
     failed = sum(count for status, count in printer["jobs_last_24h"].items() if status in {"failed", "unknown"})
     if failed:
         add("warning", "Label printer", f"{failed} label job(s) failed or unconfirmed in the last 24 hours",
-            "Open the print history on the Stacks page and check the labels.")
+            "Check the Printing entries on Transactions and look at the labels.")
     backup = report["backups"]
     if backup.get("available"):
         if backup.get("last_error"):
@@ -420,7 +420,7 @@ def find_issues(report):
         if backup.get("enabled") is False:
             add("warning", "Backups", "Daily backups are paused", "Turn them back on in Backups.")
         elif backup.get("overdue"):
-            add("warning", "Backups", "Today's backup is overdue", "It runs within a minute while the host is on.")
+            add("warning", "Backups", "Today's backup is overdue", "It runs automatically once the Mac is awake.")
         latest = backup.get("latest_at")
         if not latest:
             add("warning", "Backups", "No backups yet", "Create one on the Backups page.")

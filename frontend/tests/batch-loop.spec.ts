@@ -9,15 +9,15 @@ test('prep sheet → confirm → print → scan IN → dashboard and batch histo
 
   // 1 Upload
   await page.goto('/#batch/new')
-  await expect(page.getByText('Database connected', { exact: true })).toBeVisible()
+  await expect(page.getByText('Online', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '1 · Upload the prep sheet' })).toBeVisible()
   await page.getByLabel('Import prep workbook').setInputFiles({ name: 'DEMO-loop.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) })
 
   // 2 Confirm
   await expect(page.getByRole('heading', { name: /2 · Confirm stacks/ })).toBeVisible()
-  await expect(page.getByText('All required values present')).toBeVisible()
-  await expect(page.getByText('2 stacks · 5 physical specimens')).toBeVisible()
-  await page.getByRole('button', { name: 'Register 2 stacks & continue →' }).click()
+  await expect(page.getByText('Ready to register')).toBeVisible()
+  await expect(page.getByText('2 stacks · 5 pieces')).toBeVisible()
+  await page.getByRole('button', { name: 'Register 2 stacks' }).click()
 
   // 3 Print: no printer in the test environment, so record a PDF print
   await expect(page.getByRole('heading', { name: '3 · Print labels' })).toBeVisible()
@@ -41,7 +41,7 @@ test('prep sheet → confirm → print → scan IN → dashboard and batch histo
 
   for (const row of batch.stacks) await move(request, await (await request.get('/api/stacks/' + row.id)).json())
   await page.getByRole('button', { name: '↻ Refresh' }).click()
-  await expect(page.getByText('No gaps ✓')).toBeVisible()
+  await expect(page.getByText('Nothing waiting.')).toBeVisible()
   await expect(page.getByTestId('batch-' + batchId)).toContainText('Conditioning 5')
   await expect(page.getByRole('group', { name: 'Room' }).getByRole('button', { name: /^Shared/ })).toContainText('5 in')
 

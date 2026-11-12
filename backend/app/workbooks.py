@@ -514,20 +514,20 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
     filled = [item["name"] for item in sheets if item.get("filled_count")]
     selected = sheet_names if sheet_names is not None else (filled or recognized[:1])
     rows = [row for name in selected for row in all_candidates.get(name, [])]
-    warnings = ["Review physical material groups and conditioning counts before registration. No scan times were imported."]
+    warnings = []
     if len(recognized) > len(selected) and sheet_names is None:
-        warnings.append("Only the filled-in preparation worksheet is selected. Choose the needed worksheets before importing other groups."
+        warnings.append("Only sheets with sample counts are selected. Tick others under Sheets to add them."
                         if filled else
-                        "Only the first preparation worksheet is selected. Choose the needed worksheets before importing other groups.")
+                        "Only the first prep sheet is selected. Tick others under Sheets to add them.")
     for sheet in sheets:
         # A sheet holding only an instruction has no rows to select, but its
         # note must still reach the reviewer.
         if sheet["kind"] == "ppe_prep" and (sheet["name"] in selected or not sheet["candidate_count"]):
             warnings.extend(f'{sheet["name"]} · {note}' for note in sheet["warnings"] if not note.startswith("No specimen"))
     if any(row["metadata"].get("template_row") for row in rows):
-        warnings.append("This workbook contains template rows. Remove unneeded tests and fill the project/material before registering.")
+        warnings.append("Some rows come from an unfilled template. Remove the tests you aren't running.")
     if not rows:
-        warnings.append("No importable preparation rows were found. Training matrices and result worksheets are reference documents, not specimen orders.")
+        warnings.append("No prep rows found in the selected sheets.")
     if len(rows) > MAX_ROWS:
         raise HTTPException(422, "Selected worksheets produce more than 1,000 review rows. Import fewer worksheets at a time.")
     for sheet in sheets:

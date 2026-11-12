@@ -92,7 +92,7 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
   const readyTotal = useMemo(() => data?.ready.reduce((sum, room) => sum + room.pieces, 0) || 0, [data])
 
   return <>
-    <PageHeader title="Dashboard" description={data ? `Updated ${formatTime(data.server_time)} · refreshes every 15 s` : undefined}>
+    <PageHeader title="Dashboard" description={data ? `Updated ${formatTime(data.server_time)}` : undefined}>
       <div className="header-actions">
         <button className="button secondary" disabled={!healthy} onClick={() => setRefresh(v => v + 1)}>↻ Refresh</button>
         <a className="button primary" href="#batch/new">＋ New batch</a>
@@ -135,9 +135,9 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
       <section className="card" aria-labelledby="gaps-heading">
         <div className="card-heading"><div>
           <h2 id="gaps-heading">Needs attention <span className={'count-pill ' + (gapCount ? 'warn' : '')}>{gapCount}</span></h2>
-          <p>Registered pieces that haven't made it into a room yet. Pieces never scanned in have no room, so the room filter doesn't hide them.</p>
+          <p>Registered pieces not in a room yet.</p>
         </div></div>
-        {!gapCount && <div className="empty-inline compact"><h3>No gaps ✓</h3><p>Every registered piece is labeled and has been scanned into a room.</p></div>}
+        {!gapCount && <div className="empty-inline compact"><p>Nothing waiting.</p></div>}
         {gaps!.needs_labels.length > 0 && <div className="gap-group">
           <div className="gap-heading"><h3>Needs labels <span className="count-pill">{gaps!.needs_labels.length}</span></h3>
             <button className="button secondary" disabled={!healthy || opening} onClick={() => void printFor(gaps!.needs_labels)}>
@@ -156,7 +156,7 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
         </div>}
         {gaps!.not_scanned_in.length > 0 && <div className="gap-group">
           <div className="gap-heading"><h3>Labeled, not scanned in <span className="count-pill">{gaps!.not_scanned_in.length}</span></h3>
-            <span className="subtle">Possibly waiting on a bench. Scan them IN at the room station.</span></div>
+            <span className="subtle">Scan these IN at their room.</span></div>
           <div className="table-wrap"><table>
             <thead><tr><th>Stack</th><th>Not in a room</th><th>Labels printed</th><th>Batch</th><th /></tr></thead>
             <tbody>{(expanded.scan ? gaps!.not_scanned_in : gaps!.not_scanned_in.slice(0, GAP_ROWS)).map(s => {
@@ -178,14 +178,13 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
       <section className="card" aria-labelledby="batches-heading">
         <div className="card-heading"><div>
           <h2 id="batches-heading">Batches in progress <span className="count-pill">{openBatches.length}</span></h2>
-          <p>One batch per prep sheet. A batch closes when every piece has been scanned out.</p>
-        </div><a className="button secondary" href="#batch/new">＋ New batch</a></div>
-        {!openBatches.length && <div className="empty-inline compact"><p>No open batches. Start one from a prep sheet.</p></div>}
+        </div></div>
+        {!openBatches.length && <div className="empty-inline compact"><p>No open batches.</p></div>}
         <div className="batch-grid padded">
           {(expanded.batches ? openBatches : openBatches.slice(0, BATCH_CARDS)).map(b => <article className="batch-card" key={b.id} data-testid={'batch-' + b.id}>
             <header><a href={'#batch/' + b.id + '/done'}><b>{b.label}</b></a><small>{formatTime(b.created_at)} · {b.stacks} {b.stacks === 1 ? 'stack' : 'stacks'} · {b.stages.total} pieces</small></header>
             <BatchProgress stages={b.stages} legend />
-            <footer><a className="button text" href={'#dashboard?batch=' + b.id}>Filter dashboard</a><a className="button text" href={'#transactions?batch=' + b.id}>History →</a></footer>
+            <footer><a className="button text" href={'#dashboard?batch=' + b.id}>Show only this batch</a><a className="button text" href={'#transactions?batch=' + b.id}>History →</a></footer>
           </article>)}
         </div>
         <ShowMore total={openBatches.length} shown={BATCH_CARDS} open={expanded.batches} noun="batches" onToggle={() => setExpanded(e => ({ ...e, batches: !e.batches }))} />
@@ -199,7 +198,7 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
       <section className="card" aria-labelledby="ready-heading">
         <div className="card-heading"><div>
           <h2 id="ready-heading">Ready to remove <span className="count-pill">{readyTotal}</span></h2>
-          <p>Pieces that have finished their 24 h. Longest-waiting first in each room.</p>
+          <p>Finished 24 hours. Oldest first.</p>
         </div></div>
         <div className="ready-rooms">{data.ready.map(room => <ReadyRoomList key={room.room_id} room={room} serverTime={data.server_time} onOpen={id => void openStack(id)} />)}</div>
       </section>
@@ -220,7 +219,7 @@ function ReadyRoomList({ room, serverTime, onOpen }: { room: ReadyRoom; serverTi
     <summary>
       <span className="ready-room-title"><b>{room.room_name}</b> · {room.stacks} {room.stacks === 1 ? 'stack' : 'stacks'} · {room.pieces} {room.pieces === 1 ? 'piece' : 'pieces'} ready</span>
       <span className="ready-room-meta">oldest waiting {duration(room.oldest_ready_since, now)}
-        {room.buckets.over_3d > 0 && <span className="badge warning" title="Not a problem, but worth clearing">{room.buckets.over_3d} waiting &gt; 3 days</span>}</span>
+        {room.buckets.over_3d > 0 && <span className="badge warning">{room.buckets.over_3d} waiting &gt; 3 days</span>}</span>
     </summary>
     <div className="bucket-strip" aria-label="Ready pieces by waiting time">
       {(Object.keys(BUCKET_LABEL) as AgeBucket[]).map(b => <span key={b} className={'bucket age-' + b}>{BUCKET_LABEL[b]} <b>{room.buckets[b]}</b></span>)}

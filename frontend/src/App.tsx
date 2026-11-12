@@ -80,13 +80,13 @@ export default function App() {
       <div className="side-foot">
         <a className="station-link" href="#kiosk" target="_blank" rel="noreferrer">Room station ↗</a>
         <span className={'connection ' + (healthy === false ? 'bad' : healthy ? 'good' : '')} role="status">
-          <i aria-hidden="true" />{healthy === null ? 'Connecting…' : healthy ? 'Database connected' : 'Offline'}
+          <i aria-hidden="true" />{healthy === null ? 'Connecting…' : healthy ? 'Online' : 'Offline'}
         </span>
         <NetworkStatus healthy={healthy} />
       </div>
     </aside>
     <div className="main-shell">
-      {healthy === false && <div className="offline-banner" role="alert"><strong>NOT AVAILABLE</strong>The database cannot be reached. Changes and printing are unavailable.</div>}
+      {healthy === false && <div className="offline-banner" role="alert"><strong>Offline</strong>Can’t reach the database. Nothing can be saved or printed until it’s back.</div>}
       <main>
         {view === 'dashboard' && <Dashboard config={config} healthy={healthy === true} />}
         {view === 'batch' && <BatchWizard config={config} healthy={healthy === true} />}

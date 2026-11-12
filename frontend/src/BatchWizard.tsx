@@ -61,17 +61,25 @@ function describe(value: unknown): string {
     .map(([key, content]) => key.replaceAll('_', ' ') + ': ' + describe(content)).join(' · ')
   return String(value)
 }
+// Only fields a reviewer compares against the workbook; internal import flags stay hidden.
+const SOURCE_FIELDS = [['filename', 'File'], ['sheet', 'Sheet']] as const
+const METADATA_FIELDS = [
+  ['labware_number', 'LabWare'], ['oracle_project_number', 'Oracle project'], ['standard', 'Standard'],
+  ['sample_type', 'Sample type'], ['sample_count', '# of samples'], ['raw_conditioning_count', 'Pieces per sample (as written)'],
+  ['raw_tested_count', 'Total tested (column B)'], ['comments', 'Comment'], ['sample_released', 'Sample released'],
+  ['implied_spare_pieces', 'Spare pieces (implied)'], ['shares_samples', 'Shares samples with another test'],
+] as const
 function SourceDetails({ row }: { row: PrepRow }) {
   const metadata = row.metadata || {}
   const source = metadata.source as Record<string, unknown> | undefined
   const cells = source?.cells as Record<string, Record<string, unknown>> | undefined
   const warnings = metadata.warnings as string[] | undefined
+  const facts = [...SOURCE_FIELDS.map(([key, label]) => [label, source?.[key]] as const),
+    ...METADATA_FIELDS.map(([key, label]) => [label, metadata[key]] as const)]
+    .filter(([, value]) => value !== undefined && value !== null && value !== '' && value !== false)
   return <>
     <div className="source-grid">
-      {source && Object.entries(source).filter(([key]) => key !== 'cells').map(([key, value]) =>
-        <div key={key}><span>{key.replaceAll('_', ' ')}</span><b>{describe(value)}</b></div>)}
-      {Object.entries(metadata).filter(([key]) => key !== 'source' && key !== 'warnings').map(([key, value]) =>
-        <div key={key}><span>{key.replaceAll('_', ' ')}</span><b>{describe(value)}</b></div>)}
+      {facts.map(([label, value]) => <div key={label}><span>{label}</span><b>{value === true ? 'Yes' : describe(value)}</b></div>)}
     </div>
     {cells && <div className="table-wrap source-cells"><table>
       <thead><tr><th>Source field</th><th>Excel cell</th><th>Workbook value</th></tr></thead>
@@ -81,7 +89,7 @@ function SourceDetails({ row }: { row: PrepRow }) {
       </tr>)}</tbody>
     </table></div>}
     {warnings?.map((warning, index) => <div className="notice warning" key={index}>{warning}</div>)}
-    {!Object.keys(metadata).length && <p className="subtle">Manually entered row. No workbook source cells.</p>}
+    {!Object.keys(metadata).length && <p className="subtle">Entered by hand.</p>}
   </>
 }
 
@@ -136,7 +144,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
   // Save on every edit before a navigation paint. No extra Save step is required.
   useLayoutEffect(() => {
     try { localStorage.setItem(REVIEW_KEY, JSON.stringify({ rows, draft })) }
-    catch { setError('This browser cannot preserve your review. Keep this page open until registration finishes.') }
+    catch { setError('This browser can’t save your progress. Keep this page open until you register.') }
   }, [rows, draft])
   useEffect(() => {
     const saved = current.current
@@ -153,14 +161,14 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
         const hasEdits = canonical(local.rows) !== canonical(local.draft?.rows)
         if (hasEdits && canonical(value.rows) !== canonical(local.draft?.rows)
           && canonical(value.rows) !== canonical(local.rows)) {
-          setError('Another browser changed this preparation. Your edits are kept here; review the latest workbook before registering.')
+          setError('Someone changed this batch in another browser. Your edits are kept here; upload the sheet again before registering.')
         } else {
           setDraft(value)
           if (!hasEdits) setRows(value.rows)
         }
       }
     }).catch(err => {
-      if (active && alive.current) setError('The saved review is still available on this computer. Could not check its registration: ' + (err as Error).message)
+      if (active && alive.current) setError('Couldn’t check this batch with the server: ' + (err as Error).message)
     })
     return () => { active = false }
   }, [healthy])
@@ -170,7 +178,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
     if (route.id === null) {
       // "New batch": a registered review is finished, so start blank; an unfinished one resumes.
       if (committed) { operation.current++; setDraft(null); setRows([emptyRow()]); uploadFile.current = null; setSelectedSheets([]); setMessage('') }
-      else if (!blankReview({ rows, draft })) { setMessage('Resumed your unfinished review. Use “Start another batch” to discard it.'); go(draft?.id || 'local', 'confirm') }
+      else if (!blankReview({ rows, draft })) { setMessage('Continuing your unfinished batch.'); go(draft?.id || 'local', 'confirm') }
     }
     else if ((route.step === 'upload' || route.step === 'confirm') && committed) go(draft!.id, 'print')
     else if ((route.step === 'print' || route.step === 'done') && !committed && route.id) go(draft?.id || 'local', 'confirm')
@@ -236,7 +244,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
         // with this browser's older source review.
         if (recovered && reviewed.draft && canonical(recovered.rows) !== canonical(reviewed.draft.rows)
           && canonical(recovered.rows) !== canonical(reviewed.rows)) {
-          throw new Error('This imported preparation changed in another browser. Import the workbook again to review the latest values before registering.')
+          throw new Error('This batch was changed in another browser. Upload the sheet again before registering.')
         }
         const value = recovered
           ? await api<Draft>('/prep-drafts/' + recovered.id, { method: 'PUT', body: JSON.stringify({ rows: reviewed.rows, expected_rows: recovered.rows }) })
@@ -252,7 +260,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
     }, saved => {
       setDraft(saved)
       setRows(saved.rows)
-      setMessage(`Registered ${saved.stack_ids.length} ${saved.stack_ids.length === 1 ? 'stack' : 'stacks'}. Their specimen numbers are now permanent.`)
+      setMessage(`Registered ${saved.stack_ids.length} ${saved.stack_ids.length === 1 ? 'stack' : 'stacks'}.`)
       go(saved.id, 'print')
     })
   }
@@ -278,7 +286,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
   const batchId = viewingOther ? route.id! : draft?.id || null
 
   return <>
-    <PageHeader title="New batch" description="Prep sheet → confirm stacks → print labels → track in the rooms.">
+    <PageHeader title="New batch">
       {(!blankReview({ rows, draft }) || viewingOther) && <button className="button secondary" disabled={busy} onClick={startNew}>＋ Start another batch</button>}
     </PageHeader>
     <Stepper step={step} committed={viewingOther || committed} canConfirm={!blankReview({ rows, draft }) || route.id === 'local'} id={batchId} />
@@ -286,14 +294,14 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
     {message && <div className="notice success" role="status">{message}</div>}
 
     {step === 'upload' && <section className="card">
-      <div className="card-heading"><div><h2>1 · Upload the prep sheet</h2><p>Excel (.xlsx / .xlsm) or CSV. Nothing is registered until you confirm the stacks.</p></div></div>
+      <div className="card-heading"><div><h2>1 · Upload the prep sheet</h2></div></div>
       <div className="padded">
         <label className={'drop-zone ' + (dragging ? 'dragging ' : '') + (busy || !healthy ? 'disabled' : '')}
           onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)}
           onDrop={e => { e.preventDefault(); setDragging(false); const file = e.dataTransfer.files?.[0]; if (file && healthy && !busy) void upload(file) }}>
           <span className="drop-icon" aria-hidden="true">⇪</span>
           <b>{busy ? 'Reading workbook…' : 'Drop the prep sheet here, or click to choose a file'}</b>
-          <small>.xlsx, .xlsm, or .csv · macros are never run</small>
+          <small>.xlsx, .xlsm or .csv</small>
           <input aria-label="Import prep workbook" type="file" accept=".xlsx,.xlsm,.csv" disabled={busy || !healthy}
             onChange={e => { if (e.target.files?.[0]) void upload(e.target.files[0]); e.target.value = '' }} />
         </label>
@@ -305,7 +313,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
       <div className="card-heading">
         <div>
           <h2>2 · Confirm stacks {draft?.source && <span className="badge outline">{draft.source.filename}</span>}</h2>
-          <p>Each row is one physical stack: one material, test, and treatment. Include every piece going into conditioning, extras too.</p>
+          <p>One row per stack. Count every piece going into the room, spares included.</p>
         </div>
         <label className={'button secondary upload ' + (busy || !healthy ? 'disabled' : '')}>↑ Replace file
           <input aria-label="Replace prep workbook" type="file" accept=".xlsx,.xlsm,.csv"
@@ -313,26 +321,26 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
         </label>
       </div>
       {draft?.warnings?.length ? <details className="import-warnings">
-        <summary>Workbook review notes · {draft.warnings.length}</summary>
+        <summary>Import notes · {draft.warnings.length}</summary>
         {draft.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
       </details> : null}
       {draft?.sheets?.length ? <details className="sheet-inventory">
-        <summary>{draft.sheets.length} workbook sheets inspected</summary>
+        <summary>Sheets ({draft.sheets.length})</summary>
         <div className="sheet-list">{draft.sheets.map(sheet => <label className="check-label" key={sheet.name}>
           <input type="checkbox" checked={selectedSheets.includes(sheet.name)} disabled={!uploadFile.current || busy}
             onChange={e => setSelectedSheets(previous => e.target.checked ? [...previous, sheet.name] : previous.filter(name => name !== sheet.name))} />
-          <span><b>{sheet.name}</b> · {sheet.kind.replaceAll('_', ' ')} · {sheet.candidate_count} candidates</span>
+          <span><b>{sheet.name}</b> · {sheet.kind === 'reference' ? 'not a prep sheet' : `${sheet.candidate_count} ${sheet.candidate_count === 1 ? 'row' : 'rows'}`}</span>
         </label>)}</div>
         {uploadFile.current && <button className="button secondary" disabled={busy || !selectedSheets.length}
-          onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets)}>Review selected sheets</button>}
-        <p className="input-help">{uploadFile.current ? 'Only selected sheets are imported.' : 'Choose the workbook again to change the sheet selection.'}</p>
+          onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets)}>Import selected sheets</button>}
+        <p className="input-help">{uploadFile.current ? '' : 'To change sheets, upload the file again.'}</p>
       </details> : null}
       <div className="prep-exceptions">
         <span className={'badge ' + (unresolved.length ? 'warning' : 'good')}>
-          {unresolved.length ? `${unresolved.length} ${unresolved.length === 1 ? 'row needs' : 'rows need'} values` : 'All required values present'}
+          {unresolved.length ? `${unresolved.length} ${unresolved.length === 1 ? 'row needs' : 'rows need'} values` : 'Ready to register'}
         </span>
         <label className="check-label"><input type="checkbox" checked={onlyMissing}
-          onChange={e => setOnlyMissing(e.target.checked)} />Only rows needing attention</label>
+          onChange={e => setOnlyMissing(e.target.checked)} />Only rows with missing values</label>
         {unresolved.length > 0 && <button className="button text" onClick={jumpToMissing}>Go to first missing value →</button>}
       </div>
       <datalist id="treatments">{config.treatments.map(treatment => <option key={treatment} value={treatment} />)}</datalist>
@@ -348,21 +356,21 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
               value={row[field] ?? ''} placeholder="Required" disabled={busy}
               onChange={e => update(index, field, e.target.value)} />
           </td>)}
-          <td><button className="button text" aria-label={'Source row ' + (index + 1)} onClick={() => setSourceRow(index)}>Review ↗</button></td>
+          <td><button className="button text" aria-label={'Source row ' + (index + 1)} onClick={() => setSourceRow(index)}>Source</button></td>
           <td><button className="icon-button" aria-label={'Remove row ' + (index + 1)}
             disabled={busy || rows.length === 1}
             onClick={() => setRows(previous => previous.filter((_, at) => at !== index))}>×</button></td>
         </tr>)}</tbody>
       </table></div>
-      {!shown.length && <div className="empty-inline"><h3>No unresolved rows</h3><p>Turn off the attention filter to review every stack.</p></div>}
+      {!shown.length && <div className="empty-inline"><p>No rows with missing values.</p></div>}
       <div className="card-actions">
         <button className="button text" disabled={busy} onClick={() => setRows(previous => [...previous, emptyRow()])}>＋ Add stack</button>
-        <span className="summary-count">{rows.length} {rows.length === 1 ? 'stack' : 'stacks'} · {total} physical specimens</span>
+        <span className="summary-count">{rows.length} {rows.length === 1 ? 'stack' : 'stacks'} · {total} pieces</span>
         <button className="button primary" disabled={!valid || !healthy || busy} onClick={() => void register()}>
-          {busy ? 'Registering…' : `Register ${rows.length} ${rows.length === 1 ? 'stack' : 'stacks'} & continue →`}
+          {busy ? 'Registering…' : `Register ${rows.length} ${rows.length === 1 ? 'stack' : 'stacks'}`}
         </button>
       </div>
-      <p className="input-help padded">Registering assigns permanent specimen numbers. After this step the rows can't be edited; add extra pieces as a new batch.</p>
+      <p className="input-help padded">Registering gives each piece its permanent number. Rows can’t be edited afterwards; extra pieces go in a new batch.</p>
     </section>}
 
     {step === 'print' && batchId && <PrintStep id={batchId} healthy={healthy}
@@ -372,7 +380,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
 
     {sourceRow !== null && <Modal title={'Workbook source · Stack ' + (sourceRow + 1)} wide onClose={() => setSourceRow(null)}>
       <div className="modal-body"><SourceDetails row={rows[sourceRow]} /></div>
-      <div className="modal-actions"><button className="button secondary" onClick={() => setSourceRow(null)}>Back to review</button></div>
+      <div className="modal-actions"><button className="button secondary" onClick={() => setSourceRow(null)}>Close</button></div>
     </Modal>}
   </>
 }
@@ -392,8 +400,7 @@ function PrintStep({ id, healthy, onContinue }: { id: string; healthy: boolean; 
   }, [id, healthy])
   const onOutcome = useCallback((value: 'printed' | 'manual') => setOutcome(value), [])
   return <section className="card">
-    <div className="card-heading"><div><h2>3 · Print labels</h2>
-      <p>Preview the actual labels, then print to the label printer. If the printer isn't available, open the PDF, print it, and record it.</p></div></div>
+    <div className="card-heading"><div><h2>3 · Print labels</h2></div></div>
     <ErrorNotice message={error} />
     {!stacks && !error && <div className="empty-inline compact"><p>Loading stacks…</p></div>}
     {stacks && <LabelPrinter stacks={stacks} healthy={healthy} variant="inline"
@@ -419,9 +426,9 @@ function DoneStep({ id, healthy, onAnother, newPhysicalBatch }: { id: string; he
   if (!batch) return <><ErrorNotice message={error} />{!error && <div className="empty-inline compact"><p>Loading batch…</p></div>}</>
   const s = batch.stages
   const next = s.labeled < s.total ? { text: `${s.total - s.labeled} pieces still need labels.`, action: <a className="button secondary" href={`#batch/${id}/print`}>Print labels</a> }
-    : s.entered < s.total ? { text: 'Take the labeled stacks to their conditioning room and scan them IN at the door station.', action: null }
-    : s.finished < s.total ? { text: s.ready ? `${s.ready} pieces are ready to remove.` : 'Everything is conditioning. The dashboard shows when pieces reach 24 h.', action: null }
-    : { text: 'Every piece has been scanned out. This batch is complete.', action: null }
+    : s.entered < s.total ? { text: 'Scan the stacks IN at their room.', action: null }
+    : s.finished < s.total ? { text: s.ready ? `${s.ready} pieces are ready to remove.` : 'All pieces are conditioning.', action: null }
+    : { text: 'Every piece is out. Batch complete.', action: null }
   return <section className="card">
     <div className="card-heading"><div>
       <h2>4 · Track this batch <span className={'badge ' + (batch.open ? 'blue' : 'good')}>{batch.open ? 'Open' : 'Complete'}</span></h2>
@@ -442,7 +449,7 @@ function DoneStep({ id, healthy, onAnother, newPhysicalBatch }: { id: string; he
     <div className="card-actions">
       <a className="button secondary" href={'#dashboard?batch=' + id}>View on dashboard</a>
       <a className="button secondary" href={'#transactions?batch=' + id}>Transaction history</a>
-      {newPhysicalBatch && <button className="button text" onClick={newPhysicalBatch}>New physical batch from this workbook</button>}
+      {newPhysicalBatch && <button className="button text" onClick={newPhysicalBatch}>Register this sheet again as a new batch</button>}
       <span className="grow" />
       <button className="button primary" onClick={onAnother}>＋ Start another batch</button>
     </div>

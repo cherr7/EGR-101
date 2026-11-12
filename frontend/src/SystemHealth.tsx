@@ -68,7 +68,7 @@ function Meter({ label, value, detail, percent, warn, bad }: { label: string; va
 function Sparkline({ label, samples, field, seconds }: { label: string; samples: { at: string; cpu: number | null; memory: number | null }[]; field: 'cpu' | 'memory'; seconds: number }) {
   const [hover, setHover] = useState<number | null>(null)
   const points = samples.map((row, index) => ({ index, at: row.at, value: row[field] })).filter(p => p.value != null) as { index: number; at: string; value: number }[]
-  if (points.length < 2) return <div className="sparkline empty"><span>{label}</span><small>Collecting — a point every {seconds} s</small></div>
+  if (points.length < 2) return <div className="sparkline empty"><span>{label}</span><small>Collecting…</small></div>
   const W = 300, H = 56, n = samples.length - 1 || 1
   const x = (i: number) => i / n * W, y = (v: number) => H - 2 - v / 100 * (H - 4)
   const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.index).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
@@ -101,7 +101,7 @@ function PiDetail({ device }: { device: Device }) {
     <Facts rows={[
       ['Model', device.model], ['System', <>{device.os}<small> · Linux {device.kernel}</small></>],
       ['Pi up for', duration(device.uptime_seconds)],
-      ['Power', flags.length ? <span className="pi-flags">{flags.map(f => <span key={f} className={'badge ' + (f === 'under_voltage' ? 'critical' : 'warning')}>{FLAG_TEXT[f] || f}</span>)}</span> : device.throttled ? 'OK (no under-voltage or throttling)' : 'Unknown'],
+      ['Power', flags.length ? <span className="pi-flags">{flags.map(f => <span key={f} className={'badge ' + (f === 'under_voltage' ? 'critical' : 'warning')}>{FLAG_TEXT[f] || f}</span>)}</span> : device.throttled ? 'OK' : 'Unknown'],
       ['CPU load', <>{device.load_average?.join(' / ') ?? '—'}<small> · {device.cores} cores</small></>],
       ['Memory', <>{ram(device.memory?.used_bytes)} of {ram(device.memory?.total_bytes)}{!!device.memory?.swap_used_bytes && <small> · {ram(device.memory.swap_used_bytes)} swap</small>}</>],
       ['SD card', <>{bytes(device.disk?.free_bytes)} free of {bytes(device.disk?.total_bytes)}{device.disk?.read_only && <span className="badge critical"> read-only</span>}</>],
@@ -137,9 +137,9 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
     return () => { alive = false; clearInterval(timer) }
   }, [healthy])
 
-  const header = <PageHeader title="System health" description="Live status of the host Mac, the scan stations, the label printer and backups. Refreshes every 10 seconds.">
+  const header = <PageHeader title="System health">
     {report && <span className={'health-overall ' + report.overall} role="status">
-      <i aria-hidden="true" />{report.overall === 'ok' ? 'All systems normal' : report.overall === 'critical' ? 'Needs attention now' : 'Check warnings'}
+      <i aria-hidden="true" />{report.overall === 'ok' ? 'All OK' : report.overall === 'critical' ? 'Problem' : 'Warnings'}
       <small>Updated {new Date(updated).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</small>
     </span>}
   </PageHeader>
@@ -162,9 +162,9 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
     </section>
 
     <section className="card" aria-label="Issues">
-      <div className="card-heading compact"><div><h2>Issues {problems > 0 && <span className="count-pill">{problems}</span>}</h2><p>Checked on every refresh. Informational notes are listed last.</p></div></div>
+      <div className="card-heading compact"><div><h2>Issues {problems > 0 && <span className="count-pill">{problems}</span>}</h2></div></div>
       {report.issues.length === 0
-        ? <div className="padded"><div className="notice success">No problems found on the host Mac, scan stations, printer or backups.</div></div>
+        ? <div className="padded"><div className="notice success">No problems.</div></div>
         : <ul className="health-issues">{report.issues.map((issue, index) => <li key={index} className={issue.level}>
             <span className={'badge ' + LEVEL[issue.level].badge}><span aria-hidden="true">{LEVEL[issue.level].icon}</span> {LEVEL[issue.level].label}</span>
             <div><b>{issue.title}</b>{issue.detail && <p>{issue.detail}</p>}</div>
@@ -192,16 +192,15 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
           ['Network', <>{host.ip ?? 'No LAN address'}{host.network_interface && <small> on {host.network_interface}</small>}</>],
           ['Power', power ? <>{power.source ?? '—'}{power.has_battery && <small> · battery {power.battery_percent}% {power.battery_state}</small>}</> : '—'],
           ['System sleep', power?.sleep_minutes == null ? '—' : power.sleep_minutes === 0 ? <>Never{power.sleep_note && <small> · {power.sleep_note}</small>}</> : `After ${power.sleep_minutes} min`],
-          ['Temperature', power ? power.thermal_warning ?? 'Normal (no throttling)' : '—'],
+          ['Temperature', power ? power.thermal_warning ?? 'Normal' : '—'],
           ['Mac started', <>{formatTime(host.booted_at)} <small>· up {since(host.booted_at, now)}</small></>],
-          ['Disk location', disk?.path],
         ]} />
       </div>
     </section>
 
     <div className="prep-bottom">
       <section className="card" aria-label="Application">
-        <div className="card-heading compact"><div><h2>Tracker app &amp; database</h2><p>The FastAPI server and PostgreSQL on this Mac.</p></div></div>
+        <div className="card-heading compact"><div><h2>Tracker app &amp; database</h2></div></div>
         <div className="padded"><Facts rows={[
           ['Server running for', <>{since(application.started_at, now)} <small>· since {formatTime(application.started_at)}</small></>],
           ['Database', database.connected ? <>Connected <small>· PostgreSQL {database.version} · {database.connections} connections</small></> : <span className="badge critical">Not reachable</span>],
@@ -216,7 +215,7 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
       <section className="card" aria-label="Label printer">
         <div className="card-heading compact"><div><h2>Label printer</h2><p>{printer.message}</p></div></div>
         {printer.queues.length === 0
-          ? <div className="empty-inline"><h3>No printer queue</h3><p>Connect the Brother label printer by USB and add it in System Settings › Printers &amp; Scanners. Its status will show here.</p></div>
+          ? <div className="empty-inline"><h3>No printer queue</h3><p>Connect the Brother label printer by USB and add it in System Settings › Printers &amp; Scanners.</p></div>
           : <div className="table-wrap"><table><thead><tr><th>Queue</th><th>State</th><th>Connection</th><th>Waiting</th></tr></thead><tbody>
             {printer.queues.map(q => <tr key={q.name}><td><b>{q.name}</b>{q.is_default && <small>Default</small>}</td>
               <td><span className={'badge ' + (q.state === 'idle' || q.state === 'printing' ? 'good' : q.state === 'disabled' ? 'warning' : 'muted')}>{q.state}</span>{q.alerts && <small>{q.alerts}</small>}</td>
@@ -227,8 +226,8 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
     </div>
 
     <section className="card" aria-label="Scan stations">
-      <div className="card-heading compact"><div><h2>Scan stations</h2><p>The kiosk page sends a heartbeat every 5 seconds (offline after 15 s). Each Pi reports its own health every 30 seconds.</p></div></div>
-      <div className="table-wrap"><table className="station-health-table"><thead><tr><th>Station</th><th>Status</th><th>Scanner</th><th>Pi address</th><th>CPU</th><th>RAM</th><th>Temp</th><th>SD free</th><th>Last heartbeat</th><th /></tr></thead><tbody>
+      <div className="card-heading compact"><div><h2>Scan stations</h2></div></div>
+      <div className="table-wrap"><table className="station-health-table"><thead><tr><th>Station</th><th>Status</th><th>Scanner</th><th>Pi address</th><th>CPU</th><th>RAM</th><th>Temp</th><th>SD free</th><th>Last seen</th><th /></tr></thead><tbody>
         {report.stations.map(s => {
           const d = s.device && !s.device.stale ? s.device : null
           const temp = d?.temperature_c
@@ -241,13 +240,12 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
               <PiCell value={d.memory?.percent == null ? '—' : `${d.memory.percent.toFixed(0)}%`} tone={tone(d.memory?.percent, 80, 90)} />
               <PiCell value={temp == null ? '—' : `${temp.toFixed(0)} °C`} tone={tone(temp, 70, 80)} title={(d.throttled?.flags || []).map(f => FLAG_TEXT[f] || f).join(', ') || undefined} />
               <PiCell value={bytes(d.disk?.free_bytes)} tone={d.disk?.read_only ? 'bad' : tone(d.disk?.percent, 90, 95)} />
-            </> : <td colSpan={4} className="pi-missing">{s.device?.stale ? `No Pi report for ${Math.round(s.device.age_seconds / 60)} min` : 'Pi health not reported'}</td>}
+            </> : <td colSpan={4} className="pi-missing">{s.device?.stale ? `No Pi report for ${Math.round(s.device.age_seconds / 60)} min` : 'No Pi stats (reinstall this Pi to add them)'}</td>}
             <td>{formatTime(s.last_seen)}</td>
             <td>{s.device && <button className="button text" aria-expanded={open === s.id} onClick={() => setOpen(open === s.id ? null : s.id)}>{open === s.id ? 'Hide' : 'Details'}</button>}</td></tr>,
           open === s.id && s.device && <tr key={s.id + '-detail'} className="pi-detail-row"><td colSpan={10}><PiDetail device={s.device} /></td></tr>]
         })}
       </tbody></table></div>
-      <div className="table-foot">Pi stats come from the station health agent (station-agent.py). Pis on an older station package show “Pi health not reported” until they are reinstalled.</div>
     </section>
   </>
 }

@@ -1,9 +1,4 @@
-"""The database schema. docs/DATABASE.md is the written definition; keep the two in step.
-
-Every generated key is a sequential integer (PostgreSQL identity). Rooms, stations and
-treatments keep short human-chosen text keys ('shared', 'shared-door', 'AR'). Nothing
-in this schema is a UUID.
-"""
+"""Database schema. Keep docs/DATABASE.md in step."""
 from datetime import datetime, timezone
 
 from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Identity, Index, Integer, String,

@@ -1,9 +1,4 @@
-"""Read-only intake of real PPE preparation workbooks into editable drafts.
-
-Excel macros, external links, and formulas are never executed. Cached values
-are used when present; an uncached formula remains an unresolved review field.
-The imported workbook remains unchanged. Nothing here creates labels or scans.
-"""
+"""Read prep workbooks into drafts. Macros and formulas never run; cached values are used."""
 from __future__ import annotations
 
 import hashlib
@@ -422,7 +417,7 @@ def _table_rows(reader, filename, header, mapping):
 def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | None = None) -> dict:
     filename = Path(filename.replace("\\", "/")).name
     if Path(filename).suffix.lower() not in {".xlsx", ".xlsm"}:
-        raise HTTPException(422, "Upload an Excel .xlsx or .xlsm workbook. Legacy .xls files must first be saved as .xlsx.")
+        raise HTTPException(422, "Upload an .xlsx or .xlsm file. Save .xls files as .xlsx first.")
     if not content or len(content) > MAX_UPLOAD:
         raise HTTPException(413, "Workbook must be nonempty and smaller than 12 MB.")
     try:
@@ -452,7 +447,7 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
         raise
     except (BadZipFile, KeyError, ValueError, OSError, TypeError, ParseError,
             DefusedXmlException, InvalidFileException) as failure:
-        raise HTTPException(422, "The workbook could not be read. Check that it opens in Excel and is not encrypted.") from failure
+        raise HTTPException(422, "Can't read this workbook. Check that it opens in Excel.") from failure
     if sheet_names and any(name not in values.sheetnames for name in sheet_names):
         raise HTTPException(422, "A selected worksheet is not present in this workbook.")
     all_candidates, all_headers, sheets = {}, {}, []
@@ -502,7 +497,7 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
     if not rows:
         warnings.append("No prep rows found in the selected sheets.")
     if len(rows) > MAX_ROWS:
-        raise HTTPException(422, "Selected worksheets produce more than 1,000 review rows. Import fewer worksheets at a time.")
+        raise HTTPException(422, "Over 1,000 rows. Import fewer sheets.")
     for sheet in sheets:
         sheet["selected"] = sheet["name"] in selected
     sha256 = hashlib.sha256(content).hexdigest()

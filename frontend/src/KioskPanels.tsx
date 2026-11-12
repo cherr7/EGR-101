@@ -150,8 +150,8 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
   if (exitStep > 0) {
     const steps = [
       null,
-      { title: 'Exit kiosk mode?', text: 'The scanner page closes and the Raspberry Pi desktop appears. Use this only for maintenance.', action: 'Continue' },
-      { title: 'Are you sure?', text: `${info.roomName} cannot record any scans until this Pi is rebooted.`, action: 'Yes, I’m sure' },
+      { title: 'Exit kiosk mode?', text: 'The Pi desktop appears. For maintenance only.', action: 'Continue' },
+      { title: 'Are you sure?', text: `${info.roomName} can’t scan until the Pi restarts.`, action: 'Yes, I’m sure' },
       { title: 'Last step', text: 'Restart the Pi to bring the scanner back.', action: 'Exit kiosk mode' },
     ]
     const step = steps[exitStep]!
@@ -159,8 +159,8 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
       <div className="modal-body kiosk-exit" data-testid="exit-step" data-step={exitStep}>
         <p className="kiosk-exit-step">Step {exitStep} of 3</p>
         <h3>{exitState === 'sent' ? 'Exiting kiosk mode…' : step.title}</h3>
-        <p>{exitState === 'sent' ? 'The scanner page is closing. Reboot the Pi to return to kiosk mode.' : step.text}</p>
-        {exitState === 'failed' && <div className="notice error" role="alert">The station did not respond. Kiosk mode is still on; reboot the Pi or try again.</div>}
+        <p>{exitState === 'sent' ? 'Restart the Pi to return.' : step.text}</p>
+        {exitState === 'failed' && <div className="notice error" role="alert">No response. Try again or restart the Pi.</div>}
       </div>
       {exitState !== 'sent' && <div className="modal-actions">
         <button type="button" className="button secondary" disabled={exitState === 'sending'} onClick={() => { setExitStep(0); setExitState('') }}>Cancel</button>
@@ -178,7 +178,6 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
     ['Connection', info.online ? 'Online' : <span className="kiosk-settings-bad">Offline</span>],
     ['Scanner', info.scanner],
     ['Station package', packageBuilt ? formatTime(packageBuilt) : '—'],
-    ['Screen', `${window.innerWidth} × ${window.innerHeight}`],
   ]
   return <Modal title="Station settings" onClose={onClose} wide>
     <div className="modal-body kiosk-settings">
@@ -188,18 +187,17 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
           {rooms.map(choice => <button key={choice.stationId} type="button" className={station === choice.stationId ? 'selected' : ''}
             aria-pressed={station === choice.stationId} disabled={roomLocked} onClick={() => onChooseRoom(choice.stationId)}>{choice.label}</button>)}
         </div>
-        <p className="kiosk-settings-help">{roomLocked ? 'Finish the current scan or undo before changing the room.' : 'Scans from this station are recorded in the selected room.'}</p>
+        {roomLocked && <p className="kiosk-settings-help">Finish the current scan first.</p>}
       </section>
       <section aria-label="After idle">
-        <h3>After idle, return to IN + Stack</h3>
+        <h3>Reset to IN + Stack after</h3>
         <div className="kiosk-settings-choices" role="group" aria-label="Idle reset">
           {IDLE_CHOICES.map(minutes => <button key={minutes} type="button" aria-pressed={idleMinutes === minutes} onClick={() => onIdleMinutes(minutes)}>{minutes ? `${minutes} min` : 'Off'}</button>)}
         </div>
-        <p className="kiosk-settings-help">The next person starts from IN and Stack. The room never changes.</p>
       </section>
       <section aria-label="Scanner setup">
         <h3>Scanner setup</h3>
-        <button type="button" className="button secondary" onClick={onScannerSetup}>Show scanner setup codes</button>
+        <button type="button" className="button secondary" onClick={onScannerSetup}>Setup codes</button>
       </section>
       <section aria-label="Station info" className="kiosk-settings-info">
         <h3>Station info</h3>
@@ -208,8 +206,7 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
       </section>
       {info.onPi && <section aria-label="Exit kiosk mode" className="kiosk-settings-exit">
         <h3>Exit kiosk mode</h3>
-        <p className="kiosk-settings-help">Shows the Pi desktop for maintenance. A reboot returns to kiosk mode.</p>
-        <button type="button" className="button danger-quiet" disabled={roomLocked} onClick={() => setExitStep(1)}>Exit kiosk mode…</button>
+        <button type="button" className="button danger-quiet" disabled={roomLocked} onClick={() => setExitStep(1)}>Exit kiosk mode</button>
       </section>}
     </div>
     <div className="modal-actions"><button type="button" className="button primary" onClick={onClose}>Done</button></div>

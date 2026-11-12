@@ -21,7 +21,6 @@ const pages = [
 ] as const
 function currentView(): View {
   const value = location.hash.slice(1).split('?')[0].split('/')[0]
-  // Older links keep working: the Stacks overview became the dashboard, Prep became the batch wizard.
   const aliases: Record<string, View> = { supervisor: 'transactions', specimens: 'records', overview: 'dashboard', prep: 'batch' }
   if (aliases[value]) return aliases[value]
   return ['dashboard', 'batch', 'records', 'transactions', 'backups', 'health', 'kiosk'].includes(value) ? value as View : 'dashboard'
@@ -54,7 +53,6 @@ export default function App() {
   }, [])
   const kiosk = view === 'kiosk'
   useEffect(() => {
-    // Sidebar badge on System health; the page itself refreshes faster while it is open.
     if (!healthy || kiosk) return
     let alive = true
     const load = () => api<HealthReport>('/system/health', {}, 8000).then(report => {
@@ -78,7 +76,7 @@ export default function App() {
         </button>)}
       </nav>
       <div className="side-foot">
-        <a className="station-link" href="#kiosk" target="_blank" rel="noreferrer">Room station ↗</a>
+        <a className="station-link" href="#kiosk" target="_blank" rel="noreferrer">Room station</a>
         <span className={'connection ' + (healthy === false ? 'bad' : healthy ? 'good' : '')} role="status">
           <i aria-hidden="true" />{healthy === null ? 'Connecting…' : healthy ? 'Online' : 'Offline'}
         </span>
@@ -86,7 +84,7 @@ export default function App() {
       </div>
     </aside>
     <div className="main-shell">
-      {healthy === false && <div className="offline-banner" role="alert"><strong>Offline</strong>Can’t reach the database. Nothing can be saved or printed until it’s back.</div>}
+      {healthy === false && <div className="offline-banner" role="alert"><strong>Offline</strong>Can’t reach the server.</div>}
       <main>
         {view === 'dashboard' && <Dashboard config={config} healthy={healthy === true} />}
         {view === 'batch' && <BatchWizard config={config} healthy={healthy === true} />}

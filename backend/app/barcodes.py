@@ -1,10 +1,4 @@
-"""Sequential label numbers with a Damm check digit, in fixed 16 x 16 ECC200 Data Matrix symbols.
-
-A specimen's label code is its database number followed by one Damm check digit,
-which catches every single-digit typo and every swap of neighbouring digits when
-someone types a code from a damaged label. Digits only: a keyboard-wedge scanner
-types them identically on every layout, and ECC200 packs two digits per codeword.
-"""
+"""Label codes: the specimen number plus a Damm check digit, as a 16 x 16 Data Matrix."""
 from __future__ import annotations
 
 from PIL import Image

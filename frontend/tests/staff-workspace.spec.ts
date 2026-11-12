@@ -22,7 +22,7 @@ async function move(request: APIRequestContext, value: { specimens: { id: number
 test('prep edits survive reload and navigation without an extra Save step', async ({ page }) => {
   await page.goto('/#batch/new')
   await expect(page.getByText('Online', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Type the prep sheet →' }).click()
+  await page.getByRole('button', { name: 'Enter by hand' }).click()
   await page.getByLabel('Oracle project').fill('00073-DEMO-REVIEW')
   await page.getByLabel('Sample Number, row 1').fill('DEMO material edit to preserve')
   await page.getByLabel('Specimens per sample for Conditioning, row 1').fill('17')
@@ -60,7 +60,7 @@ test('registration recovers a saved prep sheet after its PUT response is lost', 
   await expect(page.getByLabel('Sample Number, row 1')).toHaveValue('DEMO reviewed and saved')
   // The lost save did land; registration finds the same values on the server and uses them.
   await page.getByRole('button', { name: 'Register 1 stack', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '3 · Print labels' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Print labels', exact: true })).toBeVisible()
   await expect(page).toHaveURL(new RegExp('#batch/' + draft.id + '/print$'))
   const registered = await (await request.get('/api/prep-drafts/' + draft.id)).json()
   expect(registered.committed).toBe(true)
@@ -196,7 +196,7 @@ test('a committed restore with a lost response reconciles after reload without a
   await page.getByLabel('Import backup archive').setInputFiles({
     name: backup.filename, mimeType: 'application/zip', buffer: await download.body(),
   })
-  const dialog = page.getByRole('dialog', { name: 'Restore validated backup?' })
+  const dialog = page.getByRole('dialog', { name: 'Restore backup?' })
   await dialog.getByLabel('Restore confirmation').fill('RESTORE')
   await dialog.getByRole('button', { name: 'Restore backup', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: /No answer yet|Still checking whether the restore finished/ }).first()).toBeVisible()
@@ -212,13 +212,13 @@ test('a printed stack can be corrected, extended and trimmed without changing it
   const value = await stack(request, 3, 'DEMO-EDIT-' + tag(), 'DEMO wrong material')
   const labels = value.specimens.map((s: { barcode_value: string }) => s.barcode_value)
   await page.goto('/#records?stack=' + value.id)
-  const details = page.getByRole('dialog', { name: 'Stack & specimen details' })
+  const details = page.getByRole('dialog', { name: 'Stack' })
   await details.getByRole('button', { name: 'Edit stack', exact: true }).click()
   const editor = page.getByRole('dialog', { name: 'Edit stack ' + value.id })
   await editor.getByLabel('Stack material').fill('DEMO right material')
   await editor.getByLabel('Stack treatment').fill('5L')
   await editor.getByRole('button', { name: 'Save details', exact: true }).click()
-  await expect(editor.getByRole('status')).toContainText('Printed labels still scan to this stack')
+  await expect(editor.getByRole('status')).toContainText('Saved.')
   await editor.getByLabel('Specimens to add').fill('2')
   await expect(editor).toContainText('They become #04 to #05')
   await editor.getByRole('button', { name: 'Add & print new labels', exact: true }).click()

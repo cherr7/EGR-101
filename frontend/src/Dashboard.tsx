@@ -94,8 +94,8 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
   return <>
     <PageHeader title="Dashboard" description={data ? `Updated ${formatTime(data.server_time)}` : undefined}>
       <div className="header-actions">
-        <button className="button secondary" disabled={!healthy} onClick={() => setRefresh(v => v + 1)}>↻ Refresh</button>
-        <a className="button primary" href="#batch/new">＋ New batch</a>
+        <button className="button secondary" disabled={!healthy} onClick={() => setRefresh(v => v + 1)}>Refresh</button>
+        <a className="button primary" href="#batch/new">New batch</a>
       </div>
     </PageHeader>
     <ErrorNotice message={error} />
@@ -135,7 +135,6 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
       <section className="card" aria-labelledby="gaps-heading">
         <div className="card-heading"><div>
           <h2 id="gaps-heading">Needs attention <span className={'count-pill ' + (gapCount ? 'warn' : '')}>{gapCount}</span></h2>
-          <p>Registered pieces not in a room yet.</p>
         </div></div>
         {!gapCount && <div className="empty-inline compact"><p>Nothing waiting.</p></div>}
         {gaps!.needs_labels.length > 0 && <div className="gap-group">
@@ -155,8 +154,7 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
           <ShowMore total={gaps!.needs_labels.length} shown={GAP_ROWS} open={expanded.labels} noun="stacks" onToggle={() => setExpanded(e => ({ ...e, labels: !e.labels }))} />
         </div>}
         {gaps!.not_scanned_in.length > 0 && <div className="gap-group">
-          <div className="gap-heading"><h3>Labeled, not scanned in <span className="count-pill">{gaps!.not_scanned_in.length}</span></h3>
-            <span className="subtle">Scan these IN at their room.</span></div>
+          <div className="gap-heading"><h3>Not scanned in <span className="count-pill">{gaps!.not_scanned_in.length}</span></h3></div>
           <div className="table-wrap"><table>
             <thead><tr><th>Stack</th><th>Not in a room</th><th>Labels printed</th><th>Batch</th><th /></tr></thead>
             <tbody>{(expanded.scan ? gaps!.not_scanned_in : gaps!.not_scanned_in.slice(0, GAP_ROWS)).map(s => {
@@ -184,26 +182,25 @@ export default function Dashboard({ config, healthy }: { config: Config; healthy
           {(expanded.batches ? openBatches : openBatches.slice(0, BATCH_CARDS)).map(b => <article className="batch-card" key={b.id} data-testid={'batch-' + b.id}>
             <header><a href={'#batch/' + b.id + '/done'}><b>{b.label}</b></a><small>{formatTime(b.created_at)} · {b.stacks} {b.stacks === 1 ? 'stack' : 'stacks'} · {b.stages.total} pieces</small></header>
             <BatchProgress stages={b.stages} legend />
-            <footer><a className="button text" href={'#dashboard?batch=' + b.id}>Show only this batch</a><a className="button text" href={'#transactions?batch=' + b.id}>History →</a></footer>
+            <footer><a className="button text" href={'#dashboard?batch=' + b.id}>Filter</a><a className="button text" href={'#transactions?batch=' + b.id}>History</a></footer>
           </article>)}
         </div>
         <ShowMore total={openBatches.length} shown={BATCH_CARDS} open={expanded.batches} noun="batches" onToggle={() => setExpanded(e => ({ ...e, batches: !e.batches }))} />
         {closedBatches.length > 0 && <details className="closed-batches padded">
           <summary>Recently completed · {closedBatches.length}</summary>
           {closedBatches.map(b => <div className="export-row" key={b.id}><div><b>{b.label}</b><small>{formatTime(b.created_at)} · {b.stages.total} pieces finished</small></div>
-            <a className="button text" href={'#transactions?batch=' + b.id}>History →</a></div>)}
+            <a className="button text" href={'#transactions?batch=' + b.id}>History</a></div>)}
         </details>}
       </section>
 
       <section className="card" aria-labelledby="ready-heading">
         <div className="card-heading"><div>
           <h2 id="ready-heading">Ready to remove <span className="count-pill">{readyTotal}</span></h2>
-          <p>Finished 24 hours. Oldest first.</p>
         </div></div>
         <div className="ready-rooms">{data.ready.map(room => <ReadyRoomList key={room.room_id} room={room} serverTime={data.server_time} onOpen={id => void openStack(id)} />)}</div>
       </section>
     </>}
-    {detail && <Modal title="Stack & specimen details" wide onClose={() => setDetail(null)}>
+    {detail && <Modal title="Stack" wide onClose={() => setDetail(null)}>
       <div className="modal-body"><StackDetail stack={detail} config={config} healthy={healthy}
         onChanged={value => { setDetail(value); setRefresh(v => v + 1) }} /></div>
     </Modal>}

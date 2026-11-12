@@ -4,14 +4,8 @@
   render-nginx.py TEMPLATE API_ORIGIN DNS_IPV4 [FALLBACK_ORIGIN]
   render-nginx.py --check-fallback FALLBACK_ORIGIN
 
-Without a fallback, nginx resolves API_ORIGIN's name through DNS_IPV4 on every request.
-
-With a fallback (the Mac's local-network address, http://IP:PORT), /api goes to an upstream
-group: the address API_ORIGIN's name has now (its Tailscale address, which stays the same for
-the life of the device), then the fallback while the first cannot be reached. nginx retries the
-next address only when the request never reached the Mac (connection refused or timed out), and
-never re-sends a POST that may have arrived, so a scan or print is not sent twice. It tries the
-main address again after 30 seconds.
+With a fallback (http://IP:PORT on the local network), /api tries the Tailscale address first,
+then the fallback. A request that may have reached the Mac is never re-sent.
 """
 import ipaddress
 import socket

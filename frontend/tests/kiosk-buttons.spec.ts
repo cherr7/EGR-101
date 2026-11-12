@@ -67,7 +67,7 @@ async function pickRoom(page: Page, room: 'Shared' | 'PPE' | 'Footwear', audit =
   await expect(settings).toBeVisible()
   if (audit) {
     const found = await auditButtons(page, settings)
-    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Show scanner setup codes', 'Reload page', 'Done', 'Close dialog']))
+    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Setup codes', 'Reload page', 'Done', 'Close dialog']))
   }
   const button = settings.getByRole('group', { name: 'Conditioning room' }).getByRole('button', { name: room, exact: true })
   await button.tap()
@@ -131,7 +131,7 @@ test('panels: setup, inventory and activity buttons work by touch and block scan
   await openKiosk(page)
 
   await page.getByRole('button', { name: 'Station settings', exact: true }).tap()
-  await page.getByRole('dialog', { name: 'Station settings' }).getByRole('button', { name: 'Show scanner setup codes', exact: true }).tap()
+  await page.getByRole('dialog', { name: 'Station settings' }).getByRole('button', { name: 'Setup codes', exact: true }).tap()
   const setup = page.getByRole('dialog', { name: 'Scanner setup' })
   await expect(setup).toBeVisible()
   await auditButtons(page, setup)
@@ -183,7 +183,7 @@ test('popups: individual selection and early checkout buttons are touch-sized an
   await auditButtons(page, selection)
   await selection.getByRole('button', { name: 'Clear', exact: true }).tap()
   await expect(selection.getByRole('button', { name: 'Record 0 OUT', exact: true })).toBeDisabled()
-  await selection.getByRole('button', { name: /^Select all eligible/ }).tap()
+  await selection.getByRole('button', { name: /^Select all/ }).tap()
   await expect(selection.getByRole('button', { name: 'Record 4 OUT', exact: true })).toBeEnabled()
   for (const n of ['01', '03', '04']) await selection.locator('label', { hasText: new RegExp('^' + n) }).tap()
   await selection.getByRole('button', { name: 'Record 1 OUT', exact: true }).tap()

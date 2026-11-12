@@ -1,9 +1,4 @@
-"""Live scanner-station presence and the host's LAN address for the staff sidebar.
-
-Presence is deliberately in memory: it describes the last few seconds, not the
-audit record, and repopulates within one heartbeat interval after a restart.
-Behind a Pi's nginx proxy, the client address seen here is that Pi's LAN IP.
-"""
+"""Scanner station presence (in memory) and the host's address for the sidebar."""
 from collections import deque
 from datetime import datetime, timedelta, timezone
 import re

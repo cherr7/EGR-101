@@ -145,7 +145,7 @@ export default function LabelPrinter({
             catch (retryError) { setError('Still no answer about the last print. ' + (retryError as Error).message) }
           } else {
             setJob({ request_id: intent.request_id, status: 'unknown',
-              message: 'Can’t check this old print request. Look at the printer, then allow a reprint if nothing came out.' })
+              message: 'Can’t check this print. Look at the printer.' })
           }
         } else setError('Still no answer about the last print. Try Check again.')
       }
@@ -178,7 +178,7 @@ export default function LabelPrinter({
     try { intent = { ...selection, request_id: await nextRequestId('print'), printer_queue: queue, copies } }
     catch (err) { printLock.current = false; setError('Couldn’t get a print number from the Mac. ' + (err as Error).message); return }
     try { localStorage.setItem(PRINT_KEY, JSON.stringify(intent)) }
-    catch { printLock.current = false; setError('This browser blocks local storage, which printing needs. Turn it on and try again.'); return }
+    catch { printLock.current = false; setError('Browser storage is off. Printing needs it.'); return }
     setPending(intent)
     setBusy(true)
     setError('')
@@ -292,37 +292,37 @@ export default function LabelPrinter({
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
         </div>
         {previewURL ? <div className="label-preview-image"><img src={previewURL} alt={`Preview of ${Math.min(selected.length, 12)} of ${selected.length} labels`} />
-          {selected.length > 12 && <p className="input-help">Showing the first 12 of {selected.length} labels. Open the PDF to see every page.</p>}</div> :
+          {selected.length > 12 && <p className="input-help">First 12 of {selected.length}.</p>}</div> :
           <div className="pdf-preview preview-empty" role="status">{previewing ? 'Loading preview…' : !selected.length ? 'Select labels to preview.' : !healthy ? 'Preview unavailable offline.' : 'Preview unavailable.'}</div>}
-        {printers && !printers.available && <p className="input-help">No printer available. Open the PDF, print it, then choose “I printed these from the PDF”.</p>}
+        {printers && !printers.available && <p className="input-help">No printer. Print the PDF instead.</p>}
         {chosen && (!chosen.label_printer || !!chosen.warnings?.length) && <div className="notice warning printer-warnings" role="status"><ul>
-          {!chosen.label_printer && <li>This isn’t the Brother label printer. Labels are sized for 62 × 29 mm DK-1209 rolls.</li>}
+          {!chosen.label_printer && <li>Not the Brother label printer.</li>}
           {chosen.warnings?.map(warning => <li key={warning}>{warning}</li>)}
         </ul></div>}
-        <p className="input-help">Load DK-1209 labels (62 × 29 mm die-cut). Another roll prints the wrong size or stops the printer.</p>
+        <p className="input-help">Use DK-1209 labels (62 × 29 mm).</p>
         {job && <div className={'notice ' + (job.status === 'submitted' && !job.waiting_cups_jobs ? 'success' : job.status === 'failed' ? 'error' : 'warning')} role="status">
           {job.status === 'submitted' ? job.message || 'Sent to printer.' : job.message || job.error || job.status}
         </div>}
         {manual === 'done' && <div className="notice success" role="status">Recorded: {selected.length} {selected.length === 1 ? 'label' : 'labels'} printed from the PDF.</div>}
         {pending && <div className="notice warning">
-          <b>No answer from the printer yet. Check whether labels came out before printing again.</b>
+          <b>No answer from the printer. Check whether labels came out.</b>
           <button className="button secondary" disabled={!healthy || busy} onClick={() => void checkPrevious()}>Check again</button>
           {job?.status === 'unknown' && <button className="button text" disabled={busy} onClick={() => {
             forgetPending(); setPending(null); setJob(null)
-          }}>Nothing printed: allow reprint</button>}
+          }}>Nothing printed</button>}
         </div>}
         <ErrorNotice message={error} />
       </section>
     </div>
     <div className={variant === 'modal' ? 'modal-actions' : 'card-actions'}>
-      <button className="button secondary" disabled={!valid || !healthy} onClick={openPdf}>Open PDF ↗</button>
+      <button className="button secondary" disabled={!valid || !healthy} onClick={openPdf}>Open PDF</button>
       {valid && manual !== 'done' && <button className="button text" disabled={!healthy || busy || !valid}
-        onClick={() => void confirmManual()}>{manual === 'confirming' ? 'Recording…' : 'I printed these from the PDF'}</button>}
+        onClick={() => void confirmManual()}>{manual === 'confirming' ? 'Recording…' : 'Printed from PDF'}</button>}
       <span className="grow" />
       {extraActions}
       {onClose && <button className="button secondary" disabled={busy} onClick={onClose}>{closeLabel}</button>}
       <button className="button primary" disabled={!canPrint} onClick={() => void print()}>
-        {busy && manual !== 'confirming' ? 'Checking print request…' : 'Print ' + selected.length * copies + (selected.length * copies === 1 ? ' label' : ' labels')}
+        {busy && manual !== 'confirming' ? 'Printing…' : 'Print ' + selected.length * copies + (selected.length * copies === 1 ? ' label' : ' labels')}
       </button>
     </div>
   </>

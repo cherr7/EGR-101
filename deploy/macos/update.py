@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
-"""Update the Mac host to a release, with a backup first and automatic rollback.
+"""Update the Mac host to a release: back up, switch, and roll back if it fails to start.
 
-  python3 deploy/macos/update.py              newest release tag (v*) on origin/main
-  python3 deploy/macos/update.py --ref v2026.11.12-1
-  python3 deploy/macos/update.py --ref origin/main    the tip of main, before a tag exists
-  python3 deploy/macos/update.py --check      say what would happen; change nothing
-  python3 deploy/macos/update.py --status     the running release and the last update
+  update.py                 newest v* tag on origin/main
+  update.py --ref REF       a tag, or origin/main
+  update.py --check         show what would happen
+  update.py --status        running release and last update
 
-Run it from the git checkout on the Mac (~/scanner_host). Each release is built into its own
-folder, <state>/releases/<version>, from a clean copy of that commit; <state>/releases/current
-points at the one that runs. The server always starts from releases/current/deploy/macos/host.py.
-
-Steps: fetch; refuse anything not on origin/main; build the release while the old one keeps
-running; stop if the database's migration is unknown to the new code (nothing touched yet);
-back up to ~/fabric-backups; stop, switch, start; if the new release is not healthy, switch back
-and start the old one. The result is kept in <state>/update-status.json for System health.
+Releases live in <state>/releases/<version>; releases/current is the one that runs.
 """
 import argparse
 from datetime import datetime, timezone

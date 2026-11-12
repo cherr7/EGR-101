@@ -197,7 +197,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     if (inFlight.current || !healthy || stored<Movement>(PENDING_KEY) || stored<PendingUndo>(UNDO_KEY)) return
     clearTimeout(greenTimer.current); feedbackRevision.current++
     inFlight.current = true; setBusy(true); setGreen(false); setUndoMessage(''); setError(''); setResult(null)
-    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); reportError('This browser blocks local storage, which scanning needs. Turn it on.', 'setup'); return }
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); reportError('Browser storage is off. Scanning needs it.', 'setup'); return }
     try { const value = await post<MovementResult>('/movements', request); if (active.current) await accept(value, request, loaded) }
     catch (err) { if (!active.current) return; if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); reportError(err.message) } else reportError('Connection dropped. Checking whether the scan saved…') }
     finally { inFlight.current = false; if (active.current) setBusy(false) }
@@ -269,7 +269,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   async function undo(target: Last | null = undoTarget) {
     if (!target || !healthy || transactionBlocked || inFlight.current || stored<PendingUndo>(UNDO_KEY)) return
     const intent: PendingUndo = { ...target, body: { expected_version: target.version }, submitted_at: new Date().toISOString() }
-    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { reportError('This browser blocks local storage, which Undo needs. Turn it on.', 'setup'); return }
+    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { reportError('Browser storage is off. Undo needs it.', 'setup'); return }
     setPendingUndo(intent); setGreen(false); setResult(null); setUndoMessage(''); setError('')
     await reconcileUndo()
   }
@@ -320,11 +320,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
             onClick={() => { clearFeedback(); setScope('specimen') }}>Individual</button>
         </div>
         <div className="scanner-network">
-          <div className="scanner-status"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
-            {bridgeConfigured && <small className={'scanner-ip ' + (inputStatus.localIps.length ? '' : 'missing')} aria-label="Station IP address">
-              Station {inputStatus.localIps.length ? inputStatus.localIps.join(' · ') : inputStatus.connected ? 'no network' : 'IP unknown'}</small>}
-            <small className={'scanner-ip ' + (healthy ? '' : 'missing')} aria-label="Server address" data-testid="server-address">
-              {healthy ? 'Server ' : 'Can’t reach '}{serverAddress}</small></div>
+          <div className="scanner-status"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span></div>
           <button type="button" className="scanner-setup-button" aria-label="Station settings" title="Station settings" disabled={blocked} onClick={() => setPanel('settings')}>
             <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button></div>
@@ -393,8 +389,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
       {panel === 'inventory' && <KioskInventory roomId={currentRoomId} healthy={healthy} notice={error} onClose={() => setPanel(null)} />}
 
       {selection && <Modal title="Choose pieces" onClose={() => !busy && setSelection(null)} wide>
-        <div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · Move <b>{selection.direction}</b>. Pick the pieces.</p>
-          <div className="selection-tools"><button className="button secondary" onClick={() => setSelection(old => old && { ...old, ids: eligible.map(s => s.id) })}>Select all eligible ({eligible.length})</button>
+        <div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · <b>{selection.direction}</b></p>
+          <div className="selection-tools"><button className="button secondary" onClick={() => setSelection(old => old && { ...old, ids: eligible.map(s => s.id) })}>Select all ({eligible.length})</button>
             <button className="button text" onClick={() => setSelection(old => old && { ...old, ids: [] })}>Clear</button></div>
           <div className="selection-grid">{selection.stack.specimens.map(s => {
             const allowed = eligible.some(item => item.id === s.id)

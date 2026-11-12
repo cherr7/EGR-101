@@ -1,10 +1,4 @@
-"""Edit a registered stack after its labels are printed.
-
-Label codes are specimen ids, and nothing here changes an id or a specimen's number, so
-every printed label keeps scanning to the same physical piece. Added specimens continue
-the stack's numbering and need only their own new labels. A removed specimen keeps its
-number and history; scanning its label is refused with a clear message.
-"""
+"""Edit a registered stack. Specimen ids never change, so printed labels keep working."""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
@@ -92,7 +86,7 @@ def remove_specimens(stack_id: int, body: RemoveSpecimensBody, db=Depends(get_db
         if len(set(ids)) != len(ids) or any(i not in members or members[i].removed_at is not None for i in ids):
             raise HTTPException(422, "Choose specimens that are still on this stack.")
         if sum(p.removed_at is None for p in members.values()) - len(ids) < 1:
-            raise HTTPException(422, "A stack keeps at least one specimen. Remove the whole stack's labels from use instead.")
+            raise HTTPException(422, "A stack needs at least one specimen.")
         inside = [members[i].number for i in ids if current_session(db, i) is not None]
         if inside:
             raise HTTPException(409, "Check these specimens out of the room first: " + ", ".join(f"{n:02d}" for n in sorted(inside)))

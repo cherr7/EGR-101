@@ -176,3 +176,15 @@ def test_label_job_accepts_every_stack_of_a_large_registered_job():
     # A filled 1970 job prep sheet registers 120+ stacks; previewing them is one job.
     from app.printing import LabelPreviewBody
     assert len(LabelPreviewBody(stack_ids=list(range(1, 151))).stack_ids) == 150
+
+
+def test_preferred_printer_is_saved_on_the_host_and_must_be_installed(client, monkeypatch, tmp_path):
+    install_fake_cups(monkeypatch)
+    monkeypatch.setenv("FABRIC_STATE_DIR", str(tmp_path))
+    assert client.get("/api/printers").json()["preferred_queue"] is None
+    assert client.put("/api/printers/preferred", json={"queue": "Office_Laser"}).status_code == 409
+    assert client.put("/api/printers/preferred", json={"queue": "Brother_QL"}).json()["preferred_queue"] == "Brother_QL"
+    assert client.get("/api/printers").json()["preferred_queue"] == "Brother_QL"
+    assert client.put("/api/printers/preferred", json={"queue": None}).json()["preferred_queue"] is None
+    (tmp_path / "printer.json").write_text("not json")
+    assert client.get("/api/printers").json()["preferred_queue"] is None

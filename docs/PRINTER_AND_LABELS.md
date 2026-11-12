@@ -44,6 +44,16 @@ Wi-Fi only helps if the printer needs to sit away from the Mac. The printer and 
 2. It should appear as **Brother QL-810W** (Kind: Bonjour). Select it and click Add.
 3. If it doesn't appear but the printer is on the network (for example on a different subnet), use the **IP** tab: enter the printer's IP address, Protocol **IPP**, then Add. Ask IT for a reserved address so it doesn't change.
 
+### What worked on DukeOpen (Nov 12, 2026)
+
+1. Register the printer's MAC address on DukeReg. The MAC is on the printer's Network Status page, or on its settings report (hold Cut for about a second). Then wait about an hour.
+2. Join the network: open the printer's own web page over USB (`http://localhost:<port>/` on the Mac; the port shows in its Bonjour record). Log in with the "Pwd" password from the printer's label. Under **Network → Wireless → Wireless (Personal)**, click **Browse**, choose `DukeOpen`, keep Open System / None, and Submit. Restart the printer. The Wi-Fi light goes steady, and **TCP/IP (Wireless)** shows a 10.194.x.x address.
+3. Add it by IP on the Mac. DukeOpen doesn't pass the printer's Bonjour name, so it won't appear on its own:
+   `lpadmin -p Brother_QL_810W_WiFi -E -v ipp://<printer-ip>/ipp/print -m everywhere`
+4. In the app's Print panel, pick the Wi-Fi printer and tick **Default for everyone**. The Mac saves that choice, and every staff browser starts on that printer. `TRACKER_PRINTER_QUEUE`, if set, overrides it.
+
+Ask OIT to reserve the printer's IP address. Otherwise a new address breaks printing until the printer is added again by its new address. Keep the USB printer installed as a backup.
+
 ### Can I just use AirPrint if they're on the same Wi-Fi?
 
 Yes, to get started. Brother lists the QL-810W as AirPrint-capable, so macOS can add it without installing anything, by USB or Wi-Fi. The app prints by sending each label to the Mac queue with these options:

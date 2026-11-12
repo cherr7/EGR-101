@@ -111,6 +111,28 @@ def queue_health(lpstat: str, queue: str) -> dict:
     return {"state": state, "alerts": alerts, "waiting_jobs": len(waiting), "warnings": warnings}
 
 
+def _preference_path() -> FilePath:
+    base = FilePath(os.environ.get("FABRIC_STATE_DIR", str(FilePath.home() / "Library/Application Support/Fabric Conditioning")))
+    return base / "printer.json"
+
+
+def preferred_queue() -> str | None:
+    """The printer staff chose as the default for every browser (saved on the Mac, not per browser)."""
+    try:
+        value = json.loads(_preference_path().read_text()).get("preferred_queue")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, str) and QUEUE_PATTERN.fullmatch(value) else None
+
+
+def save_preferred_queue(queue: str | None) -> None:
+    path = _preference_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"preferred_queue": queue}))
+    temporary.replace(path)
+
+
 def printer_inventory() -> dict:
     configured = os.getenv("TRACKER_PRINTER_QUEUE", "").strip() or None
     lp, lpstat = shutil.which("lp"), shutil.which("lpstat")
@@ -138,6 +160,8 @@ def printer_inventory() -> dict:
                           for name in sorted(set(names))]
     result["available"] = bool(names)
     result["enabled"] = configured in names
+    preferred = preferred_queue()
+    result["preferred_queue"] = preferred if preferred in names else None
     result["message"] = ("Choose a printer after reviewing the labels."
                          if names else "No accepting printer queues found. Add the Brother printer in macOS Settings.")
     if configured and configured not in names:
@@ -180,6 +204,21 @@ def _job_dict(job: PrintJob) -> dict:
 
 @router.get("/printers")
 def list_printers():
+    return printer_inventory()
+
+
+class PreferredPrinterBody(BaseModel):
+    queue: str | None = Field(default=None, max_length=200)
+
+
+@router.put("/printers/preferred")
+def set_preferred_printer(body: PreferredPrinterBody):
+    """Make one installed printer the default in every staff browser, or clear it (queue = null)."""
+    if body.queue is not None:
+        names = {item["name"] for item in printer_inventory()["printers"]}
+        if not QUEUE_PATTERN.fullmatch(body.queue) or body.queue not in names:
+            raise HTTPException(409, "Choose an installed printer.")
+    save_preferred_queue(body.queue)
     return printer_inventory()
 
 

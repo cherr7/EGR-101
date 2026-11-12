@@ -83,7 +83,7 @@ export default function LabelPrinter({
       if (current) {
         setPrinters(value)
         // Never fall back to the Mac's default printer: that is usually an office printer, not the label roll.
-        setQueue(previous => previous || value.configured_queue || value.printers.find(p => /\bQL|Brother/i.test(p.name))?.name || '')
+        setQueue(previous => previous || value.configured_queue || value.preferred_queue || value.printers.find(p => /\bQL|Brother/i.test(p.name))?.name || '')
       }
     }).catch(() => { if (current) setPrinters(null) })
     return () => { current = false }
@@ -218,6 +218,11 @@ export default function LabelPrinter({
   }
   const allIds = stacks.flatMap(stack => stack.specimens.map(s => s.id))
   const chosen = printers?.printers.find(printer => printer.name === queue)
+  const isDefault = !!queue && printers?.preferred_queue === queue
+  async function setDefault(on: boolean) {
+    try { setPrinters(await api<PrinterInfo>('/printers/preferred', { method: 'PUT', body: JSON.stringify({ queue: on ? queue : null }) })) }
+    catch (err) { setError((err as Error).message) }
+  }
   function openPdf() {
     // Open the window inside the click so pop-up blockers allow it, then fill it with the exact print PDF.
     const tab = window.open('', '_blank')
@@ -278,6 +283,11 @@ export default function LabelPrinter({
                 {printer.name}{printer.label_printer ? '' : ' (not a label printer)'}{printer.alerts?.includes('offline') ? ' · offline' : ''}</option>)}
             </select>
           </label>
+          {queue && !printers?.configured_queue && <label className="check-label">
+            <input type="checkbox" aria-label="Use this printer by default" checked={isDefault} disabled={busy}
+              onChange={e => void setDefault(e.target.checked)} />
+            <span>Default for everyone</span>
+          </label>}
           <label>Copies<input aria-label="Print copies" type="number" min="1" max="10"
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
         </div>

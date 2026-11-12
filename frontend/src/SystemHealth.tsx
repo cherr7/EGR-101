@@ -17,7 +17,7 @@ type Device = {
   network: { interface: string | null; wifi_signal_dbm: number | null; wired: boolean | null } | null
   ntp_synchronized: boolean | null; services: Record<string, { state: string; restarts: number | null }> | null
   input: { scanner: string | null; scanner_name: string | null; scanner_error: string | null; nfc: string | null } | null
-  package_built_at: string | null; history: { at: string; cpu: number | null; memory: number | null; temperature: number | null }[]
+  package_built_at: string | null; package_version?: string | null; history: { at: string; cpu: number | null; memory: number | null; temperature: number | null }[]
 }
 type Station = { id: string; name: string; status: 'ready' | 'no_scanner' | 'offline' | 'never_seen'; ip: string | null; last_seen: string | null; scanner_ready: boolean; input: string | null; live_clients: string[]; device: Device | null }
 type Queue = { name: string; is_default: boolean; state: string; alerts: string | null; device: string | null; jobs_waiting: number }
@@ -26,7 +26,7 @@ export type HealthReport = {
   server_time: string; overall: 'ok' | 'warning' | 'critical'; issues: Issue[]
   host: { hostname: string; ip: string | null; network_interface: string | null; model: string | null; chip: string | null; os: string; cores: number | null; load_average: number[] | null; booted_at: string | null; python: string }
   cpu: { percent: number | null }; memory: Memory | null; storage: Volume[]; power: Power | null
-  application: { started_at: string; state_folder: string; logs_bytes: number | null; pid: number }
+  application: { version?: string; commit?: string | null; built_at?: string | null; last_update?: { result: string; version: string; previous?: string; at: string; reason?: string } | null; started_at: string; state_folder: string; logs_bytes: number | null; pid: number }
   database: { connected: boolean; size_bytes?: number; version?: string; started_at?: string; connections?: number; specimens?: number; audit_events?: number }
   backups: { available: boolean; count?: number; total_bytes?: number; folder?: string; latest_at?: string | null; latest_verified?: boolean | null; enabled?: boolean; overdue?: boolean; last_error?: string | null; next_run_at?: string | null }
   stations: Station[]
@@ -94,7 +94,7 @@ const FLAG_TEXT: Record<string, string> = {
 function PiCell({ value, tone: cls, title }: { value: string; tone?: string; title?: string }) {
   return <td className={'pi-cell ' + (cls || '')} title={title}>{value}</td>
 }
-function PiDetail({ device }: { device: Device }) {
+function PiDetail({ device, expected }: { device: Device; expected?: string }) {
   const flags = device.throttled?.flags || []
   const net = device.network
   return <div className="pi-detail">
@@ -109,7 +109,7 @@ function PiDetail({ device }: { device: Device }) {
       ['Clock', <>{device.clock_skew_seconds == null ? '—' : Math.abs(device.clock_skew_seconds) < 5 ? 'In sync with the Mac' : `${device.clock_skew_seconds > 0 ? 'Ahead' : 'Behind'} by ${Math.abs(device.clock_skew_seconds).toFixed(0)} s`}{device.ntp_synchronized != null && <small> · NTP {device.ntp_synchronized ? 'synced' : 'not synced'}</small>}</>],
       ['Services', device.services ? <span className="pi-flags">{Object.entries(device.services).map(([name, info]) => <span key={name} className={'badge ' + (info.state === 'active' ? 'good' : 'warning')} title={`${info.restarts ?? 0} automatic restarts`}>{name}: {info.state}{info.restarts ? ` · ${info.restarts}↻` : ''}</span>)}</span> : '—'],
       ['Scanner device', device.input ? <>{device.input.scanner_name || device.input.scanner || '—'}{device.input.scanner_error && <small> · {device.input.scanner_error}</small>}</> : '—'],
-      ['Station package', <>{formatTime(device.package_built_at)}<small> · report {device.age_seconds} s ago</small></>],
+      ['Version', <>{device.package_version ?? 'Unknown'}{device.package_version && expected && device.package_version !== expected && <span className="badge warning"> behind the Mac</span>}<small> · built {formatTime(device.package_built_at)} · report {device.age_seconds} s ago</small></>],
     ]} />
     <div className="health-trends pi-trends">
       <Sparkline label="Pi CPU" samples={device.history} field="cpu" seconds={30} />
@@ -202,6 +202,8 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
       <section className="card" aria-label="Application">
         <div className="card-heading compact"><div><h2>Tracker app &amp; database</h2></div></div>
         <div className="padded"><Facts rows={[
+          ['Version', <>{application.version ?? 'Unknown'}{application.built_at && <small> · built {formatTime(application.built_at)}</small>}</>],
+          ['Last update', application.last_update ? <>{application.last_update.result === 'updated' ? `Updated to ${application.last_update.version}` : application.last_update.result === 'rolled back' ? <span className="badge warning">Update to {application.last_update.version} failed and was rolled back</span> : <span className="badge warning">Update to {application.last_update.version} refused</span>}<small> · {formatTime(application.last_update.at)}{application.last_update.reason ? ` · ${application.last_update.reason}` : ''}</small></> : 'None yet'],
           ['Server running for', <>{since(application.started_at, now)} <small>· since {formatTime(application.started_at)}</small></>],
           ['Database', database.connected ? <>Connected <small>· PostgreSQL {database.version} · {database.connections} connections</small></> : <span className="badge critical">Not reachable</span>],
           ['Database size', bytes(database.size_bytes)],
@@ -243,7 +245,7 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
             </> : <td colSpan={4} className="pi-missing">{s.device?.stale ? `No Pi report for ${Math.round(s.device.age_seconds / 60)} min` : 'No Pi stats (reinstall this Pi to add them)'}</td>}
             <td>{formatTime(s.last_seen)}</td>
             <td>{s.device && <button className="button text" aria-expanded={open === s.id} onClick={() => setOpen(open === s.id ? null : s.id)}>{open === s.id ? 'Hide' : 'Details'}</button>}</td></tr>,
-          open === s.id && s.device && <tr key={s.id + '-detail'} className="pi-detail-row"><td colSpan={10}><PiDetail device={s.device} /></td></tr>]
+          open === s.id && s.device && <tr key={s.id + '-detail'} className="pi-detail-row"><td colSpan={10}><PiDetail device={s.device} expected={application.version} /></td></tr>]
         })}
       </tbody></table></div>
     </section>

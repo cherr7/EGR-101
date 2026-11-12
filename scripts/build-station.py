@@ -15,6 +15,14 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 FORMAT = "fabric-conditioning-station"
 VERSION = 1
+
+
+def release() -> str:
+    """The release this package belongs to, the same string the Mac server reports."""
+    import sys
+    sys.path.insert(0, str(ROOT / "backend"))
+    from app.version import stamp
+    return stamp(ROOT)["version"]
 STATION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 ROOMS = {"shared-door": ("shared", "Shared conditioning room"),
          "ppe-door": ("ppe", "PPE conditioning room"),
@@ -91,7 +99,7 @@ def build(source: Path, output: Path, station: str = "shared-door") -> dict:
             (temporary / name).write_text(html)
         files = {str(path.relative_to(temporary)): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in sorted(temporary.rglob("*")) if path.is_file() and path.name != "station-config.js"}
-        manifest = {"format": FORMAT, "version": VERSION,
+        manifest = {"format": FORMAT, "version": VERSION, "release": release(),
                     "built_at": datetime.now(timezone.utc).isoformat(), "station_id": station,
                     "entrypoint": "/station.html?station=" + station + "#kiosk",
                     "api_prefix": "/api", "target_display": {"width": 1280, "height": 720},

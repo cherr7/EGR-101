@@ -175,6 +175,14 @@ def package_built_at(root):
         return None
 
 
+def package_version(root):
+    try:
+        release = json.loads(read(root, "/opt/fabric-scanner/ui/station-package.json") or "").get("release")
+    except (ValueError, AttributeError):
+        return None
+    return release[:64] if isinstance(release, str) else None
+
+
 def os_name(root):
     found = re.search(r'^PRETTY_NAME="?([^"\n]+)"?', read(root, "/etc/os-release") or "", re.MULTILINE)
     return found.group(1) if found else platform.system()
@@ -199,6 +207,7 @@ def report(root, previous_ticks):
         "memory": meminfo(root), "disk": disk(root), "temperature_c": temperature(root), "throttled": throttled(root),
         "network": network(root), "ntp_synchronized": ntp_synchronized(root), "services": services(root),
         "input": input_status(root), "package_built_at": package_built_at(root),
+        "package_version": package_version(root),
     }
 
 

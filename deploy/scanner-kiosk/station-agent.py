@@ -165,19 +165,13 @@ def ntp_synchronized(root):
     return None if output is None else output.strip() == "yes"
 
 
-def package_built_at(root):
+def package_manifest(root):
+    """ui/station-package.json: which release this Pi runs and when it was built."""
     try:
-        return json.loads(read(root, "/opt/fabric-scanner/ui/station-package.json") or "")["built_at"]
-    except (ValueError, KeyError, TypeError):
-        return None
-
-
-def package_version(root):
-    try:
-        release = json.loads(read(root, "/opt/fabric-scanner/ui/station-package.json") or "").get("release")
-    except (ValueError, AttributeError):
-        return None
-    return release[:64] if isinstance(release, str) else None
+        value = json.loads(read(root, "/opt/fabric-scanner/ui/station-package.json") or "")
+        return value if isinstance(value, dict) else {}
+    except ValueError:
+        return {}
 
 
 def os_name(root):
@@ -193,6 +187,8 @@ def report(root, previous_ticks):
         load_average = [float(value) for value in load[:3]] if len(load) >= 3 else None
     except ValueError:
         load_average = None
+    manifest = package_manifest(root)
+    release = manifest.get("release")
     return ticks, {
         "agent_version": 1,
         "sent_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -203,8 +199,8 @@ def report(root, previous_ticks):
         "cpu_percent": cpu_percent(previous_ticks, ticks), "cores": os.cpu_count(), "load_average": load_average,
         "memory": meminfo(root), "disk": disk(root), "temperature_c": temperature(root), "throttled": throttled(root),
         "network": network(root), "ntp_synchronized": ntp_synchronized(root), "services": services(root),
-        "input": input_status(root), "package_built_at": package_built_at(root),
-        "package_version": package_version(root),
+        "input": input_status(root), "package_built_at": manifest.get("built_at"),
+        "package_version": release[:64] if isinstance(release, str) else None,
     }
 
 

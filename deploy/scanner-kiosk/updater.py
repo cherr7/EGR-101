@@ -28,6 +28,10 @@ MAX_BYTES = 64 * 1024 * 1024
 VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
+class Busy(Exception):
+    """The Mac's package is for another version than it reports: it is mid-update."""
+
+
 def get_json(url, timeout=5):
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return json.loads(response.read(65536))
@@ -73,7 +77,9 @@ class Updater:
     def report(self):
         """What the Mac shows on System health."""
         value = self.state()
-        return {key: value.get(key) for key in ("state", "version", "error")} if value else None
+        if not value:   # never updated yet; None means an old install that can't update itself
+            return {"state": "current", "version": self.running(), "error": None} if self.managed() else None
+        return {key: value.get(key) for key in ("state", "version", "error")}
 
     def managed(self):
         return (self.releases / "current").is_symlink()
@@ -97,7 +103,8 @@ class Updater:
         state = self.state()
         if state.get("state") == "pending":
             return self.verify(state)
-        if self.clock() - self.last_check < CHECK_EVERY and not (self.releases / str(state.get("ready", ""))).is_dir():
+        ready = state.get("ready")
+        if self.clock() - self.last_check < CHECK_EVERY and not (ready and (self.releases / str(ready)).is_dir()):
             return
         self.last_check = self.clock()
         try:
@@ -112,6 +119,8 @@ class Updater:
         try:
             if not (self.releases / wanted).is_dir():
                 self.fetch(wanted)
+        except Busy:
+            return   # the Mac is mid-update; try again at the next check
         except (OSError, ValueError, tarfile.TarError) as error:
             logging.warning("Update to %s failed: %s", wanted, error)
             self.record(state="failed", version=wanted, error=str(error)[:300])
@@ -140,7 +149,7 @@ class Updater:
     def fetch(self, version):
         info = get_json(self.api + "/api/station/package/info")
         if info.get("version") != version:
-            raise ValueError("The Mac is changing versions; try again later.")
+            raise Busy()
         if not isinstance(info.get("size"), int) or info["size"] > MAX_BYTES:
             raise ValueError("Package is too large.")
         download = self.releases / ".download.tar.gz"

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import os
 import re
 import secrets
@@ -19,36 +18,16 @@ from sqlalchemy import select
 
 from . import version as app_version
 from .db import get_db
+from .paths import read_json, state_dir, write_json
 from .models import Station, utcnow
-from .stations import station_status
+from .stations import is_outside, station_status
 
 router = APIRouter(prefix="/api", tags=["Host"])
 TAG = re.compile(r"^v(\d{4})\.(\d{1,2})\.(\d{1,2})-(\d+)$")
 CHECK_EVERY = 24 * 3600
 COOKIE = "fabric_outside"
 COOKIE_HOURS = 12
-CF_HEADERS = (b"cf-ray", b"cf-connecting-ip", b"cf-visitor")
 OPEN_OUTSIDE = {"/api/health", "/api/outside/status", "/api/outside/login"}
-
-
-def state_dir() -> Path:
-    return Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
-
-
-def read_json(path: Path):
-    try:
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else None
-    except (OSError, ValueError):
-        return None
-
-
-def write_json(path: Path, value: dict, private=False):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if private else 0o644), "w") as stream:
-        json.dump(value, stream)
-    os.replace(temporary, path)
 
 
 def pid_alive(pid) -> bool:
@@ -90,6 +69,22 @@ def check_latest() -> dict:
     return result
 
 
+_CHECKING = threading.Lock()
+
+
+def check_in_background():
+    """Start one check unless one is already running."""
+    if not _CHECKING.acquire(blocking=False):
+        return
+
+    def work():
+        try:
+            check_latest()
+        finally:
+            _CHECKING.release()
+    threading.Thread(target=work, daemon=True).start()
+
+
 def update_running() -> bool:
     facts = read_json(state_dir() / "update.lock") or {}
     return pid_alive(facts.get("pid"))
@@ -103,7 +98,7 @@ def update_status() -> dict:
     except OSError:
         age = None
     if source_repo() and (age is None or age > CHECK_EVERY):
-        threading.Thread(target=check_latest, daemon=True).start()   # once a day; only tells, never installs
+        check_in_background()   # once a day; only tells, never installs
     latest = check.get("latest")
     newer = bool(release_key(latest) and release_key(running) and release_key(latest) > release_key(running))
     return {"running": running, "latest": latest, "available": newer, "checked_at": check.get("checked_at"),
@@ -122,10 +117,14 @@ def post_update_check():
     return update_status()
 
 
-@router.post("/system/update", status_code=202)
-def start_update(request: Request):
+def lab_only(request: Request):
+    """For routes that change the host: never through the outside link."""
     if is_outside(request.scope):
-        raise HTTPException(403, "Update from a computer at the lab.")
+        raise HTTPException(403, "Change this from a computer at the lab.")
+
+
+@router.post("/system/update", status_code=202, dependencies=[Depends(lab_only)])
+def start_update():
     repo = source_repo()
     if not repo:
         raise HTTPException(409, "No source checkout to update from.")
@@ -144,12 +143,6 @@ def start_update(request: Request):
 
 
 # ---------- outside access ----------
-
-def is_outside(scope) -> bool:
-    """Requests through the Cloudflare tunnel carry Cloudflare's headers; local ones never do.
-    Faking them only gets a local user asked for the passcode."""
-    return any(name in CF_HEADERS for name, _ in scope.get("headers", []))
-
 
 def outside_settings() -> dict:
     return read_json(state_dir() / "outside.json") or {}
@@ -258,10 +251,8 @@ class OutsideBody(BaseModel):
     passcode: str | None = Field(default=None, min_length=6, max_length=200)
 
 
-@router.put("/outside")
+@router.put("/outside", dependencies=[Depends(lab_only)])
 def set_outside(body: OutsideBody, request: Request):
-    if is_outside(request.scope):
-        raise HTTPException(403, "Change this from a computer at the lab.")
     settings = outside_settings()
     if body.passcode is not None:
         salt = secrets.token_bytes(16)
@@ -275,11 +266,9 @@ def set_outside(body: OutsideBody, request: Request):
     return outside_status(request)
 
 
-@router.post("/outside/new-link")
+@router.post("/outside/new-link", dependencies=[Depends(lab_only)])
 def new_outside_link(request: Request):
     """Stop the tunnel; the boot service starts a new one within seconds, with a new link."""
-    if is_outside(request.scope):
-        raise HTTPException(403, "Change this from a computer at the lab.")
     if not outside_settings().get("enabled"):
         raise HTTPException(409, "Outside link is off.")
     folder = state_dir()

@@ -1,9 +1,8 @@
 .scanner-v2{display:grid;grid-template-rows:88px minmax(0,1fr) 108px;height:100dvh;overflow:hidden;background:#f0f5f3}
 .scanner-v2 .kiosk-header{height:auto;min-height:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px;padding:12px 20px}
-.scanner-v2 .scanner-rooms,.scanner-v2 .scanner-scope{display:flex;gap:4px;padding:4px;border:1px solid #cadbd2;border-radius:11px;background:#eaf1ed}
-.scanner-v2 .scanner-rooms{justify-self:start}
-.scanner-v2 .scanner-rooms button,.scanner-v2 .scanner-scope button{min-height:54px;padding:10px 19px;border-radius:7px;border:1px solid transparent;background:transparent;color:#36564f;font:inherit;font-size:20px;font-weight:650}
-.scanner-v2 .scanner-rooms button.selected,.scanner-v2 .scanner-scope button[aria-pressed=true]{background:#244c49;color:#fff;border-color:#244c49}
+.scanner-v2 .scanner-scope{display:flex;gap:4px;padding:4px;border:1px solid #cadbd2;border-radius:11px;background:#eaf1ed}
+.scanner-v2 .scanner-scope button{min-height:54px;padding:10px 19px;border-radius:7px;border:1px solid transparent;background:transparent;color:#36564f;font:inherit;font-size:20px;font-weight:650}
+.scanner-v2 .scanner-scope button[aria-pressed=true]{background:#244c49;color:#fff;border-color:#244c49}
 .scanner-v2 .scanner-connection{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:600}
 .scanner-v2 .scanner-connection i{width:11px;height:11px;border-radius:50%;background:currentColor}
 .scanner-v2 .scanner-connection.online{color:#287048}
@@ -86,7 +85,7 @@
 @media(max-width:1000px){
  .scanner-v2{grid-template-rows:80px minmax(0,1fr) 94px}
  .scanner-v2 .kiosk-header{padding:9px 12px;gap:12px}
- .scanner-v2 .scanner-rooms button,.scanner-v2 .scanner-scope button{min-height:50px;padding:9px 12px;font-size:17px}
+ .scanner-v2 .scanner-scope button{min-height:50px;padding:9px 12px;font-size:17px}
  .scanner-v2 .scanner-connection{font-size:17px;gap:7px}
  .scanner-v2 .kiosk-middle{gap:12px;padding:12px}
  .scanner-v2 .readiness-area{padding:18px}
@@ -131,10 +130,8 @@
 @media(max-width:600px){
  .scanner-v2{grid-template-rows:133px minmax(0,1fr) 90px}
  .scanner-v2 .kiosk-header{grid-template-columns:1fr auto;padding:8px;gap:7px}
- .scanner-v2 .scanner-rooms{grid-column:1 / -1;width:100%}
- .scanner-v2 .scanner-rooms button{flex:1}
  .scanner-v2 .scanner-scope{justify-self:start}
- .scanner-v2 .scanner-rooms button,.scanner-v2 .scanner-scope button{min-height:45px;font-size:16px}
+ .scanner-v2 .scanner-scope button{min-height:45px;font-size:16px}
  .scanner-v2 .scanner-connection{font-size:16px}
  .scanner-v2 .kiosk-middle{grid-template-columns:minmax(0,1fr);padding:8px}
  .scanner-v2 .recent-panel{display:none}

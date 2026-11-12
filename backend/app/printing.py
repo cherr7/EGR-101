@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import printer_network
 from .db import get_db
+from .paths import read_json, run_quiet, state_dir, write_json
 from .exports import label_height_mm, labels_pdf, labels_png
 from .models import AuditEvent, PrintJob, Stack, utcnow
 from .schemas import split_request_id
@@ -74,11 +75,7 @@ ALERT_MESSAGES = {   # CUPS printer-state-reasons a label printer reports, in st
 
 
 def _lpstat(lpstat: str, *args: str) -> str:
-    try:
-        return subprocess.run([lpstat, *args], check=False, capture_output=True, text=True, timeout=5,
-                              env={**os.environ, "LC_ALL": "C"}).stdout or ""
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
+    return run_quiet([lpstat, *args])
 
 
 def waiting_jobs(lpstat: str, queue: str) -> list[str]:
@@ -108,25 +105,22 @@ def queue_health(lpstat: str, queue: str) -> dict:
 
 
 def _preference_path() -> FilePath:
-    base = FilePath(os.environ.get("FABRIC_STATE_DIR", str(FilePath.home() / "Library/Application Support/Fabric Conditioning")))
-    return base / "printer.json"
+    return state_dir() / "printer.json"
 
 
 def preferred_queue() -> str | None:
     """The printer staff chose as the default for every browser (saved on the Mac, not per browser)."""
-    try:
-        value = json.loads(_preference_path().read_text()).get("preferred_queue")
-    except (OSError, ValueError, AttributeError):
-        return None
+    value = (read_json(_preference_path()) or {}).get("preferred_queue")
     return value if isinstance(value, str) and QUEUE_PATTERN.fullmatch(value) else None
 
 
 def save_preferred_queue(queue: str | None) -> None:
-    path = _preference_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"preferred_queue": queue}))
-    temporary.replace(path)
+    path = _preference_path()   # shared with printer_network's fallback_queue: keep the other keys
+    write_json(path, {**(read_json(path) or {}), "preferred_queue": queue})
+
+
+def is_label_queue(name: str) -> bool:
+    return bool(re.search(r"\bQL|Brother", name, re.I))
 
 
 def printer_inventory() -> dict:
@@ -152,7 +146,7 @@ def printer_inventory() -> dict:
         if parts and QUEUE_PATTERN.fullmatch(parts[0]) and " not accepting " not in line:
             names.append(parts[0])
     result["printers"] = [{"name": name, "is_default": name == default_name,
-                           "label_printer": bool(re.search(r"\bQL|Brother", name, re.I)), **queue_health(lpstat, name)}
+                           "label_printer": is_label_queue(name), **queue_health(lpstat, name)}
                           for name in sorted(set(names))]
     result["available"] = bool(names)
     result["enabled"] = configured in names

@@ -17,7 +17,6 @@ from defusedxml.ElementTree import fromstring as safe_xml
 from defusedxml.common import DefusedXmlException
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.utils.exceptions import InvalidFileException
-from openpyxl.utils import get_column_letter
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -512,8 +511,9 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
 
 
 @router.post("/prep-drafts/workbook")
-async def import_workbook(file: UploadFile = File(...), sheet_names: str | None = Form(None),
-                          new_batch: bool = Form(False), db: Session = Depends(get_db)):
+def import_workbook(file: UploadFile = File(...), sheet_names: str | None = Form(None),
+                    new_batch: bool = Form(False), db: Session = Depends(get_db)):
+    # A plain def runs in the thread pool: parsing a large workbook must not stall scans and heartbeats.
     selected = None
     if sheet_names is not None:
         try:
@@ -524,7 +524,7 @@ async def import_workbook(file: UploadFile = File(...), sheet_names: str | None 
             selected = [name.strip() for name in sheet_names.split(",") if name.strip()]
         if not selected:
             raise HTTPException(422, "Select at least one preparation worksheet.")
-    content = await file.read(MAX_UPLOAD + 1)
+    content = file.file.read(MAX_UPLOAD + 1)
     parsed = inspect_workbook(content, file.filename or "workbook.xlsx", selected)
     fingerprint = parsed["source"]["import_fingerprint"]
     key = int.from_bytes(bytes.fromhex(fingerprint)[:8], "big", signed=True)

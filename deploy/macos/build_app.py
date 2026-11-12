@@ -109,7 +109,7 @@ def build(output, destination=None):
     """destination: where the app will live (for the login fallback's absolute path)."""
     destination = Path(destination or output)
     user, home = getpass.getuser(), str(Path.home())
-    state = Path(os.environ.get("FABRIC_STATE_DIR", Path.home() / "Library/Application Support/Fabric Conditioning"))
+    state = user_state()
     if output.exists():
         shutil.rmtree(output)
     contents = output / "Contents"
@@ -155,14 +155,18 @@ def install(built):
         subprocess.run(["/usr/bin/pkill", "-x", "Fabric Conditioning"], check=False)
         shutil.rmtree(INSTALLED)
     shutil.copytree(built, INSTALLED, symlinks=True)
-    remember_repo()
+    remember_repo(user_state())
     subprocess.run(["/usr/bin/open", str(INSTALLED)], check=False)
     return INSTALLED
 
 
-def remember_repo():
+def user_state():
+    return Path(os.environ.get("FABRIC_STATE_DIR", Path.home() / "Library/Application Support/Fabric Conditioning"))
+
+
+def remember_repo(state):
     """The web app's Update button runs this checkout's updater."""
-    path = Path(os.environ.get("FABRIC_STATE_DIR", Path.home() / "Library/Application Support/Fabric Conditioning")) / "config.json"
+    path = state / "config.json"
     try:
         facts = json.loads(path.read_text())
     except (OSError, ValueError):

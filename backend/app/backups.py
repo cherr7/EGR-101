@@ -1,7 +1,7 @@
 """Portable, consistent JSON checkpoints; restore never executes uploaded SQL."""
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from datetime import time as clock_time
 import hashlib
 import io
@@ -24,6 +24,7 @@ from sqlalchemy import Date, DateTime, create_engine, select, text
 
 from .db import Base, engine
 from .models import utcnow
+from .paths import state_dir, write_json
 from .stations import is_local_client
 
 router = APIRouter(prefix="/api/backups", tags=["Backups"])
@@ -49,7 +50,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def folder():
-    base = Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
+    base = state_dir()
     result = base / "backups" / (engine.url.database or "conditioning")
     result.mkdir(parents=True, exist_ok=True, mode=0o700)
     return result
@@ -83,10 +84,7 @@ def archive_folder():
 
 
 def save_json(path, value):
-    temporary = path.with_suffix(path.suffix + ".partial")
-    temporary.write_text(json.dumps(value, indent=2))
-    os.chmod(temporary, 0o600)
-    temporary.replace(path)
+    write_json(path, value, private=True)
 
 
 def settings():
@@ -188,7 +186,7 @@ def make_backup():
                 info["cloud_copy_state"] = "copy_failed"
                 info["destination_note"] = str(error)
         save_json(info_path, info)
-        config["last_day"] = utcnow().astimezone(ZoneInfo("America/New_York")).date().isoformat()
+        config["last_day"] = utcnow().astimezone(EASTERN).date().isoformat()
         config["last_backup_id"] = identifier
         config["last_success_at"] = created
         config["last_error"] = None
@@ -432,18 +430,14 @@ class RestoreConfirmation(BaseModel):
 
 def storage_summary(items):
     """Bytes actually on disk for the listed archives, plus where they live."""
-    total = 0
+    total, where = 0, archive_folder()
     for item in items:
-        archive = archive_folder() / (item["id"] + ".zip")
+        archive = where / (item["id"] + ".zip")
         try:
             total += archive.stat().st_size
         except OSError:
             pass
-    return {"folder": str(archive_folder()), "total_bytes": total, "archive_count": len(items)}
-
-
-def is_host_request(request: Request):
-    return is_local_client(request)
+    return {"folder": str(where), "total_bytes": total, "archive_count": len(items)}
 
 
 @router.get("")
@@ -456,13 +450,13 @@ def list_backups(request: Request):
         item["keep_forever"] = item["id"] in permanent
         item["expires_at"] = None if item["keep_forever"] else (
             datetime.fromisoformat(item["created_at"]) + timedelta(days=config["retention_days"])).isoformat()
-    now = utcnow().astimezone(ZoneInfo("America/New_York"))
+    now = utcnow().astimezone(EASTERN)
     planned = datetime.combine(now.date(), clock_time(config["daily_hour"]), tzinfo=now.tzinfo)
     overdue = config["enabled"] and now >= planned and config.get("last_day") != now.date().isoformat()
     if not overdue and (now >= planned or config.get("last_day") == now.date().isoformat()):
         planned = datetime.combine(now.date() + timedelta(days=1), clock_time(config["daily_hour"]), tzinfo=now.tzinfo)
     storage = storage_summary(items)
-    storage["can_open"] = sys.platform == "darwin" and is_host_request(request)
+    storage["can_open"] = sys.platform == "darwin" and is_local_client(request)
     return {"items": items, "settings": config, "timezone": "America/New_York", "storage": storage,
             "scheduler": {"enabled": config["enabled"], "last_success_at": config.get("last_success_at"),
                           "last_error": config.get("last_error"), "last_day": config.get("last_day"),
@@ -496,7 +490,7 @@ def create_backup():
 def open_backup_folder(request: Request):
     # Finder opens on the host Mac's own screen, so only a browser running on
     # that Mac may ask for it; staff computers and Pi stations get the path instead.
-    if not is_host_request(request):
+    if not is_local_client(request):
         raise HTTPException(403, "The backup folder can only be opened from a browser on the host Mac.")
     if sys.platform != "darwin":
         raise HTTPException(501, "Opening the backup folder is only supported on the macOS host.")
@@ -598,7 +592,7 @@ async def daily_scheduler():
     while True:
         try:
             value = settings()
-            now = utcnow().astimezone(ZoneInfo("America/New_York"))
+            now = utcnow().astimezone(EASTERN)
             if value["enabled"] and now.hour >= value["daily_hour"] and value.get("last_day") != now.date().isoformat():
                 await asyncio.to_thread(make_backup)
         except asyncio.CancelledError:

@@ -121,7 +121,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func paint() {
-        let warn = serviceNote != nil || summary?.stations.contains { $0.status != "ready" } == true
+        // A station that never connected isn't set up yet; only lost or scanner-less ones need someone.
+        let warn = serviceNote != nil || summary?.stations.contains { ["offline", "no_scanner"].contains($0.status) } == true
         let color: NSColor = !healthy ? .systemRed : warn ? .systemOrange : .systemGreen
         let image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Fabric Conditioning")?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .regular).applying(.init(paletteColors: [color])))

@@ -48,7 +48,7 @@ def report_with(**changes):
     base = {"storage": [{"label": "Mac storage", "free_bytes": 100 * 2**30, "percent": 40.0}],
             "memory": {"pressure": "normal"}, "power": None, "database": {"connected": True},
             "application": {"logs_bytes": 0}, "stations": [],
-            "printer": {"queues": [{"name": "QL", "state": "idle", "alerts": None, "jobs_waiting": 0}], "jobs_last_24h": {}},
+            "printer": {"queues": [{"name": "QL", "label_printer": True, "state": "idle", "alerts": None, "jobs_waiting": 0}], "jobs_last_24h": {}},
             "backups": {"available": False}}
     base.update(changes)
     return base
@@ -61,7 +61,7 @@ def test_thresholds_flag_full_disk_battery_sleep_and_printer():
         storage=[{"label": "Mac storage", "free_bytes": 2 * 2**30, "percent": 99.0}],
         memory={"pressure": "warning"},
         power={"on_battery": True, "battery_percent": 15, "sleep_minutes": 10, "thermal_warning": None},
-        printer={"queues": [{"name": "QL", "state": "disabled", "alerts": "offline-report", "jobs_waiting": 4}],
+        printer={"queues": [{"name": "QL", "label_printer": True, "state": "disabled", "alerts": "offline-report", "jobs_waiting": 4}],
                  "jobs_last_24h": {"failed": 1, "submitted": 3}, "ready": False},
         database={"connected": False}))
     titles = {issue["title"]: issue["level"] for issue in issues}
@@ -78,7 +78,7 @@ def test_thresholds_flag_full_disk_battery_sleep_and_printer():
     awake = {"on_battery": False, "battery_percent": 100, "sleep_minutes": 1, "sleep_prevented": True, "thermal_warning": None}
     assert find_issues(report_with(power=awake)) == []
     # Office printers that aren't label printers raise nothing.
-    office = {"queues": [{"name": "QL", "state": "idle", "alerts": None, "jobs_waiting": 0},
+    office = {"queues": [{"name": "QL", "label_printer": True, "state": "idle", "alerts": None, "jobs_waiting": 0},
                          {"name": "Office", "label_printer": False, "state": "disabled", "alerts": "offline", "jobs_waiting": 9}],
               "jobs_last_24h": {}}
     assert find_issues(report_with(printer=office)) == []
@@ -171,3 +171,26 @@ def test_versions_are_reported_and_an_older_pi_is_flagged(client, monkeypatch):
     assert report["application"]["version"] == "v2026.11.12-2"
     behind = [i["title"] for i in report["issues"] if "old version" in i["title"]]
     assert len(behind) == 1 and "v2026.11.12-1" in behind[0] and "PPE" in behind[0]
+
+
+def test_backups_off_is_one_warning_and_a_paused_office_printer_stays_quiet():
+    from app.system_health import find_issues
+    off = {"available": True, "enabled": False, "latest_at": None}
+    assert [i["title"] for i in find_issues(report_with(backups=off))] == ["Daily backups are off"]
+    paused_office = {"queues": [{"name": "QL", "label_printer": True, "state": "idle", "alerts": None, "jobs_waiting": 0},
+                                {"name": "HP_Office", "label_printer": False, "state": "disabled", "alerts": None,
+                                 "jobs_waiting": 5}],
+                     "jobs_last_24h": {}}
+    assert find_issues(report_with(printer=paused_office)) == []
+
+
+def test_label_readiness_ignores_a_non_label_preferred_printer(monkeypatch):
+    from app import system_health
+    asked = []
+    monkeypatch.setattr(system_health.printer_network, "working_queue",
+                        lambda queue, printers, uris: asked.append(queue) or queue)
+    inventory = {"preferred_queue": "Office", "printers": [
+        {"name": "Office", "is_default": True, "label_printer": False},
+        {"name": "Brother_QL_810W", "is_default": False, "label_printer": True}]}
+    assert system_health.label_printer_ready(inventory, {}) is True
+    assert asked == ["Brother_QL_810W"]

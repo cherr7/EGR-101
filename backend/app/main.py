@@ -139,9 +139,13 @@ def request_ids(body: RequestIdsBody, db=Depends(get_db)):
 
 @app.post("/api/prep-drafts")
 def create_draft(body: PrepBody, db=Depends(get_db)):
+    return save_draft(db, body)
+
+
+def save_draft(db, body: PrepBody, source=None):
     with db.begin():
         draft = PrepDraft(headers={name: header.model_dump() for name, header in body.headers.items()},
-                          rows=[r.model_dump() for r in body.rows])
+                          rows=[r.model_dump() for r in body.rows], source=source or {})
         db.add(draft)
         db.flush()
         return draft_dict(draft)
@@ -167,8 +171,8 @@ def csv_draft(rows):
 
 
 @app.post("/api/prep-drafts/csv")
-async def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
-    content = await file.read(2_000_001)
+def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
+    content = file.file.read(2_000_001)
     if len(content) > 2_000_000:
         raise HTTPException(413, "CSV must be smaller than 2 MB.")
     try:
@@ -191,14 +195,8 @@ async def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
     except (ValidationError, csv.Error) as error:
         raise HTTPException(422, str(error))
     # Keep the file's identity so the batch is named after its prep sheet, like workbook imports.
-    with db.begin():
-        draft = PrepDraft(headers={name: header.model_dump() for name, header in body.headers.items()},
-                          rows=[r.model_dump() for r in body.rows],
-                          source={"filename": (file.filename or "prep-sheet.csv")[:255], "format": "csv",
-                                  "sha256": hashlib.sha256(content).hexdigest()})
-        db.add(draft)
-        db.flush()
-        return draft_dict(draft)
+    return save_draft(db, body, {"filename": (file.filename or "prep-sheet.csv")[:255], "format": "csv",
+                                 "sha256": hashlib.sha256(content).hexdigest()})
 
 
 @app.get("/api/prep-drafts/{draft_id}")

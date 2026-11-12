@@ -5,6 +5,14 @@ export class ApiError extends Error {
   constructor(status: number, message: string) { super(message); this.status = status }
 }
 
+/** The server's error text: FastAPI's detail (a string, validation list or {message}), else the fallback. */
+function errorMessage(body: { detail?: unknown; message?: string }, fallback: string) {
+  const detail = body.detail as string | { msg: string; loc?: string[] }[] | { message?: string } | undefined
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) return detail.map(item => `${item.loc?.join('.') || 'Input'}: ${item.msg}`).join('; ')
+  return detail?.message || body.message || fallback
+}
+
 export async function api<T>(path: string, options: RequestInit = {}, timeout = 10000): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
@@ -13,10 +21,7 @@ export async function api<T>(path: string, options: RequestInit = {}, timeout = 
     const body = await response.json().catch(() => ({}))
     const serverTime = body.server_time || body.items?.[0]?.server_time
     if (serverTime && Number.isFinite(Date.parse(serverTime))) serverOffsetMs = Date.parse(serverTime) - Date.now()
-    if (!response.ok) {
-      const detail = body.detail
-      throw new ApiError(response.status, typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((item: { msg: string; loc?: string[] }) => `${item.loc?.join('.') || 'Input'}: ${item.msg}`).join('; ') : detail?.message || body.message || `Request failed (${response.status})`)
-    }
+    if (!response.ok) throw new ApiError(response.status, errorMessage(body, `Request failed (${response.status})`))
     return body as T
   } finally { clearTimeout(timer) }
 }
@@ -26,10 +31,7 @@ export async function apiBlob(path: string, body: unknown, signal?: AbortSignal)
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
   })
-  if (!response.ok) {
-    const value = await response.json().catch(() => ({}))
-    throw new ApiError(response.status, typeof value.detail === 'string' ? value.detail : value.detail?.message || 'Could not generate the label preview.')
-  }
+  if (!response.ok) throw new ApiError(response.status, errorMessage(await response.json().catch(() => ({})), 'Could not generate the label preview.'))
   return response.blob()
 }
 export const formatTime = (value?: string | null) => value ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(value)) : '—'
@@ -84,5 +86,6 @@ export function duration(value?: string | null, until = serverNow()) {
   if (hours < 24) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`
   return hours % 24 ? `${Math.floor(hours / 24)} d ${hours % 24} h` : `${Math.floor(hours / 24)} d`
 }
+export const bytes = (value?: number | null) => value == null ? '—' : value >= 1e12 ? `${(value / 1e12).toFixed(2)} TB` : value >= 1e9 ? `${(value / 1e9).toFixed(1)} GB` : value >= 1e6 ? `${(value / 1e6).toFixed(1)} MB` : `${Math.ceil(value / 1e3)} KB`
 /** Hash-route query parameters, e.g. #dashboard?room=shared -> {room: 'shared'}. */
 export const hashParams = () => new URLSearchParams(location.hash.split('?')[1] || '')

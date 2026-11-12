@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, elapsed, entryOf, exitOf, formatTime, isReady, specimenStatus } from './api'
+import { api, elapsed, entryOf, exitOf, formatTime, hashParams, isReady, specimenStatus } from './api'
 import type { Config, Specimen, SpecimenRecord, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 import LabelDialog from './LabelDialog'
@@ -146,7 +146,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
   const [status, setStatus] = useState('')
   const [roomId, setRoomId] = useState('')
   const [project, setProject] = useState('')
-  const [stackFilter, setStackFilter] = useState(() => new URLSearchParams(location.hash.split('?')[1] || '').get('stack') || '')
+  const [stackFilter, setStackFilter] = useState(() => hashParams().get('stack') || '')
   const [selectedStack, setSelectedStack] = useState<Stack | null>(null)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [focused, setFocused] = useState<{ record: SpecimenRecord; stack: Stack } | null>(null)
@@ -158,7 +158,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
   const alive = useRef(true), openSerial = useRef(0)
   useEffect(() => { alive.current = true; return () => { alive.current = false; openSerial.current++ } }, [])
   useEffect(() => {
-    const change = () => setStackFilter(new URLSearchParams(location.hash.split('?')[1] || '').get('stack') || '')
+    const change = () => setStackFilter(hashParams().get('stack') || '')
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])

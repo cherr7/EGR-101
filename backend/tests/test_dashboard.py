@@ -198,3 +198,14 @@ def test_removed_specimens_leave_the_dashboard_and_cannot_be_confirmed_as_labele
     assert client.get(f'/api/batches/{stack["draft_id"]}').json()["stages"]["total"] == 2
     confirmed = client.post("/api/labels/confirm", json={"stack_ids": [stack["id"]], "request_id": reserve(client, "print")})
     assert confirmed.json()["label_count"] == 2
+
+
+def test_a_removed_piece_does_not_keep_its_stack_open(client, stack_factory, db):
+    from app.dashboard import open_stack_ids
+    stack = stack_factory(count=3)
+    removed = stack["specimens"][2]["id"]
+    assert client.post(f"/api/stacks/{stack['id']}/specimens/remove", json={"specimen_ids": [removed]}).is_success
+    move(client, stack, "IN")
+    age_sessions(db, stack, 25)
+    move(client, stack, "OUT", station="shared-door")
+    assert stack["id"] not in open_stack_ids(db)

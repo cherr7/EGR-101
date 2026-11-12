@@ -26,7 +26,7 @@ def make_package(version, extra=None):
 
 class Fake:
     def __init__(self):
-        self.version, self.package, self.sha = "v2", make_package("v2"), None
+        self.version, self.package, self.sha, self.package_version = "v2", make_package("v2"), None, None
         self.idle, self.healthy_age = 0, None
         fake = self
 
@@ -35,7 +35,7 @@ class Fake:
                 if self.path == "/api/version":
                     body = json.dumps({"version": fake.version}).encode()
                 elif self.path == "/api/station/package/info":
-                    body = json.dumps({"version": fake.version, "size": len(fake.package),
+                    body = json.dumps({"version": fake.package_version or fake.version, "size": len(fake.package),
                                        "sha256": fake.sha or hashlib.sha256(fake.package).hexdigest()}).encode()
                 elif self.path == "/api/station/package":
                     body = fake.package
@@ -116,6 +116,23 @@ class UpdaterTests(unittest.TestCase):
         self.updater.tick()
         self.assertFalse((self.releases.parent / "escape.txt").exists())
         self.assertEqual(self.updater.state()["state"], "failed")
+
+    def test_checks_the_mac_only_every_few_minutes(self):
+        self.fake.version = "v1"
+        self.updater.tick()
+        self.assertEqual(self.updater.report()["state"], "current")   # a new-layout Pi, never updated yet
+        self.fake.version = "v2"
+        self.now += 30
+        self.updater.tick()
+        self.assertFalse((self.releases / "v2").exists())
+        self.now += updater.CHECK_EVERY
+        self.updater.tick()
+        self.assertTrue((self.releases / "v2").exists())
+
+    def test_mac_mid_update_is_not_a_failure(self):
+        self.fake.package_version = "v1.9"   # the Mac reports v2 but still serves the old package
+        self.updater.tick()
+        self.assertIsNone(self.updater.state().get("state"))
 
     def test_old_layout_is_left_alone(self):
         (self.releases / "current").unlink()

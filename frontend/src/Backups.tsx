@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, formatTime, post } from './api'
+import { api, bytes, formatTime, post } from './api'
 import { ErrorNotice, Modal, PageHeader } from './App'
 
 type Backup = { id: string; created_at: string; size?: number; size_bytes?: number; sha256: string; filename: string; verified: boolean; cloud_copy_state?: string; keep_forever?: boolean; expires_at?: string | null }
@@ -79,7 +79,6 @@ export default function Backups({ healthy }: { healthy: boolean }) {
   async function openFolder() { setError(''); try { await post('/backups/open-folder', {}); setMessage('Opened in Finder.') } catch (err) { setError((err as Error).message) } }
 
   const formatDate = (value: string) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value))
-  const bytes = (value: number) => value > 1073741824 ? `${(value / 1073741824).toFixed(2)} GB` : value > 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${Math.ceil(value / 1024)} KB`
   const totalBytes = storage?.total_bytes ?? items.reduce((sum, item) => sum + (item.size_bytes ?? item.size ?? 0), 0)
   return <><PageHeader title="Backups"><button className="button primary" disabled={!healthy || busy} onClick={() => void create()}>{busy ? 'Working…' : 'Back up now'}</button></PageHeader><ErrorNotice message={error} />{message && <div className="notice success" role="status">{message}</div>}<section className="backup-health" aria-label="Backup health">
       <div><span>Last backup</span><b>{formatTime(scheduler.last_success_at || items[0]?.created_at)}</b></div>

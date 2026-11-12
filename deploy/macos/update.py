@@ -25,7 +25,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.version import stamp, write  # noqa: E402
-from build_app import copy_code  # noqa: E402
+from build_app import copy_code, remember_repo  # noqa: E402
 
 
 def load_host(root):
@@ -180,25 +180,9 @@ def switch_to(host, release, releases):
     return subprocess.run([sys.executable, str(REPO / "deploy/macos/host.py"), "start"]).returncode == 0
 
 
-def remember_repo(host):
-    """The web app's Update button runs this checkout's updater."""
-    path = host.state_dir() / "config.json"
-    try:
-        facts = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return
-    if facts.get("source_repo") != str(REPO):
-        facts["source_repo"] = str(REPO)
-        temporary = path.with_suffix(".tmp")
-        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as stream:
-            json.dump(facts, stream, indent=2)
-        os.replace(temporary, path)
-
-
 def update(ref, check_only):
     host = load_host(REPO)
-    remember_repo(host)
+    remember_repo(host.state_dir())
     releases = releases_dir(host)
     previous = running_release(host)
     previous_version = release_version(previous) if previous else (stamp(REPO)["version"] + " (git checkout)")

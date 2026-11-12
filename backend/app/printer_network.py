@@ -7,9 +7,7 @@ that, in the Mac's ARP table, and points the Wi-Fi queue at the new address.
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
 import shutil
 import socket
@@ -19,7 +17,7 @@ import time
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from .paths import state_dir
+from .paths import read_json, run_quiet, state_dir, write_json
 
 USB_SCHEMES = {"usb", "ippusb"}
 FIXABLE_SCHEMES = {"ipp": 631, "ipps": 631, "socket": 9100, "lpd": 515, "http": 631, "https": 631}
@@ -30,12 +28,7 @@ REACHED = re.compile(r"can be reached at (\S+?)\.?:(\d+)")
 log = logging.getLogger(__name__)
 
 
-def _run(args, timeout=5):
-    try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False,
-                              env={**os.environ, "LC_ALL": "C"}).stdout or ""
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
+_run = run_quiet
 
 
 def devices(lpstat: str | None = None) -> dict[str, str]:
@@ -89,12 +82,7 @@ def reachable(uri: str, timeout=2.0) -> bool:
 
 
 def preferences() -> dict:
-    base = state_dir()
-    try:
-        value = json.loads((base / "printer.json").read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return read_json(state_dir() / "printer.json") or {}
 
 
 def partner(queue: str, uris: dict[str, str]) -> str | None:
@@ -109,7 +97,7 @@ def partner(queue: str, uris: dict[str, str]) -> str | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
-def usable(queue: dict, uri: str | None, listing: str | None = None) -> bool:
+def usable(queue: dict, uri: str | None, listing: str | None) -> bool:
     """Can a job print here now? Checks the device itself: CUPS keeps an 'offline' alert until the next job."""
     if queue.get("state") == "stopped":
         return False
@@ -126,10 +114,11 @@ def working_queue(requested: str, printers: list[dict], uris: dict[str, str]) ->
     by_name = {item["name"]: item for item in printers}
     if requested not in by_name or requested not in uris:
         return None
-    listing = _run(["/usr/sbin/ioreg", "-p", "IOUSB", "-w0"])   # once for both queues
+    other = partner(requested, uris)
+    usb = "usb" in {kind(uris[requested]), kind(uris.get(other))}
+    listing = _run(["/usr/sbin/ioreg", "-p", "IOUSB", "-w0"]) if usb else None   # once for both queues
     if usable(by_name[requested], uris[requested], listing):
         return requested
-    other = partner(requested, uris)
     if other in by_name and usable(by_name[other], uris.get(other), listing):
         return other
     return None
@@ -270,17 +259,13 @@ def status_path() -> Path:
 
 def write_status(result: dict):
     try:
-        status_path().write_text(json.dumps(result))
+        write_json(status_path(), result)
     except OSError:
         pass
 
 
 def last_status() -> dict | None:
-    try:
-        value = json.loads(status_path().read_text())
-        return value if isinstance(value, dict) else None
-    except (OSError, ValueError):
-        return None
+    return read_json(status_path())
 
 
 _WATCHER: dict = {}

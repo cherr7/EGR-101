@@ -6,12 +6,12 @@ import os
 import platform
 import re
 import shutil
-import subprocess
 import sys
 import threading
 import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -20,7 +20,7 @@ from sqlalchemy import func, select, text
 from . import backups
 from . import version as app_version
 from .db import get_db
-from .paths import state_dir
+from .paths import read_json, run_quiet, state_dir
 from .models import AuditEvent, PrintJob, Specimen, Station, utcnow
 from .printing import is_label_queue, printer_inventory
 from . import printer_network
@@ -46,11 +46,7 @@ PI_DISK_WARN_FREE, PI_DISK_CRIT_FREE = 1 * 2**30, 500 * 2**20
 
 
 def run(args, timeout=3):
-    try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=timeout,
-                              env={**os.environ, "LC_ALL": "C"}).stdout or ""
-    except (OSError, subprocess.SubprocessError):
-        return ""
+    return run_quiet(args, timeout)
 
 
 def sysctl(*names):
@@ -190,20 +186,6 @@ def disk(path: Path, label: str):
             "free_bytes": usage.free, "percent": round(100 * (usage.total - usage.free) / usage.total, 1) if usage.total else None}
 
 
-def folder_bytes(path: Path, pattern="*"):
-    total = 0
-    try:
-        for item in path.rglob(pattern):
-            try:
-                if item.is_file():
-                    total += item.stat().st_size
-            except OSError:
-                pass
-    except OSError:
-        return None
-    return total
-
-
 def boot_time():
     if sys.platform == "darwin":
         found = re.search(r"sec = (\d+)", sysctl("kern.boottime").get("kern.boottime", ""))
@@ -226,13 +208,6 @@ def power():
     # Something holding a sleep assertion (the boot service's caffeinate, Amphetamine) keeps the Mac awake.
     assertions = run(["/usr/bin/pmset", "-g", "assertions"])
     prevented = bool(re.search(r"^\s*(PreventUserIdleSystemSleep|PreventSystemSleep)\s+1\s*$", assertions, re.MULTILINE))
-    thermal = run(["/usr/bin/pmset", "-g", "therm"])
-    warning = None
-    if thermal and "No thermal warning level has been recorded" not in thermal:
-        limit = re.search(r"CPU_Speed_Limit\s*=\s*(\d+)", thermal)
-        level_line = re.search(r"[Tt]hermal warning level[^\n]*", thermal)
-        warning = (f"CPU limited to {limit.group(1)}%" if limit and limit.group(1) != "100"
-                   else level_line.group(0).strip() if level_line else None)
     return {"source": source.group(1) if source else None,
             "on_battery": bool(source and "Battery" in source.group(1)),
             "has_battery": "InternalBattery" in battery,
@@ -242,19 +217,22 @@ def power():
             "sleep_minutes": int(sleep.group(1)) if sleep else None,
             "sleep_note": sleep.group(2).strip(" ()") if sleep and sleep.group(2).strip() else None,
             "sleep_prevented": prevented,
-            "display_sleep_minutes": int(display.group(1)) if display else None,
-            "thermal_warning": warning}
+            "display_sleep_minutes": int(display.group(1)) if display else None}
+
+
+@lru_cache(maxsize=1)
+def fixed_host_facts():
+    """What doesn't change while the app runs: asked once, not on every report."""
+    values = sysctl("hw.model", "machdep.cpu.brand_string")
+    return {"model": values.get("hw.model"), "chip": values.get("machdep.cpu.brand_string") or platform.processor() or None,
+            "os": f"macOS {platform.mac_ver()[0]}" if sys.platform == "darwin" else f"{platform.system()} {platform.release()}",
+            "cores": os.cpu_count(), "booted_at": iso_from_epoch(boot_time()), "python": platform.python_version()}
 
 
 def host_facts():
-    values = sysctl("hw.model", "machdep.cpu.brand_string")
-    interface = re.search(r"interface:\s*(\S+)", run(["/sbin/route", "-n", "get", "default"])) if sys.platform == "darwin" else None
     load = os.getloadavg() if hasattr(os, "getloadavg") else None
-    return {"hostname": mdns_name(), "ip": lan_ip(), "network_interface": interface.group(1) if interface else None,
-            "model": values.get("hw.model"), "chip": values.get("machdep.cpu.brand_string") or platform.processor() or None,
-            "os": f"macOS {platform.mac_ver()[0]}" if sys.platform == "darwin" else f"{platform.system()} {platform.release()}",
-            "cores": os.cpu_count(), "load_average": [round(value, 2) for value in load] if load else None,
-            "booted_at": iso_from_epoch(boot_time()), "python": platform.python_version()}
+    return {"hostname": mdns_name(), "ip": lan_ip(), **fixed_host_facts(),
+            "load_average": [round(value, 2) for value in load] if load else None}
 
 
 # ---------- Application, devices ----------
@@ -273,7 +251,7 @@ def database_facts(db):
         return {"connected": False}
 
 
-def label_printer_ready(inventory):
+def label_printer_ready(inventory, uris):
     """Can a label print now, on the chosen printer or its USB/Wi-Fi partner? None when there's no label printer."""
     labels = [item for item in inventory["printers"] if item.get("label_printer")]
     if not labels:
@@ -281,12 +259,13 @@ def label_printer_ready(inventory):
     names = [item["name"] for item in labels]
     preferred = inventory.get("preferred_queue")
     chosen = preferred if preferred in names else next((q["name"] for q in labels if q["is_default"]), names[0])
-    return printer_network.working_queue(chosen, inventory["printers"], printer_network.devices()) is not None
+    return printer_network.working_queue(chosen, inventory["printers"], uris) is not None
 
 
 def printer_facts(db):
     inventory = printer_inventory()
     lpstat = shutil.which("lpstat")
+    uris = printer_network.devices(lpstat) if lpstat else {}
     queues = {item["name"]: {**item, "state": "unknown", "alerts": None, "device": None, "jobs_waiting": 0}
               for item in inventory["printers"]}
     if lpstat:
@@ -294,12 +273,13 @@ def printer_facts(db):
             found = re.match(r"printer (\S+) (now printing|is idle|disabled)", block)
             if not found:
                 continue
-            row = queues.setdefault(found.group(1), {"name": found.group(1), "is_default": False,
-                                                     "state": "unknown", "alerts": None, "device": None, "jobs_waiting": 0})
+            name = found.group(1)
+            row = queues.setdefault(name, {"name": name, "is_default": False, "label_printer": is_label_queue(name),
+                                           "state": "unknown", "alerts": None, "device": None, "jobs_waiting": 0})
             row["state"] = {"now printing": "printing", "is idle": "idle", "disabled": "disabled"}[found.group(2)]
             alerts = re.search(r"Alerts:\s*(.+)", block)
             row["alerts"] = alerts.group(1).strip() if alerts and alerts.group(1).strip() != "none" else None
-        for name, uri in re.findall(r"device for (\S+):\s*(\S+)", run([lpstat, "-v"])):
+        for name, uri in uris.items():
             if name in queues:
                 queues[name]["device"] = re.sub(r"\?.*$", "", uri)
         for line in run([lpstat, "-o"]).splitlines():
@@ -315,7 +295,7 @@ def printer_facts(db):
         db.rollback()
         counts, last = {}, None
     return {"cups_available": bool(lpstat), "configured_queue": inventory["configured_queue"], "message": inventory["message"],
-            "ready": label_printer_ready(inventory),
+            "ready": label_printer_ready(inventory, uris),
             "queues": sorted(queues.values(), key=lambda row: row["name"]),
             "jobs_last_24h": counts, "wifi": printer_network.last_status(),
             "last_job": {"status": last.status, "queue": last.printer_queue, "created_at": last.created_at.isoformat(),
@@ -377,7 +357,7 @@ def find_issues(report):
         if fresh:
             pi_issues(add, name, device)
     printer = report["printer"]
-    labels = [queue for queue in printer["queues"] if queue.get("label_printer", is_label_queue(queue["name"]))]
+    labels = [queue for queue in printer["queues"] if queue["label_printer"]]
     if not labels:
         add("warning", "Label printer", "No label printer", "Connect the Brother printer by USB.")
     elif printer.get("ready") is False:
@@ -437,12 +417,7 @@ def pi_issues(add, name, device):
 
 def last_update(state):
     """What deploy/macos/update.py last did: updated, rolled back or refused, and when."""
-    try:
-        import json
-        facts = json.loads((state / "update-status.json").read_text())
-        return facts if isinstance(facts, dict) else None
-    except (OSError, ValueError):
-        return None
+    return read_json(state / "update-status.json")
 
 
 def build_report(request, db):
@@ -465,14 +440,12 @@ def build_report(request, db):
         "storage": storage,
         "power": power(),
         "application": {**app_version.current(), "last_update": last_update(state), "started_at": iso_from_epoch(STARTED), "state_folder": str(state),
-                        "logs_bytes": folder_bytes(state / "logs"), "pid": os.getpid()},
+                        "pid": os.getpid()},
         "database": database_facts(db),
         "backups": backup_facts(request),
         "stations": [{**station_status(station, now), "device": device_status(station.id, now)}
                      for station in db.scalars(select(Station).order_by(Station.name))],
         "printer": printer_facts(db),
-        "history": list(HISTORY),
-        "sample_seconds": SAMPLE_SECONDS,
     }
     report["issues"] = find_issues(report)
     levels = {issue["level"] for issue in report["issues"]}

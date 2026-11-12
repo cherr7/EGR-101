@@ -3,7 +3,6 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 import re
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -14,6 +13,7 @@ from sqlalchemy import select
 
 from .db import get_db
 from .models import Station, utcnow
+from .paths import run_quiet
 
 router = APIRouter(prefix="/api", tags=["Stations"])
 LOCK = threading.Lock()
@@ -185,12 +185,8 @@ def local_addresses():
     now = time.monotonic()
     if now - _ADDRESSES["at"] > 10:
         found = {"127.0.0.1", "::1"}
-        try:
-            output = subprocess.run(["/sbin/ifconfig"], capture_output=True, text=True, timeout=2).stdout
-            for match in re.finditer(r"^\s*inet6?\s+([0-9a-fA-F:.]+)(?:%\S+)?", output, re.MULTILINE):
-                found.add(match.group(1))
-        except (OSError, subprocess.SubprocessError):
-            pass
+        for match in re.finditer(r"^\s*inet6?\s+([0-9a-fA-F:.]+)(?:%\S+)?", run_quiet(["/sbin/ifconfig"], 2), re.MULTILINE):
+            found.add(match.group(1))
         address = lan_ip()
         if address:
             found.add(address)
@@ -198,25 +194,41 @@ def local_addresses():
     return _ADDRESSES["values"]
 
 
+CF_HEADERS = (b"cf-ray", b"cf-connecting-ip", b"cf-visitor")
+
+
+def is_outside(scope) -> bool:
+    """Requests through the Cloudflare tunnel carry Cloudflare's headers; local ones never do.
+    Faking them only gets a local user asked for the passcode."""
+    return any(name in CF_HEADERS for name, _ in scope.get("headers", []))
+
+
 def is_local_client(request: Request):
-    """True when the browser runs on this host, whichever of its addresses it used."""
+    """True when the browser runs on this host, whichever of its addresses it used. Outside-link requests
+    also arrive from 127.0.0.1 (cloudflared runs on this Mac), so they never count."""
+    if is_outside(request.scope):
+        return False
     host = client_ip(request)
     if host.startswith("::ffff:"):
         host = host[7:]
     return host in {"localhost"} | local_addresses()
 
 
+_MDNS = {"at": -60.0, "value": ""}
+
+
 def mdns_name():
-    if sys.platform == "darwin":
-        try:
-            name = subprocess.run(["/usr/sbin/scutil", "--get", "LocalHostName"], capture_output=True,
-                                  text=True, timeout=2).stdout.strip()
-            if name:
-                return name + ".local"
-        except (OSError, subprocess.SubprocessError):
-            pass
-    name = socket.gethostname()
-    return name if "." in name else name + ".local"
+    """This Mac's .local name (cached for a minute; staff tabs ask every few seconds)."""
+    now = time.monotonic()
+    if now - _MDNS["at"] > 60:
+        name = run_quiet(["/usr/sbin/scutil", "--get", "LocalHostName"], 2).strip() if sys.platform == "darwin" else ""
+        if name:
+            name += ".local"
+        else:
+            name = socket.gethostname()
+            name = name if "." in name else name + ".local"
+        _MDNS.update(at=now, value=name)
+    return _MDNS["value"]
 
 
 def station_status(station, now):

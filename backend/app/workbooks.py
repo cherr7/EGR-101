@@ -17,7 +17,6 @@ from defusedxml.ElementTree import fromstring as safe_xml
 from defusedxml.common import DefusedXmlException
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.utils.exceptions import InvalidFileException
-from openpyxl.utils import get_column_letter
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 

@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
 
 from .models import AuditEvent, ConditioningSession, Room, Specimen, Stack, utcnow
-from .services import (TARGET_EVENT, conditioning_period, current_session, iso, sessions_for, snapshot,
+from .services import (TARGET_EVENT, conditioning_due, conditioning_period, current_session, iso, sessions_for, snapshot,
                        transaction_effective, transaction_is_latest_for)
 
 
@@ -54,27 +54,23 @@ def process_correction(db, body, username):
     if len(specimens) != len(ids) or any(p.stack_id != stack_id for p in specimens):
         raise HTTPException(422, "All selected specimens must belong to the same stack.")
     before = snapshot(db, specimens)
-    exit_at = (body.exited_at if "exited_at" in body.model_fields_set else session.exited_at) if body.kind == "edit_session" else body.exited_at
+    exit_at = session.exited_at if session is not None and "exited_at" not in body.model_fields_set else body.exited_at
     if exit_at is not None and exit_at < body.entered_at:
         raise HTTPException(422, "Exit must be at or after entry.")
     room_id = body.room_id or session.room_id
     room = db.get(Room, room_id)
     if room is None:
         raise HTTPException(422, "Unknown room.")
-    if body.kind == "edit_session":
-        session.entered_at = body.entered_at.astimezone(timezone.utc)
-        session.exited_at = exit_at.astimezone(timezone.utc) if exit_at else None
-        session.room_id = room_id
-        session.room = room
-        session.corrected = True
-        session.incomplete = bool(session.exited_at and session.exited_at - session.entered_at < timedelta(hours=room.required_hours))
+    entered = body.entered_at.astimezone(timezone.utc)
+    exited = exit_at.astimezone(timezone.utc) if exit_at else None
+    incomplete = bool(exited and exited < conditioning_due(entered, room.required_hours))
+    if session is not None:
+        session.entered_at, session.exited_at, session.incomplete = entered, exited, incomplete
+        session.room_id, session.room, session.corrected = room_id, room, True
     else:
         for specimen in specimens:
-            db.add(ConditioningSession(specimen_id=specimen.id, room_id=room_id,
-                                       entered_at=body.entered_at.astimezone(timezone.utc),
-                                       exited_at=body.exited_at.astimezone(timezone.utc) if body.exited_at else None,
-                                       recorded_at=now, source="missed", corrected=True,
-                                       incomplete=bool(body.exited_at and body.exited_at - body.entered_at < timedelta(hours=room.required_hours))))
+            db.add(ConditioningSession(specimen_id=specimen.id, room_id=room_id, entered_at=entered, exited_at=exited,
+                                       recorded_at=now, source="missed", corrected=True, incomplete=incomplete))
     # Validate before flushing: sessions_for needs to include pending ORM changes.
     try:
         db.flush()
@@ -88,8 +84,7 @@ def process_correction(db, body, username):
     db.flush()
     event = AuditEvent(stack_id=stack_id, kind="correction", actor=username, reason=body.reason,
                        recorded_at=now, specimen_ids=ids, room_id=room_id,
-                       payload={"correction_kind": body.kind, "event_id": None,
-                                "room_id": room_id, "occurred_at": iso(body.entered_at),
+                       payload={"correction_kind": body.kind, "room_id": room_id, "occurred_at": iso(body.entered_at),
                                 "before": before, "after": snapshot(db, specimens)})
     db.add(event)
     db.flush()
@@ -223,7 +218,7 @@ def edit_transaction(db, event_id, body, username="project-staff"):
                 raise HTTPException(409, "Checkout room must match the specimen's entry room. Correct the entry first.")
             session.exited_at = occurred_at
             session.corrected = True
-            session.incomplete = occurred_at - session.entered_at < timedelta(hours=room.required_hours)
+            session.incomplete = occurred_at < conditioning_due(session.entered_at, room.required_hours)
     db.flush()
     for specimen in specimens:
         validate_timeline(db, specimen, now)
@@ -274,7 +269,7 @@ def record_missed_movement(db, body, username="project-staff"):
                 raise HTTPException(422, "Exit must be at or after entry.")
             period.exited_at = occurred_at
             period.corrected = True
-            period.incomplete = occurred_at - period.entered_at < timedelta(hours=room.required_hours)
+            period.incomplete = occurred_at < conditioning_due(period.entered_at, room.required_hours)
     db.flush()
     event = AuditEvent(stack_id=stack.id, kind="movement", direction=body.direction,
                        actor=username, reason=body.note or None, recorded_at=now, specimen_ids=ids, room_id=room.id,

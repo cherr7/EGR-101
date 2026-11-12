@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, localTimeInput, post, serverNow, specimenNumber, specimenNumbers } from './api'
+import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, hashParams, localTimeInput, post, serverNow, specimenNumber, specimenNumbers } from './api'
 import type { AuditEvent, BatchSummary, Config, Specimen, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 
@@ -7,7 +7,7 @@ type Editor = { event: AuditEvent; stack: Stack; ids: number[]; time: string; ro
 type Missed = { stackId: number; ids: number[]; direction: 'IN' | 'OUT'; time: string; room: string; note: string }
 type Context = { stackId: string; eventId: string; batchId: string }
 function readContext(): Context {
-  const parameters = new URLSearchParams(location.hash.split('?')[1] || '')
+  const parameters = hashParams()
   return { stackId: parameters.get('stack') || '', eventId: parameters.get('event') || '', batchId: parameters.get('batch') || '' }
 }
 function idsFor(event: AuditEvent) { return event.effective_specimen_ids || event.specimen_ids }

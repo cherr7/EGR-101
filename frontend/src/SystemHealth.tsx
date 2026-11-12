@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, formatTime } from './api'
+import { api, bytes, formatTime } from './api'
 import { ErrorNotice, PageHeader } from './App'
 import { OutsideCard, UpdateControl } from './HostControls'
 
@@ -7,7 +7,7 @@ type Level = 'critical' | 'warning' | 'info'
 type Issue = { level: Level; area: string; title: string; detail: string }
 type Volume = { label: string; path: string; total_bytes: number; used_bytes: number; free_bytes: number; percent: number | null }
 type Memory = { total_bytes: number; used_bytes: number; cached_bytes: number | null; percent: number; pressure: string; available_percent: number | null; swap_used_bytes: number | null }
-type Power = { source: string | null; on_battery: boolean; has_battery: boolean; battery_percent: number | null; battery_state: string | null; time_remaining: string | null; sleep_minutes: number | null; sleep_note: string | null; sleep_prevented?: boolean; display_sleep_minutes: number | null; thermal_warning: string | null }
+type Power = { source: string | null; on_battery: boolean; has_battery: boolean; battery_percent: number | null; battery_state: string | null; time_remaining: string | null; sleep_minutes: number | null; sleep_note: string | null; sleep_prevented?: boolean; display_sleep_minutes: number | null }
 type Device = {
   received_at: string; age_seconds: number; stale: boolean; ip: string; clock_skew_seconds: number | null
   hostname: string | null; model: string | null; os: string | null; kernel: string | null; uptime_seconds: number | null
@@ -22,20 +22,17 @@ type Device = {
 }
 type Station = { id: string; name: string; status: 'ready' | 'no_scanner' | 'offline' | 'never_seen'; ip: string | null; last_seen: string | null; scanner_ready: boolean; input: string | null; live_clients: string[]; device: Device | null }
 type Queue = { name: string; is_default: boolean; state: string; alerts: string | null; device: string | null; jobs_waiting: number }
-type Sample = { at: string; cpu: number | null; memory: number | null }
 export type HealthReport = {
   server_time: string; overall: 'ok' | 'warning' | 'critical'; issues: Issue[]
-  host: { hostname: string; ip: string | null; network_interface: string | null; model: string | null; chip: string | null; os: string; cores: number | null; load_average: number[] | null; booted_at: string | null; python: string }
+  host: { hostname: string; ip: string | null; model: string | null; chip: string | null; os: string; cores: number | null; load_average: number[] | null; booted_at: string | null; python: string }
   cpu: { percent: number | null }; memory: Memory | null; storage: Volume[]; power: Power | null
-  application: { version?: string; commit?: string | null; built_at?: string | null; last_update?: { result: string; version: string; previous?: string; at: string; reason?: string } | null; started_at: string; state_folder: string; logs_bytes: number | null; pid: number }
+  application: { version?: string; commit?: string | null; built_at?: string | null; last_update?: { result: string; version: string; previous?: string; at: string; reason?: string } | null; started_at: string; state_folder: string; pid: number }
   database: { connected: boolean; size_bytes?: number; version?: string; started_at?: string; connections?: number; specimens?: number; audit_events?: number }
   backups: { available: boolean; count?: number; total_bytes?: number; folder?: string; latest_at?: string | null; latest_verified?: boolean | null; enabled?: boolean; overdue?: boolean; last_error?: string | null; next_run_at?: string | null }
   stations: Station[]
   printer: { cups_available: boolean; configured_queue: string | null; message: string; queues: Queue[]; jobs_last_24h: Record<string, number>; last_job: { status: string; queue: string | null; created_at: string; error: string | null } | null }
-  history: Sample[]; sample_seconds: number
 }
 
-export const bytes = (value?: number | null) => value == null ? '—' : value >= 1e12 ? `${(value / 1e12).toFixed(2)} TB` : value >= 1e9 ? `${(value / 1e9).toFixed(1)} GB` : value >= 1e6 ? `${(value / 1e6).toFixed(1)} MB` : `${Math.ceil(value / 1e3)} KB`
 // Binary units, as Activity Monitor shows them.
 const ram = (value?: number | null) => value == null ? '—' : value >= 2 ** 30 ? `${(value / 2 ** 30).toFixed(1)} GB` : `${Math.round(value / 2 ** 20)} MB`
 function since(value?: string | null, now = Date.now()) {

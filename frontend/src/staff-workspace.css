@@ -18,11 +18,6 @@
 .app-shell table { font-size: 12px; }
 .app-shell th { font-size: 11px; color: #657c6c; }
 .app-shell td small { font-size: 11px; color: #718775; }
-.app-shell .metrics { margin-bottom: 20px; gap: 12px; }
-.app-shell .metric { padding: 16px; gap: 12px; }
-.app-shell .metric div > span { font-size: 12px; color: #60796a; }
-.app-shell .metric-icon { width: 36px; height: 36px; font-size: 22px; flex-shrink: 0; }
-.app-shell .overview-table .badge { font-size: 11px; }
 .app-shell .empty-inline { padding: 36px 20px; }
 .app-shell .empty-inline .button { margin-top: 16px; }
 @media (max-width: 800px) {
@@ -32,8 +27,6 @@
   .app-shell .side-foot { flex-direction: row; align-items: center; justify-content: space-between; padding: 12px 4px 0; gap: 12px; }
   .app-shell .main-shell { margin-left: 0; }
   .app-shell main { padding: 20px 16px; }
-  .app-shell .metric { padding: 14px; }
-  .app-shell .metric div > span { font-size: 11px; }
 }
 @media print {
   .app-shell .sidebar, .app-shell .page-heading { display: none; }
@@ -41,10 +34,7 @@
   .app-shell main { padding: 0; }
 }
 
-.workspace-tabs { display: flex; align-items: center; gap: 7px; padding: 7px; margin-bottom: 28px; background: #e8efeb; border: 1px solid #d5e0da; border-radius: 11px; }
-.workspace-tabs button { min-height: 43px; padding: 10px 20px; border: 1px solid transparent; border-radius: 7px; background: transparent; font-weight: 650; color: #49675d; }
-.workspace-tabs button[aria-selected=true] { color: #234c46; border-color: #d4dfd7; background: #fff; box-shadow: 0 2px 5px #244c4920; }
-.prep-exceptions, .context-strip, .record-selection-actions, .selection-summary, .selection-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 14px 22px; border-bottom: 1px solid #dfe9df; background: #f6faf3; }
+.prep-exceptions, .context-strip, .record-selection-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 14px 22px; border-bottom: 1px solid #dfe9df; background: #f6faf3; }
 .record-selection-actions small { color: #6a8072; font-size: 11px; }
 .prep-exceptions small { margin-left: auto; color: #69816f; font-size: 11px; }
 .context-strip { border: 1px solid #dfe9df; border-radius: 9px; margin-bottom: 18px; justify-content: space-between; }
@@ -106,8 +96,6 @@
   .label-dialog { grid-template-columns: minmax(220px, .9fr) minmax(0, 1.1fr); gap: 16px; }
 }
 @media(max-width: 700px) {
-  .workspace-tabs { margin-bottom: 20px; }
-  .workspace-tabs button { padding: 9px 12px; font-size: 12px; flex: 1; }
   .label-dialog { display: block; overflow-y: auto !important; height: 65vh; }
   .label-selection-panel { height: auto; max-height: 33vh; margin-bottom: 18px; }
   .label-preview-panel { height: auto; }

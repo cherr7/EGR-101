@@ -105,11 +105,11 @@ def test_open_backup_folder_is_limited_to_the_host_mac(client, monkeypatch, tmp_
     calls = []
     monkeypatch.setattr(backups.sys, "platform", "darwin")
     monkeypatch.setattr(backups.subprocess, "run", lambda command, **kwargs: calls.append(command))
-    monkeypatch.setattr(backups, "is_host_request", lambda request: False)
+    monkeypatch.setattr(backups, "is_local_client", lambda request: False)
     assert client.post("/api/backups/open-folder").status_code == 403
     assert client.get("/api/backups").json()["storage"]["can_open"] is False
     assert calls == []
-    monkeypatch.setattr(backups, "is_host_request", lambda request: True)
+    monkeypatch.setattr(backups, "is_local_client", lambda request: True)
     opened = client.post("/api/backups/open-folder")
     assert opened.status_code == 200, opened.text
     assert calls == [["/usr/bin/open", str(backups.folder())]]
@@ -199,8 +199,8 @@ def test_weekly_keepers_use_eastern_monday_not_utc():
 
 def test_outside_link_requests_are_not_on_the_host_mac():
     from starlette.requests import Request
-    from app.backups import is_host_request
+    from app.stations import is_local_client
     local = {"type": "http", "client": ("127.0.0.1", 5000), "headers": []}
     tunnel = {**local, "headers": [(b"cf-ray", b"8abc-IAD"), (b"cf-connecting-ip", b"203.0.113.9")]}
-    assert is_host_request(Request(local))
-    assert not is_host_request(Request(tunnel))
+    assert is_local_client(Request(local))
+    assert not is_local_client(Request(tunnel))

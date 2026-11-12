@@ -8,6 +8,9 @@
 #             (e.g. fabric-mac.tail1234.ts.net), read from `tailscale status`.
 #   DNS       the resolver the Pi's nginx asks for MAC_HOST. Default for a *.ts.net name:
 #             100.100.100.100 (Tailscale MagicDNS). nginx cannot resolve Bonjour .local names.
+#   MAC_LAN   the Mac's local-network address, used by the Pi only while MAC_HOST cannot be
+#             reached. Default: this Mac's Wi-Fi/Ethernet IPv4 address. MAC_LAN=none turns it off.
+#             It changes when the Mac gets a new address; redeploy then (or reserve the address).
 #   DISPLAY_ROTATION  how the installer turns the Touch Display 2 (a portrait panel): 90 (default),
 #             270 if the picture is upside down, or none.
 #
@@ -27,8 +30,10 @@ case "$STATION" in shared-door|ppe-door|footwear-door) ;; *) die "station must b
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [ -z "${MAC_HOST:-}" ] && command -v tailscale >/dev/null; then
-    MAC_HOST="$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null || true)"
+TAILSCALE="$(command -v tailscale || true)"
+[ -n "$TAILSCALE" ] || [ ! -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ] || TAILSCALE=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+if [ -z "${MAC_HOST:-}" ] && [ -n "$TAILSCALE" ]; then
+    MAC_HOST="$("$TAILSCALE" status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null || true)"
 fi
 [ -n "${MAC_HOST:-}" ] || die "Set MAC_HOST to the Mac's name the Pis can resolve, e.g. MAC_HOST=fabric-mac.tail1234.ts.net (start Tailscale on this Mac first)."
 case "$MAC_HOST" in
@@ -37,12 +42,20 @@ case "$MAC_HOST" in
 esac
 [ -n "${DNS:-}" ] || die "Set DNS to the IPv4 resolver that knows $MAC_HOST."
 API="http://$MAC_HOST:8120"
-echo "==> Station $STATION on $PI; Mac API $API (resolved by $DNS)"
+if [ -z "${MAC_LAN:-}" ]; then
+    for interface in en0 en1 en2 en3 en4 en5 en6 en7 en8; do
+        MAC_LAN="$(ipconfig getifaddr "$interface" 2>/dev/null || true)"
+        [ -n "$MAC_LAN" ] && break
+    done
+fi
+FALLBACK=""
+[ -z "${MAC_LAN:-}" ] || [ "$MAC_LAN" = none ] || FALLBACK="http://$MAC_LAN:8120"
+echo "==> Station $STATION on $PI; Mac API $API (resolved by $DNS)${FALLBACK:+, local fallback $FALLBACK}"
 
 echo "==> Building frontend + station package"
 (cd frontend && { [ -d node_modules/vite ] || npm ci; } && npm run build)
 python3 scripts/build-station.py --station "$STATION"
-sh deploy/scanner-kiosk/install.sh --check output/station-ui "$API" kiosk "$DNS" "$STATION" >/dev/null
+API_FALLBACK="$FALLBACK" sh deploy/scanner-kiosk/install.sh --check output/station-ui "$API" kiosk "$DNS" "$STATION" >/dev/null
 
 # One SSH connection, so the password is asked only once.
 SOCK="$(mktemp -u /tmp/pi-ssh.XXXXXX)"
@@ -50,6 +63,13 @@ SSH=(ssh -o ControlMaster=auto -o ControlPath="$SOCK" -o ControlPersist=10m
      -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10)
 trap '"${SSH[@]}" -O exit "$PI" 2>/dev/null || true' EXIT
 "${SSH[@]}" "$PI" true || die "Cannot SSH to $PI. If its host key changed after a re-image, run: ssh-keygen -R ${PI#*@}"
+
+# Let this Mac reach the Pi with its SSH key from now on, so later updates need no login password.
+KEY="$(ls ~/.ssh/id_ed25519.pub ~/.ssh/id_ecdsa.pub ~/.ssh/id_rsa.pub 2>/dev/null | head -1 || true)"
+if [ -n "$KEY" ]; then
+    echo "==> Authorizing this Mac's SSH key ($KEY) on the Pi"
+    "${SSH[@]}" "$PI" 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; key=$(cat); grep -qxF "$key" ~/.ssh/authorized_keys || echo "$key" >> ~/.ssh/authorized_keys' < "$KEY"
+fi
 
 echo "==> Copying files"
 "${SSH[@]}" "$PI" 'rm -rf ~/station-ui ~/scanner-kiosk'
@@ -64,7 +84,7 @@ if [ '$DNS' = 100.100.100.100 ] && ! tailscale status >/dev/null 2>&1; then
     echo 'This Pi is not on the tailnet. Install and log in to Tailscale first (docs/DEVICE_DISCOVERY.md).' >&2
     exit 3
 fi
-sudo DISPLAY_ROTATION='${DISPLAY_ROTATION:-90}' sh ~/scanner-kiosk/install.sh --nfc ~/station-ui '$API' \"\$(whoami)\" '$DNS' '$STATION'
+sudo DISPLAY_ROTATION='${DISPLAY_ROTATION:-90}' API_FALLBACK='$FALLBACK' sh ~/scanner-kiosk/install.sh --nfc ~/station-ui '$API' \"\$(whoami)\" '$DNS' '$STATION'
 grep -qx KIOSK_DIRECT_START=true /opt/fabric-scanner/station.env || echo KIOSK_DIRECT_START=true | sudo tee -a /opt/fabric-scanner/station.env >/dev/null
 curl -fsS -m 5 '$API/api/health' >/dev/null || { echo 'The Pi cannot reach $API. Is the app running and the Mac on the tailnet?' >&2; exit 4; }
 " || die "Install on $PI failed (status $?). The Pi was not rebooted."
@@ -79,7 +99,7 @@ for attempt in $(seq 1 36); do   # wait up to 3 minutes for SSH to answer again
 done
 # Then give the kiosk services up to 2 more minutes, checked from the Pi itself.
 if "${SSH[@]}" "$PI" 'for i in $(seq 1 24); do
-        curl -fsS -m 5 http://127.0.0.1:8080/station/ready >/dev/null && curl -fsS -m 5 http://127.0.0.1:8080/api/health && exit 0
+        curl -fsS -m 5 http://127.0.0.1:8080/station/ready >/dev/null && curl -fsS -m 5 -D - -o /dev/null http://127.0.0.1:8080/api/health | grep -i x-fabric-upstream && exit 0
         sleep 5
     done; exit 1'; then
     echo

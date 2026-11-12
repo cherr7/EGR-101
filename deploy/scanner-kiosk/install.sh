@@ -22,7 +22,8 @@ kiosk_user=$3
 dns_resolver=$4
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 station_id=$(python3 "$source_dir/validate-package.py" "$ui_source" "$api_origin" "$dns_resolver" "${5:-}")
-for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html station-agent.py fabric-scanner-agent.service; do
+for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html station-agent.py fabric-scanner-agent.service \
+    render-nginx.py nginx.conf.template; do
     [ -f "$source_dir/$name" ] || { echo "Missing station file: $source_dir/$name" >&2; exit 1; }
 done
 if [ "$with_nfc" = true ]; then
@@ -30,7 +31,11 @@ if [ "$with_nfc" = true ]; then
         [ -f "$source_dir/$name" ] || { echo "Missing NFC bridge file: $source_dir/$name" >&2; exit 1; }
     done
 fi
-python3 - "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" "$source_dir/watchdog.py" "$source_dir/station-agent.py" <<'PY'
+if [ -n "${API_FALLBACK:-}" ]; then
+    python3 "$source_dir/render-nginx.py" --check-fallback "${API_FALLBACK}" || exit 2
+fi
+python3 - "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" "$source_dir/watchdog.py" "$source_dir/station-agent.py" \
+    "$source_dir/render-nginx.py" <<'PY'
 import ast
 from pathlib import Path
 import sys
@@ -99,8 +104,11 @@ Path("/opt/fabric-scanner/station.env").write_text(
     "STATION_ID=" + station + "\n")
 PY
 chmod -R a+rX /opt/fabric-scanner/ui
-sed -e "s|__API_ORIGIN__|$api_origin|g" -e "s|__DNS_RESOLVER__|$dns_resolver|g" \
-    "$source_dir/nginx.conf.template" > /etc/nginx/sites-available/fabric-scanner
+# API_FALLBACK=http://IP:PORT (optional): the Mac's local-network address, used only while the
+# main address (API_ORIGIN, normally its Tailscale name) cannot be reached.
+python3 "$source_dir/render-nginx.py" "$source_dir/nginx.conf.template" "$api_origin" "$dns_resolver" "${API_FALLBACK:-}" \
+    > /etc/nginx/sites-available/fabric-scanner.new
+mv /etc/nginx/sites-available/fabric-scanner.new /etc/nginx/sites-available/fabric-scanner
 ln -sf /etc/nginx/sites-available/fabric-scanner /etc/nginx/sites-enabled/fabric-scanner
 nginx -t
 systemctl enable nginx

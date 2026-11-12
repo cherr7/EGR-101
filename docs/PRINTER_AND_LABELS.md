@@ -52,7 +52,7 @@ Yes, to get started. Brother lists the QL-810W as AirPrint-capable, so macOS can
 lp -d <queue> -o media=Custom.62x29mm -o CutMedia=EndOfPage …
 ```
 
-`CutMedia` (cut after every label) and the custom 62 × 29 mm size may not be honoured by the generic AirPrint queue; this has not been tested yet. If labels come out the wrong size, scaled, or uncut, install Brother's **CUPS driver** for the QL-810W from Brother's download page, remove the queue, add the printer again, and under **Use** pick the Brother QL-810W driver instead of AirPrint.
+On the host MacBook Neo (macOS 27.2), plugging the printer in by USB created the queue `Brother_QL_810W` automatically. It is an AirPrint queue over USB (`ippusb://…`, driver "Brother QL-810W-AirPrint"), and it was set as the default printer. That queue offers `CutMedia` = None / **EndOfPage** (default) / EndOfJob, and accepts `Custom.WIDTHxHEIGHT` page sizes, so the app's options are recognised. No Brother software is installed. Whether the printer actually cuts and sizes 62 × 29 mm correctly is confirmed only by the first physical print. If labels come out the wrong size, scaled, or uncut, install Brother's **CUPS driver** for the QL-810W from Brother's download page, remove the queue, add the printer again, and under **Use** pick the Brother QL-810W driver instead of AirPrint.
 
 ## Check the Mac can print
 

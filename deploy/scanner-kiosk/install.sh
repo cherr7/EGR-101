@@ -82,6 +82,18 @@ rm -f /opt/fabric-scanner/bin/nfc-bridge.py
 # A dormant legacy environment is harmless; remove it only after stopping its service.
 rm -rf /opt/fabric-scanner/nfc-env
 install -d /opt/fabric-scanner/ui /opt/fabric-scanner/bin
+# Wi-Fi power saving makes a station drop off the network for seconds at a time; turn it off.
+if [ -d /etc/NetworkManager/conf.d ]; then
+    printf '[connection]\nwifi.powersave = 2\n' > /etc/NetworkManager/conf.d/fabric-wifi-powersave.conf
+    systemctl reload NetworkManager 2>/dev/null || true
+fi
+command -v iw >/dev/null && iw dev wlan0 set power_save off 2>/dev/null || true
+# Keep the system log across reboots, so an unexpected restart (power, crash) can be traced.
+if [ ! -d /var/log/journal ]; then
+    install -d -m 2755 /var/log/journal
+    getent group systemd-journal >/dev/null && chgrp systemd-journal /var/log/journal
+    systemctl restart systemd-journald || true
+fi
 cp -R "$ui_source/." /opt/fabric-scanner/ui/
 install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" \
     "$source_dir/station-agent.py" /opt/fabric-scanner/bin/

@@ -22,7 +22,7 @@ FILES = {
     "sys/class/thermal/thermal_zone0/temp": "71250\n",
     "sys/devices/platform/soc/soc:firmware/get_throttled": "50005\n",
     "etc/os-release": 'PRETTY_NAME="Debian GNU/Linux 13 (trixie)"\nID=debian\n',
-    "opt/fabric-scanner/ui/station-package.json": json.dumps({"built_at": "2026-11-10T20:00:00+00:00"}),
+    "opt/fabric-scanner/ui/station-package.json": json.dumps({"built_at": "2026-11-10T20:00:00+00:00", "release": "v2026.11.12-1"}),
 }
 
 
@@ -54,6 +54,7 @@ class StationAgentTests(unittest.TestCase):
         self.assertEqual(report["uptime_seconds"], 1234)
         self.assertEqual(report["load_average"], [0.52, 0.40, 0.31])
         self.assertEqual(report["package_built_at"], "2026-11-10T20:00:00+00:00")
+        self.assertEqual(report["package_version"], "v2026.11.12-1")
         self.assertIsNone(report["services"])  # only queried on a real Pi root
 
     def test_missing_files_give_nulls_not_errors(self):

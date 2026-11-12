@@ -5,9 +5,12 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "backend"))
+from app.version import stamp as version_stamp, write as version_write  # noqa: E402
 
 # macOS cannot tell the CPU architecture of a script-only bundle executable, so on
 # Apple Silicon it treats the app as Intel and asks for Rosetta. A tiny native
@@ -95,9 +98,11 @@ def build(output):
     contents = output / "Contents"
     (contents / "MacOS").mkdir(parents=True, exist_ok=True)
     copy_code(ROOT, contents / "Resources/app")
+    facts = version_stamp(ROOT)
+    version_write(contents / "Resources/app", facts)
     info = {"CFBundleName": "Fabric Conditioning", "CFBundleDisplayName": "Fabric Conditioning",
             "CFBundleIdentifier": "org.egr.fabric-conditioning", "CFBundleVersion": "3",
-            "CFBundleShortVersionString": "3.0", "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": facts["version"].lstrip("v"), "CFBundlePackageType": "APPL",
             "CFBundleExecutable": "Fabric Conditioning", "LSUIElement": True,
             "LSMinimumSystemVersion": "13.0", "NSHighResolutionCapable": True,
             "LSArchitecturePriority": ["arm64", "x86_64"]}

@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select, text
 
 from . import backups
+from . import version as app_version
 from .db import get_db
 from .models import AuditEvent, PrintJob, Specimen, Station, utcnow
 from .printing import printer_inventory
@@ -470,6 +471,10 @@ def pi_issues(add, name, device):
     signal = (device.get("network") or {}).get("wifi_signal_dbm")
     if signal is not None and signal < PI_WIFI_WEAK_DBM:
         add("warning", area, f"{name} has weak Wi-Fi ({signal} dBm)", "Scans may time out. Move the access point or use Ethernet.")
+    running, expected = device.get("package_version"), app_version.current()["version"]
+    if running and expected != "unknown" and running != expected:
+        add("warning", area, f"{name} is on an older version ({running})",
+            f"The Mac runs {expected}. Update the station so its screens match the server.")
     uptime = device.get("uptime_seconds")
     if uptime is not None and uptime < PI_RECENT_BOOT_SECONDS:
         add("info", area, f"{name} restarted {uptime // 60} min ago", "Expected after an update or power cut; otherwise check its power.")
@@ -494,7 +499,7 @@ def build_report(request, db):
         "memory": memory(),
         "storage": storage,
         "power": power(),
-        "application": {"started_at": iso_from_epoch(STARTED), "state_folder": str(state),
+        "application": {**app_version.current(), "started_at": iso_from_epoch(STARTED), "state_folder": str(state),
                         "logs_bytes": folder_bytes(state / "logs"), "pid": os.getpid()},
         "database": database_facts(db),
         "backups": backup_facts(request),

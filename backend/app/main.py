@@ -26,6 +26,7 @@ from .stacks import router as stacks_router
 from .stations import router as stations_router
 from .dashboard import router as dashboard_router
 from .system_health import ensure_sampler, router as system_health_router
+from . import version as app_version
 from .models import AuditEvent, Material, MovementRequest, PrepDraft, Project, Room, Specimen, Stack, Station, Treatment, utcnow
 from .movements import process_movement
 from .schemas import (REQUEST_ID, CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, PrepCommitBody,
@@ -101,9 +102,15 @@ app.add_middleware(RestoreMaintenanceGate)
 def health(db=Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "connected", "server_time": iso(utcnow())}
+        return {"status": "ok", "database": "connected", "server_time": iso(utcnow()), "version": app_version.current()["version"]}
     except Exception:
         return JSONResponse(status_code=503, content={"status": "unavailable", "database": "unreachable"})
+
+
+@app.get("/api/version")
+def version():
+    """This server's release; a Pi compares its own with it to know it is out of date."""
+    return app_version.current()
 
 
 @app.get("/api/config")

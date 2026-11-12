@@ -150,3 +150,18 @@ def test_pi_reporting_states():
     fresh = {**PI_REPORT, "stale": False, "age_seconds": 5, "clock_skew_seconds": 0}
     assert titles("offline", fresh) == {"PPE: the Pi is on but the kiosk page is not running": "warning"}
     assert titles("offline", None) == {"PPE is offline": "warning"}
+
+
+def test_versions_are_reported_and_an_older_pi_is_flagged(client, monkeypatch):
+    from datetime import datetime, timezone
+    from app import version
+    monkeypatch.setattr(version, "current", lambda: {"version": "v2026.11.12-2", "commit": "abc1234", "built_at": None})
+    assert client.get("/api/version").json()["version"] == "v2026.11.12-2"
+    assert client.get("/api/health").json()["version"] == "v2026.11.12-2"
+    for station, release in (("ppe-door", "v2026.11.12-1"), ("footwear-door", "v2026.11.12-2")):
+        body = {**PI_REPORT, "sent_at": datetime.now(timezone.utc).isoformat(), "package_version": release}
+        assert client.post(f"/api/stations/{station}/device", json=body).status_code == 200
+    report = client.get("/api/system/health").json()
+    assert report["application"]["version"] == "v2026.11.12-2"
+    behind = [i["title"] for i in report["issues"] if "older version" in i["title"]]
+    assert len(behind) == 1 and "v2026.11.12-1" in behind[0] and "PPE" in behind[0]

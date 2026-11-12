@@ -102,6 +102,7 @@ class DeviceReport(_Loose):
     services: dict[str, DeviceService] | None = Field(default=None, max_length=8)
     input: DeviceInput | None = None
     package_built_at: str | None = Field(default=None, max_length=64)
+    package_version: str | None = Field(default=None, max_length=64)
 
 
 def client_ip(request: Request):

@@ -233,3 +233,36 @@ def test_health_checks_database(client, monkeypatch):
         assert client.get("/api/health").status_code == 503
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_undoing_a_later_scan_reopens_undo_on_the_earlier_scan(client, stack_factory):
+    # Kiosk sequence from the Pi: IN, OUT, undo OUT, then undo the IN.
+    stack = stack_factory(count=3)
+    entered, _ = move(client, stack)
+    left, _ = move(client, stack, "OUT", acknowledge_early=True, expected_version=entered["version"])
+    assert left["status"] == "committed", left
+    rows = {e["id"]: e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"]}
+    assert rows[entered["event_id"]]["can_undo"] is False      # the OUT really is later activity
+    undone = client.post("/api/transactions/" + left["event_id"] + "/undo", json={"expected_version": rows[left["event_id"]]["version"]})
+    assert undone.is_success, undone.text
+    row = next(e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"] if e["id"] == entered["event_id"])
+    assert row["can_undo"] is True and not row["undone"]
+    again = client.post("/api/transactions/" + entered["event_id"] + "/undo", json={"expected_version": row["version"]})
+    assert again.is_success, again.text
+    assert detail(client, stack)["inside_count"] == 0
+    assert all(s["state"] == "OUT" and not [p for p in s["sessions"] if not p.get("voided")] for s in detail(client, stack)["specimens"])
+
+
+def test_correction_after_an_undone_scan_still_blocks_undo(client, stack_factory, supervisor):
+    stack = stack_factory(count=1)
+    entered, _ = move(client, stack)
+    left, _ = move(client, stack, "OUT", acknowledge_early=True, expected_version=entered["version"])
+    version = lambda: detail(client, stack)["version"]
+    assert client.post("/api/transactions/" + left["event_id"] + "/undo", json={"expected_version": version()}).is_success
+    session_id = detail(client, stack)["specimens"][0]["sessions"][0]["id"]
+    corrected = client.post("/api/corrections", json={"kind": "edit_session", "session_id": session_id, "reason": "Fix entry",
+        "entered_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(), "exited_at": None})
+    assert corrected.status_code == 200, corrected.text
+    row = next(e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"] if e["id"] == entered["event_id"])
+    assert row["can_undo"] is False
+    assert client.post("/api/transactions/" + entered["event_id"] + "/undo", json={"expected_version": version()}).status_code == 409

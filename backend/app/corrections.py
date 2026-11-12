@@ -4,7 +4,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from .models import AuditEvent, ConditioningSession, Room, Specimen, Stack, utcnow, uuid_str
-from .services import conditioning_period, current_session, iso, sessions_for, snapshot, transaction_effective
+from .services import (conditioning_period, current_session, iso, sessions_for, snapshot,
+                       transaction_effective, transaction_is_latest_for)
 
 
 def validate_timeline(db, specimen, now):
@@ -186,7 +187,7 @@ def undo_transaction(db, event_id, body, username="project-staff"):
     _check_version(stack, body.expected_version)
     effective = transaction_effective(db, target)
     specimens = [by_id[identifier] for identifier in effective["specimen_ids"]]
-    if any(p.last_event_id != effective["latest_event_id"] for p in specimens):
+    if not all(transaction_is_latest_for(db, p, effective) for p in specimens):
         raise HTTPException(409, "Cannot undo: an affected specimen has an intervening movement or correction.")
     before = snapshot(db, specimens)
     for specimen in specimens:
@@ -213,7 +214,7 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     for identifier in affected_ids:
         specimen = by_id[identifier]
         if identifier in current_ids:
-            if specimen.last_event_id != effective["latest_event_id"]:
+            if not transaction_is_latest_for(db, specimen, effective):
                 raise HTTPException(409, "A specimen has an intervening movement or correction. Correct that later record first.")
         elif specimen.last_event_id:
             last = db.get(AuditEvent, specimen.last_event_id)

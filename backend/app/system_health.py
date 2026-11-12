@@ -22,6 +22,7 @@ from . import version as app_version
 from .db import get_db
 from .models import AuditEvent, PrintJob, Specimen, Station, utcnow
 from .printing import printer_inventory
+from . import printer_network
 from .stations import device_status, lan_ip, mdns_name, station_status
 
 router = APIRouter(prefix="/api/system", tags=["System health"])
@@ -309,7 +310,7 @@ def printer_facts(db):
         counts, last = {}, None
     return {"cups_available": bool(lpstat), "configured_queue": inventory["configured_queue"], "message": inventory["message"],
             "queues": sorted(queues.values(), key=lambda row: row["name"]),
-            "jobs_last_24h": counts,
+            "jobs_last_24h": counts, "wifi": printer_network.last_status(),
             "last_job": {"status": last.status, "queue": last.printer_queue, "created_at": last.created_at.isoformat(),
                          "error": last.error} if last else None}
 
@@ -390,6 +391,11 @@ def find_issues(report):
             add("warning", "Label printer", f"{queue['name']}: {queue['alerts']}", "Check power, cable and labels.")
         if queue["jobs_waiting"] >= 3:
             add("warning", "Label printer", f"{queue['jobs_waiting']} jobs waiting on {queue['name']}", "Check power and labels.")
+    wifi = printer.get("wifi") or {}
+    if wifi.get("result") == "found":
+        add("warning", "Label printer", f"Wi-Fi printer is now at {wifi.get('ip')}", "Update its address in Printers & Scanners.")
+    elif wifi.get("result") == "not found":
+        add("info", "Label printer", "Wi-Fi printer not found on the network")
     failed = sum(count for status, count in printer["jobs_last_24h"].items() if status in {"failed", "unknown"})
     if failed:
         add("warning", "Label printer", f"{failed} label {'job' if failed == 1 else 'jobs'} failed today", "See Printing in Transactions.")
@@ -446,8 +452,12 @@ def pi_issues(add, name, device):
     if signal is not None and signal < PI_WIFI_WEAK_DBM:
         add("warning", area, f"{name}: weak Wi-Fi ({signal} dBm)")
     running, expected = device.get("package_version"), app_version.current()["version"]
-    if running and expected != "unknown" and running != expected:
-        add("warning", area, f"{name}: old version ({running})", f"The Mac runs {expected}.")
+    update = device.get("update") or {}
+    if update.get("state") in {"rolled back", "failed"}:
+        add("warning", area, f"{name}: update to {update.get('version')} failed", update.get("error") or "")
+    elif running and expected != "unknown" and running != expected:
+        detail = "Updates when the station is idle." if update.get("state") == "waiting" else f"The Mac runs {expected}."
+        add("info" if update.get("state") == "waiting" else "warning", area, f"{name}: old version ({running})", detail)
     uptime = device.get("uptime_seconds")
     if uptime is not None and uptime < PI_RECENT_BOOT_SECONDS:
         add("info", area, f"{name} restarted {uptime // 60} min ago")

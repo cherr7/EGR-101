@@ -12,65 +12,47 @@ The layout suite includes a representative 1408 × 760 browser viewport plus sma
 
 ## Local installation
 
-Install Homebrew, Python 3.14, PostgreSQL 18, and Node.js on the host:
+Install Homebrew, Python 3.14, PostgreSQL 18, Node.js and (for the outside link) cloudflared, then set up and install the app:
 
-    brew install python@3.14 postgresql@18 node
+    brew install python@3.14 postgresql@18 node cloudflared
     deploy/macos/setup.sh
+    python3 deploy/macos/build_app.py --install
 
-The setup script installs a Python environment outside the app, builds the web interface, and creates:
+This puts **Fabric Conditioning.app** in /Applications and opens it. The app is a menu-bar dot (green, amber or red) with: Open Fabric Conditioning, the outside link and Copy, each station's state, the printer, Update / Check for updates, and System health.
 
-    output/macOS/Fabric Conditioning.app
+The app holds no code or data. Data lives in `~/Library/Application Support/Fabric Conditioning/` (database, config, logs). Code lives in `releases/<version>` there, and `releases/current` is the one that runs. Before the first update it runs this checkout.
 
-Double-click the app. It starts the database and API, waits for a database-backed health response, then opens the staff interface at http://127.0.0.1:8120. It reuses an already healthy host. You can copy the app into Applications after setup; replacing the app does not replace database files.
+## Starting at boot
 
-The local installation stores data in:
+The app registers a **boot service** with macOS (`SMAppService`, a launchd daemon that runs as this account, not root). The first time, macOS asks to allow it in **System Settings → General → Login Items**. After that:
 
-    ~/Library/Application Support/Fabric Conditioning/
-
-The directory contains private configuration, the database, logs, runtime dependencies, and backup settings. Database credentials are generated locally and written with owner-only permissions. The app bundle contains application code and compiled web assets; it contains no database or password.
+- It starts at boot, before anyone logs in, and launchd restarts it if it stops.
+- It runs `host.py serve`: the database, the web app and, when it's on, the Cloudflare outside link.
+- Until it's approved, the app runs the same service at login instead (a LaunchAgent), and the menu says "Allow in Login Items to start at boot".
 
 Useful commands from the project directory:
 
     python3 deploy/macos/host.py status
-    python3 deploy/macos/host.py start
-    python3 deploy/macos/host.py stop
     python3 deploy/macos/host.py test
-    python3 deploy/macos/build_app.py
+    scripts/update-host.sh --status
 
-For a launcher check that opens no browser and changes no service state:
+## Updates
 
-    "output/macOS/Fabric Conditioning.app/Contents/MacOS/Fabric Conditioning" --check
+**System health → Update to vX**, the menu-bar **Update** item, or `scripts/update-host.sh`:
 
-The --no-open option starts or checks services without opening a browser. `host.py` sets an `en_US.UTF-8` locale when none is set, which PostgreSQL on macOS needs to start. Startup errors are logged in ~/Library/Logs/Fabric Conditioning/launcher-error.log; detailed service output is in the state directory's logs folder.
+1. Only release tags on `main` (`vYYYY.MM.DD-N`) are installed.
+2. Build the new release in its own folder while the app keeps running, including the Pi update package.
+3. Stop if the database's migration is unknown to the new release.
+4. Back up to `~/fabric-backups/before-<tag>-<time>.zip`.
+5. Switch `releases/current`. The boot service starts the new release. If it isn't healthy within 3 minutes, switch back.
 
-## Start automatically before interactive login
+Once a day the app checks GitHub for a newer tag and shows **Update to vX**. It never installs on its own. Updates can't be started through the outside link.
 
-An app in Login Items starts after a person logs in. The supplied system LaunchDaemon starts after macOS boots and runs independently of an interactive session. Apple documents this distinction in [Designing Daemons and Services](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/DesigningDaemons.html) and [Creating Launch Daemons and Agents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+## Outside link (Cloudflare quick tunnel)
 
-Prepare the exact property list without making system changes:
+System health → **Outside link**: set a passcode (6+ characters), then **Turn on**. The service runs `cloudflared tunnel --url http://127.0.0.1:8120` and shows the random `https://….trycloudflare.com` link, with Copy. A restart gives a new link.
 
-    deploy/macos/install-daemon.sh --user YOUR_LOCAL_ACCOUNT
-
-Review output/macOS/daemon-plan/org.egr.fabric-conditioning.plist. The service runs as the specified non-root account because PostgreSQL cannot run as root. Its code and runtime live in /Library/Application Support/Fabric Conditioning, so it does not depend on this repository or an unlocked home Documents/Downloads directory.
-
-When installing on the intended host, first export a checkpoint from the app if the local installation contains records you want to keep. Stop the local host so ports 8120 and 55432 are free, then install:
-
-    python3 deploy/macos/host.py stop
-    sudo deploy/macos/install-daemon.sh --apply --user YOUR_LOCAL_ACCOUNT
-
-The installer creates a separate system state directory. It never deletes or migrates the local database implicitly. Import the exported checkpoint into the system installation through the app if needed.
-
-The installer copies application code and compiled assets, installs Python dependencies, initializes PostgreSQL as the service account, installs the reviewed property list with root ownership, and bootstraps the daemon. RunAtLoad and KeepAlive restart the host after boot or process failure. The supplied scripts have been prepared and tested without registering a system daemon on this development Mac.
-
-Inspect or control the installed daemon:
-
-    sudo launchctl print system/org.egr.fabric-conditioning
-    sudo launchctl kickstart -k system/org.egr.fabric-conditioning
-    sudo launchctl bootout system/org.egr.fabric-conditioning
-
-Bootout stops the running service until the next boot. To disable future startup, boot it out and move its property list out of /Library/LaunchDaemons. Preserve the state directory and exported checkpoints.
-
-For a code update, build the frontend again and rerun the same installer. Existing system data and configuration remain in place. If Homebrew upgrades/removes the Python installation used by the runtime, rerun setup or the installer with the new Python before removing the old interpreter.
+Requests through the tunnel carry Cloudflare's headers, so only they are asked for the passcode (kept 12 hours in a cookie; 10 tries per 10 minutes). On the lab network, on the Neo and on the Pis nothing changes. Setting a new passcode signs everyone out. Updates and outside-link settings can only be changed from the lab. A named tunnel with Cloudflare Access is the upgrade if this becomes permanent.
 
 ## What reboot recovery can guarantee
 
@@ -91,7 +73,7 @@ For the Pi's nginx API proxy, use a reserved LAN IP or a hostname resolved by th
 
 Allow the app's Python process through the Mac firewall for the trusted lab network when macOS prompts. Set a stable hostname or DHCP reservation with lab IT. The MacBook and printer must be reachable on the selected network. Add the Brother printer as a macOS printer queue, then select that queue in the app; Wi-Fi support does not create the queue automatically. See [PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md).
 
-This is a lab-network prototype. No Cloudflare tunnel or public Internet exposure is configured by these scripts.
+Outside access is off until a passcode is set and the outside link is turned on (see above).
 
 ## Checkpoints and SharePoint
 

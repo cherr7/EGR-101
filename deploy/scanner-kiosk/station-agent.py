@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Report this Pi's health to the Mac every 30 seconds, through the station's nginx."""
+"""Report this Pi's health to the Mac every 30 seconds, through the station's nginx, and update the
+station when the Mac runs a new release (updater.py)."""
 import json
 import logging
 import os
@@ -11,6 +12,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import updater  # noqa: E402
 
 INTERVAL = 30
 UNITS = ("fabric-scanner-browser.service", "fabric-scanner-input.service", "fabric-scanner-watchdog.service")
@@ -226,12 +230,24 @@ def main(argv=sys.argv[1:]):
     once = "--once" in argv
     root = Path(argv[argv.index("--root") + 1]) if "--root" in argv else Path("/")
     base = argv[argv.index("--url") + 1] if "--url" in argv else os.environ.get("AGENT_API_BASE", "http://127.0.0.1:8080")
+    update = updater.Updater(base)
+    if "--verify-update" in argv:   # the timer the previous release left behind when it switched
+        state = update.state()
+        if state.get("state") == "pending":
+            update.verify(state, final=True)
+        return 0
     url = base.rstrip("/") + "/api/stations/" + station_id() + "/device"
     ticks, failures = cpu_ticks(root), 0
     if not once:
         time.sleep(2)  # a first CPU interval, so the first report has a CPU value
     while True:
         ticks, payload = report(root, ticks)
+        if root == Path("/"):
+            try:
+                update.tick()
+            except Exception as error:   # an update problem must never stop health reports
+                logging.warning("Update check failed: %s", error)
+            payload["update"] = update.report()
         try:
             send(url, payload)
             if failures:

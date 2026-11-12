@@ -26,7 +26,8 @@ from .stacks import router as stacks_router
 from .stations import router as stations_router
 from .dashboard import router as dashboard_router
 from .system_health import ensure_sampler, router as system_health_router
-from . import version as app_version
+from .host_control import OutsideGate, router as host_control_router
+from . import printer_network, version as app_version
 from .models import AuditEvent, Material, MovementRequest, PrepDraft, Project, Room, Specimen, Stack, Station, Treatment, utcnow
 from .movements import process_movement
 from .schemas import (REQUEST_ID, CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, PrepCommitBody,
@@ -43,6 +44,7 @@ async def lifespan(app):
     scheduler = None
     if not (engine.url.database or "").endswith("_test"):
         scheduler = asyncio.create_task(daily_scheduler())
+        printer_network.ensure_watcher()   # finds the Wi-Fi printer again if its address changes
         ensure_sampler()  # CPU/memory history for System health starts with the host, not the first page view
     try:
         yield
@@ -68,6 +70,7 @@ app.include_router(backups_router)
 app.include_router(stations_router)
 app.include_router(dashboard_router)
 app.include_router(system_health_router)
+app.include_router(host_control_router)
 
 
 class RestoreMaintenanceGate:
@@ -96,6 +99,7 @@ class RestoreMaintenanceGate:
 
 
 app.add_middleware(RestoreMaintenanceGate)
+app.add_middleware(OutsideGate)
 
 
 @app.get("/api/health")

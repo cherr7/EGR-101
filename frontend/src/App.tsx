@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { PasscodeScreen, passcodeNeeded } from './HostControls'
 import { api } from './api'
 import type { Config } from './types'
 import BatchWizard from './BatchWizard'
@@ -29,6 +30,7 @@ export default function App() {
   const [view, setView] = useState<View>(currentView)
   const [config, setConfig] = useState<Config>({ rooms: [], stations: [], treatments: [] })
   const [healthy, setHealthy] = useState<boolean | null>(null)
+  const [locked, setLocked] = useState(false)
   const [alert, setAlert] = useState<{ level: HealthReport['overall']; count: number }>({ level: 'ok', count: 0 })
   useEffect(() => {
     const change = () => setView(currentView())
@@ -43,8 +45,8 @@ export default function App() {
       try {
         await api('/health', {}, 3500)
         const value = await api<Config>('/config', {}, 3500)
-        if (alive) { setHealthy(true); setConfig(value) }
-      } catch { if (alive) setHealthy(false) }
+        if (alive) { setHealthy(true); setLocked(false); setConfig(value) }
+      } catch (error) { if (alive) { setLocked(passcodeNeeded(error)); setHealthy(false) } }
       finally { checking = false }
     }
     void check()
@@ -63,6 +65,7 @@ export default function App() {
     return () => { alive = false; clearInterval(timer) }
   }, [healthy, kiosk])
   function navigate(next: View) { location.hash = next === 'batch' ? 'batch/new' : next; setView(next) }
+  if (locked) return <PasscodeScreen onDone={() => location.reload()} />
   if (view === 'kiosk') return <Kiosk config={config} healthy={healthy === true} />
   const page = pages.find(item => item.key === view)!
   return <div className="app-shell">

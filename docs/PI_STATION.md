@@ -203,7 +203,14 @@ systemctl --user stop fabric-scanner.target
 systemctl --user start fabric-scanner.target
 ```
 
-To update, rebuild and recopy the station package plus deployment directory, rerun the installer with the same optional NFC setting, and reboot. Existing `scanner.env` and Chromium profile are preserved; install-generated room defaults and service files are refreshed. Recheck the highlighted room after updating. Use a reserved Mac LAN address or working lab DNS and verify access from each Pi.
+**Updates are automatic.** Every 5 minutes the station agent compares its version with the Mac's. When they differ it:
+
+1. Downloads the Mac's station package, checks its SHA-256, and unpacks it into `/opt/fabric-scanner/releases/<version>` (owned by the kiosk user, so no sudo).
+2. Waits until nobody has touched or scanned at the station for 2 minutes.
+3. Switches `releases/current` and restarts the kiosk services (no reboot).
+4. If the page doesn't report healthy within 90 s, switches back. That version isn't retried for 6 hours. System health shows "update to vX failed".
+
+`station-config.js` (the room) and `scanner.env` live outside the release folders and are kept. nginx config, service files and the Pi's OS are not updated this way: for those, rerun `scripts/deploy-pi.sh`. Stations installed before this change need one `deploy-pi.sh` run to switch to release folders.
 
 ## Software and physical verification
 

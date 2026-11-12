@@ -22,8 +22,8 @@ kiosk_user=$3
 dns_resolver=$4
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 station_id=$(python3 "$source_dir/validate-package.py" "$ui_source" "$api_origin" "$dns_resolver" "${5:-}")
-for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html station-agent.py fabric-scanner-agent.service \
-    render-nginx.py nginx.conf.template; do
+for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html station-agent.py updater.py \
+    fabric-scanner-agent.service render-nginx.py nginx.conf.template; do
     [ -f "$source_dir/$name" ] || { echo "Missing station file: $source_dir/$name" >&2; exit 1; }
 done
 if [ "$with_nfc" = true ]; then
@@ -35,7 +35,7 @@ if [ -n "${API_FALLBACK:-}" ]; then
     python3 "$source_dir/render-nginx.py" --check-fallback "${API_FALLBACK}" || exit 2
 fi
 python3 - "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" "$source_dir/watchdog.py" "$source_dir/station-agent.py" \
-    "$source_dir/render-nginx.py" <<'PY'
+    "$source_dir/updater.py" "$source_dir/render-nginx.py" <<'PY'
 import ast
 from pathlib import Path
 import sys
@@ -81,7 +81,6 @@ rm -f "$kiosk_home/.config/systemd/user/fabric-scanner.target.wants/fabric-scann
 rm -f /opt/fabric-scanner/bin/nfc-bridge.py
 # A dormant legacy environment is harmless; remove it only after stopping its service.
 rm -rf /opt/fabric-scanner/nfc-env
-install -d /opt/fabric-scanner/ui /opt/fabric-scanner/bin
 # Wi-Fi power saving makes a station drop off the network for seconds at a time; turn it off.
 if [ -d /etc/NetworkManager/conf.d ]; then
     printf '[connection]\nwifi.powersave = 2\n' > /etc/NetworkManager/conf.d/fabric-wifi-powersave.conf
@@ -94,10 +93,29 @@ if [ ! -d /var/log/journal ]; then
     getent group systemd-journal >/dev/null && chgrp systemd-journal /var/log/journal
     systemctl restart systemd-journald || true
 fi
-cp -R "$ui_source/." /opt/fabric-scanner/ui/
+# Each release lives in releases/<version>; ui and bin link through releases/current. The kiosk user
+# owns releases/, so the station agent can update itself from the Mac without sudo (updater.py).
+release=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["release"])' "$ui_source/station-package.json")
+case "$release" in ""|*/*|.*) echo "The station package has no usable release name." >&2; exit 1 ;; esac
+releases=/opt/fabric-scanner/releases
+install -d -o "$kiosk_user" -g "$kiosk_group" "$releases"
+rm -rf "${releases:?}/$release"
+install -d "$releases/$release/ui" "$releases/$release/bin"
+cp -R "$ui_source/." "$releases/$release/ui/"
+rm -f "$releases/$release/ui/station-config.js"
 install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" \
-    "$source_dir/station-agent.py" /opt/fabric-scanner/bin/
-install -m 0644 "$source_dir/startup.html" /opt/fabric-scanner/bin/startup.html
+    "$source_dir/station-agent.py" "$source_dir/updater.py" "$releases/$release/bin/"
+install -m 0644 "$source_dir/startup.html" "$releases/$release/bin/startup.html"
+chown -R "$kiosk_user:$kiosk_group" "$releases/$release"
+chmod -R a+rX "$releases/$release"
+ln -sfn "$release" "$releases/.current.new"
+mv -Tf "$releases/.current.new" "$releases/current"
+chown -h "$kiosk_user:$kiosk_group" "$releases/current"
+rm -f "$releases/update.json"
+for name in ui bin; do
+    if [ -d "/opt/fabric-scanner/$name" ] && [ ! -L "/opt/fabric-scanner/$name" ]; then rm -rf "/opt/fabric-scanner/$name"; fi
+    ln -sfn "releases/current/$name" "/opt/fabric-scanner/$name"
+done
 python3 - "$station_id" "$api_origin" <<'PY'
 from pathlib import Path
 import json
@@ -107,7 +125,7 @@ rooms = {"shared-door": ("shared", "Shared conditioning room"),
          "ppe-door": ("ppe", "PPE conditioning room"),
          "footwear-door": ("footwear", "Footwear conditioning room")}
 room_id, room_name = rooms.get(station, (station, "Conditioning station " + station))
-Path("/opt/fabric-scanner/ui/station-config.js").write_text(
+Path("/opt/fabric-scanner/station-config.js").write_text(
     "window.fabricStationConfig = " + json.dumps({"stationId": station, "stationName": room_name + " door",
                                                "roomId": room_id, "roomName": room_name, "fixed": False, "inputBridge": True, "apiOrigin": api_origin,
                                                "targetWidth": 1280, "targetHeight": 720}) + ";\n")
@@ -115,7 +133,7 @@ Path("/opt/fabric-scanner/station.env").write_text(
     "KIOSK_URL=http://127.0.0.1:8080/station.html?station=" + station + "#kiosk\n"
     "STATION_ID=" + station + "\n")
 PY
-chmod -R a+rX /opt/fabric-scanner/ui
+chmod 0644 /opt/fabric-scanner/station-config.js
 # API_FALLBACK=http://IP:PORT (optional): the Mac's local-network address, used only while the
 # main address (API_ORIGIN, normally its Tailscale name) cannot be reached.
 python3 "$source_dir/render-nginx.py" "$source_dir/nginx.conf.template" "$api_origin" "$dns_resolver" "${API_FALLBACK:-}" \

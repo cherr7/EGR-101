@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, formatTime } from './api'
 import { ErrorNotice, PageHeader } from './App'
+import { OutsideCard, UpdateControl } from './HostControls'
 
 type Level = 'critical' | 'warning' | 'info'
 type Issue = { level: Level; area: string; title: string; detail: string }
@@ -166,7 +167,7 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
       <section className="card" aria-label="Application">
         <div className="card-heading compact"><div><h2>App</h2></div></div>
         <div className="padded"><Facts rows={[
-          ['Version', application.version ?? 'Unknown'],
+          ['Version', <>{application.version ?? 'Unknown'} <UpdateControl /></>],
           ['Last update', !update ? '—' : update.result === 'updated' ? `${update.version} · ${formatTime(update.at)}`
             : <span className="badge warning">{update.version} {update.result === 'rolled back' ? 'failed' : 'refused'}</span>],
           ['Database', database.connected ? 'Connected' : <span className="badge critical">Not reachable</span>],
@@ -186,6 +187,8 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
           </tbody></table></div>}
       </section>
     </div>
+
+    <OutsideCard />
 
     <section className="card" aria-label="Scan stations">
       <div className="card-heading compact"><div><h2>Scan stations</h2></div></div>

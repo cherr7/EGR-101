@@ -57,7 +57,7 @@ Rebuild the package (`scripts/build-station.py`). On each Pi, copy the package a
 ## Other ideas
 
 - **Alerts away from the screen**: email or a Teams/Slack webhook when an issue turns critical (on battery, disk full, station offline for 10+ minutes, backup failed).
-- **When the host itself is down**, this page cannot load. The Pis already show "Offline". A LaunchAgent/LaunchDaemon (declined for now) or an outside check (one Pi pinging `/api/health` and alerting) would cover it.
+- **When the host itself is down**, this page cannot load. The Pis already show "Offline". The boot service restarts it within seconds; the menu-bar dot turns red while it's down.
 - **Saved history**: keep a daily snapshot of disk/DB size in the database to show growth over the semester.
 - **Mac housekeeping**: Time Machine latest backup (`tmutil latestbackup`), pending macOS updates (`softwareupdate -l`), and battery health (cycle count and condition) for a MacBook that stays plugged in.
 - **Printer depth**: Brother's CUPS driver reports few states. Media-empty or cover-open detection would need Brother's status protocol, which is likely not worth the effort.

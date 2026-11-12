@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from . import printer_network
 from .db import get_db
 from .exports import label_height_mm, labels_pdf, labels_png
 from .models import AuditEvent, PrintJob, Stack, utcnow
@@ -191,7 +192,8 @@ def _job_dict(job: PrintJob) -> dict:
             "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(),
             "physical_print_confirmed": False,
             "needs_review": job.status in {"submitting", "unknown"},
-            "message": "Accepted by the Mac print queue; verify the physical labels."
+            "message": ((job.options or {}).get("fallback_note", "") + " " if (job.options or {}).get("fallback_note") else "")
+                       + "Accepted by the Mac print queue; verify the physical labels."
                        if job.status == "submitted" else
                        "Submission may have reached the printer. Check the queue before creating a new job."
                        if job.status in {"submitting", "unknown"} else job.error}
@@ -239,7 +241,7 @@ class PrintAmbiguous(PrintRejected):
     pass
 
 
-def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str:
+def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict, queue: str | None = None) -> str:
     """Send one label as its own CUPS job on the fixed die-cut size; return the CUPS job ID."""
     temporary = None
     try:
@@ -247,7 +249,7 @@ def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str
             output.write(labels_pdf([label], body.width_mm))
             temporary = FilePath(output.name)
         completed = subprocess.run([
-            lp, "-d", body.printer_queue, "-t", "Fabric Labels " + request_id,
+            lp, "-d", queue or body.printer_queue, "-t", "Fabric Labels " + request_id,
             "-o", f"media=Custom.{body.width_mm:g}x{label_height_mm():g}mm",
             "-o", "print-scaling=none", "-o", "fit-to-page=false",
             "-o", "CutMedia=EndOfPage", str(temporary),   # cut after every label
@@ -288,9 +290,13 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
         stack_ids = body.stack_ids
         details = _details(db, stack_ids, body.selected_specimen_ids)
         height_mm = label_height_mm(details, body.width_mm)
+        # USB printer unplugged and the same printer answers on Wi-Fi: print there for this job only.
+        queue, note = (body.printer_queue, None) if inventory["configured_queue"] else \
+            printer_network.choose_queue(body.printer_queue, inventory["printers"])
         job = PrintJob(number=number, fingerprint=fingerprint, status="submitting",
-                       printer_queue=body.printer_queue, stack_ids=stack_ids,
-                       options={"copies": body.copies, "width_mm": body.width_mm,
+                       printer_queue=queue, stack_ids=stack_ids,
+                       options={**({"fallback_from": body.printer_queue, "fallback_note": note} if note else {}),
+                                "copies": body.copies, "width_mm": body.width_mm,
                                 "height_mm": height_mm, "barcode_format": "DataMatrix",
                                 "selected_specimen_ids": [specimen["id"] for detail in details for specimen in detail["specimens"]],
                                 "label_count": sum(len(item["specimens"]) for item in details) * body.copies})
@@ -299,7 +305,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
             db.add(AuditEvent(stack_id=detail["id"], kind="label_print_requested", actor="staff",
                               specimen_ids=[item["id"] for item in detail["specimens"]],
                               payload={"print_request_id": request_id, "status": "submitting",
-                                       "printer_queue": body.printer_queue, "copies": body.copies,
+                                       "printer_queue": queue, "copies": body.copies,
                                        "physical_print_confirmed": False}))
         db.flush()
     # One CUPS job per label: within a multi-page job the QL feeds extra blank tape before every label
@@ -312,7 +318,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
             raise OSError("CUPS submission command is unavailable.")
         for label in labels:
             for _ in range(body.copies):
-                cups_ids.append(_submit_label(lp, body, request_id, label))
+                cups_ids.append(_submit_label(lp, body, request_id, label, queue))
         status = "submitted"
     except subprocess.TimeoutExpired:
         error = "Print submission timed out. Check the queue before creating another print job."
@@ -327,7 +333,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
             db.add(AuditEvent(stack_id=detail["id"], kind="label_print", actor="staff",
                               specimen_ids=[item["id"] for item in detail["specimens"]],
                               payload={"print_request_id": request_id, "status": status,
-                                       "printer_queue": body.printer_queue, "cups_job_id": cups_job_id,
+                                       "printer_queue": queue, "cups_job_id": cups_job_id,
                                        "copies": body.copies, "physical_print_confirmed": False}))
         db.flush()
         return _job_dict(job)

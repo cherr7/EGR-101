@@ -76,6 +76,12 @@ class DeviceInput(_Loose):
     nfc: str | None = Field(default=None, max_length=64)
 
 
+class DeviceUpdate(_Loose):
+    state: str | None = Field(default=None, max_length=32)
+    version: str | None = Field(default=None, max_length=64)
+    error: str | None = Field(default=None, max_length=300)
+
+
 class DeviceReport(_Loose):
     """What deploy/scanner-kiosk/station-agent.py posts every 30 s; every reading is optional."""
     agent_version: int = Field(default=1, ge=1, le=1000)
@@ -98,6 +104,7 @@ class DeviceReport(_Loose):
     input: DeviceInput | None = None
     package_built_at: str | None = Field(default=None, max_length=64)
     package_version: str | None = Field(default=None, max_length=64)
+    update: DeviceUpdate | None = None
 
 
 def client_ip(request: Request):

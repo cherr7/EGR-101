@@ -109,7 +109,7 @@ class StationAgentTests(unittest.TestCase):
     def test_installer_and_target_include_the_agent(self):
         folder = Path(__file__).parent
         script = (folder / "install.sh").read_text()
-        self.assertIn('"$source_dir/station-agent.py" /opt/fabric-scanner/bin/', script)
+        self.assertIn('"$source_dir/station-agent.py" "$source_dir/updater.py" "$releases/$release/bin/"', script)
         self.assertIn("fabric-scanner-agent.service; do", script)
         self.assertIn('"STATION_ID=" + station', script)
         self.assertIn('"apiOrigin": api_origin', script)

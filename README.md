@@ -20,7 +20,7 @@ All documentation is in **[docs/](docs/README.md)**. Start with:
 | --- | --- |
 | `backend/` | FastAPI app (`app/`), database migrations, PostgreSQL integration tests |
 | `frontend/` | React staff app and room scanner (`src/`), Playwright browser tests |
-| `deploy/macos/` | Mac host control (`host.py`), app builder, LaunchDaemon installer |
+| `deploy/macos/` | Mac host control (`host.py`), the menu-bar app and boot service (`build_app.py`), the updater (`update.py`) |
 | `deploy/scanner-kiosk/` | Pi station installer, USB/NFC input service, watchdog, systemd units |
 | `scripts/` | Pi deployment, station package build, test and verification scripts |
 | `docs/` | All documentation, test results and raw test data |

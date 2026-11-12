@@ -48,8 +48,6 @@ node deploy/scanner-kiosk/check-package.mjs
 
 Real-workbook verification (resets only `fabric_pipeline_test`): see [EXCEL_IMPORT.md](EXCEL_IMPORT.md#repeat-the-verification).
 
-If PostgreSQL won't start with "postmaster became multithreaded during startup", `export LC_ALL=en_US.UTF-8` first.
-
 ## Useful scripts
 
 | Script | Purpose |

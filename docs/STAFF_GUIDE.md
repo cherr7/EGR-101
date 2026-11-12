@@ -1,24 +1,27 @@
 # Staff guide
 
-The staff app is at **http://127.0.0.1:8120** on the Mac, or **http://MAC-ADDRESS:8120** from another computer on the lab network. It has four pages: Stacks, Specimens, Transactions and Backups. API documentation is at `/docs`.
+The staff app is at **http://127.0.0.1:8120** on the Mac, or **http://MAC-ADDRESS:8120** from another computer on the lab network. Pages: Dashboard, New batch, Specimens, Transactions, Backups and System health. API documentation is at `/docs`.
 
 Every physical specimen gets a **permanent sequential number**, linked to a stack. Its label carries only that number plus a check digit, in a 16 × 16 Data Matrix. Each specimen has one ENTRY and one EXIT for its 24-hour conditioning visit.
 
-## From prep sheet to printed labels
+## New batch: prep sheet to printed labels
 
-1. **Specimens → Prepare / import:** upload the prep sheet (.xlsx or .xlsm). CSV and manual entry also work. The app shows the worksheets it found and any source warnings. Macros are never run.
-2. **Review the rows.** Each row is one material/sample, test and exact treatment text. Fill in anything missing (project, material, count). Include every piece going into conditioning, spares included. Split combined groups before registering. The importer never invents counts or material IDs; see [EXCEL_IMPORT.md](EXCEL_IMPORT.md) for how prep-sheet columns are read.
-3. **Register.** This creates the stack and its numbered specimens. Registering the same draft twice returns the existing registration. Uploading the same workbook again reuses its draft unless you import it as a new batch.
-4. **Preview & print.** Check the labels, pick the Mac's printer queue and press Print. Reprints keep the same IDs. PDF and CSV downloads work when the printer doesn't. See [PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md).
+One prep sheet makes one **batch**. **New batch** walks through four steps:
+
+1. **Upload the prep sheet** (.xlsx, .xlsm or .csv), or enter stacks by hand. Sheets with sample counts are picked automatically; tick others under **Sheets** to add them.
+2. **Confirm stacks.** One row per stack: one material/sample, test and treatment. Fill in anything missing ("Only rows with missing values" jumps to them). Count every piece going into the room, spares included. **Source** shows the workbook cells a row came from. The importer never invents counts or material IDs; see [EXCEL_IMPORT.md](EXCEL_IMPORT.md). **Register** gives every piece its permanent number. Rows can't be edited afterwards; extra pieces go in a new batch.
+3. **Print labels.** Preview, pick the Mac's printer, print. No printer? **Open PDF**, print it elsewhere, then **I printed these from the PDF** so the dashboard knows. **Print later** leaves the stacks on the dashboard under *Needs labels*. Reprints keep the same numbers. See [PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md).
+4. **Track.** Where the batch's pieces are: labeled → in a room → ready → finished. A batch closes when every piece is scanned out.
 
 A stack holds 1–500 specimens (20 is typical). Extra pieces found later are registered as a new group, not added to an existing stack. Project numbers are kept as text, so letters and leading zeroes survive. Treatment wording (AR, 5L, UV, CH…) is copied from the prep sheet and describes separate groups of pieces, not repeated cycles for the same piece.
 
 ## Other staff pages
 
-- **Stacks:** ready stacks first; sort by longest time inside; filter by room, status, project, material, test or treatment. Partly-ready stacks show exact ready/inside/finished counts.
+- **Dashboard** (the start page): **Needs attention** (pieces without labels, and labeled pieces never scanned IN), **Batches in progress**, and **Ready to remove** per room, oldest first. Filter by room, project, test, treatment, batch or text; the filters are in the URL, so a filtered view can be bookmarked. Old `#overview` and `#prep` links still work.
 - **Specimens → Registered specimens:** each specimen's ENTRY/EXIT and history; reprint selected labels; download session CSV, audit CSV, or a printable conditioning report.
-- **Transactions:** change a scan's specimens, time, room or notes; record a missed scan; undo an eligible transaction. No supervisor login or reason is required. The original is always kept in the audit history.
-- **Backups:** make or download a checkpoint, set daily snapshots and a copy folder, validate and restore. See [BACKUPS.md](BACKUPS.md).
+- **Transactions:** change a scan's specimens, time, room or notes; record a missed scan; undo a transaction. Links from a stack or batch show only its activity. No supervisor login or reason is required. The original is always kept in the audit history.
+- **Backups:** make or download a backup, set the daily backup and an extra copy folder, restore. See [BACKUPS.md](BACKUPS.md).
+- **System health:** the Mac (disk, memory, power, sleep), each Pi, the printer and backups, with a list of problems. The sidebar badge counts warnings. See [SYSTEM_HEALTH.md](SYSTEM_HEALTH.md).
 
 ## Room scanner (Pi station)
 

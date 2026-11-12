@@ -41,7 +41,7 @@ For a launcher check that opens no browser and changes no service state:
 
     "output/macOS/Fabric Conditioning.app/Contents/MacOS/Fabric Conditioning" --check
 
-The --no-open option starts or checks services without opening a browser. If PostgreSQL refuses to start with "postmaster became multithreaded during startup", set a locale first (`export LC_ALL=en_US.UTF-8`). Startup errors are logged in ~/Library/Logs/Fabric Conditioning/launcher-error.log; detailed service output is in the state directory's logs folder.
+The --no-open option starts or checks services without opening a browser. `host.py` sets an `en_US.UTF-8` locale when none is set, which PostgreSQL on macOS needs to start. Startup errors are logged in ~/Library/Logs/Fabric Conditioning/launcher-error.log; detailed service output is in the state directory's logs folder.
 
 ## Start automatically before interactive login
 

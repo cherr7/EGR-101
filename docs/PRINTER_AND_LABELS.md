@@ -14,7 +14,7 @@ So the only requirement is: **the Mac must be able to reach the printer**, eithe
 
 | Cable | Needed? |
 | --- | --- |
-| Printer power (AC adapter to wall) | **Always.** The QL-810W has no battery. |
+| Printer power (AC adapter to wall) | **Always.** There's no battery built in. Brother sells an optional PA-BT-4000LI battery, which is why the panel has a battery light; without it, ignore that light. |
 | USB from printer to Mac | Only if you connect by USB. The printer has a USB-B port and the MacBook Neo has USB-C, so use a USB-C to USB-B cable or an adapter. Not needed for Wi-Fi. |
 | Network cable | No. The QL-810W has no Ethernet port; it's USB or Wi-Fi. |
 
@@ -53,6 +53,16 @@ lp -d <queue> -o media=Custom.62x29mm -o CutMedia=EndOfPage …
 ```
 
 On the host MacBook Neo (macOS 27.2), plugging the printer in by USB created the queue `Brother_QL_810W` automatically. It is an AirPrint queue over USB (`ippusb://…`, driver "Brother QL-810W-AirPrint"), and it was set as the default printer. That queue offers `CutMedia` = None / **EndOfPage** (default) / EndOfJob, and accepts `Custom.WIDTHxHEIGHT` page sizes, so the app's options are recognised. No Brother software is installed. Whether the printer actually cuts and sizes 62 × 29 mm correctly is confirmed only by the first physical print. If labels come out the wrong size, scaled, or uncut, install Brother's **CUPS driver** for the QL-810W from Brother's download page, remove the queue, add the printer again, and under **Use** pick the Brother QL-810W driver instead of AirPrint.
+
+## Printer lights
+
+| Light | Meaning |
+| --- | --- |
+| Status green, steady | Ready. |
+| Status red, blinking | No usable roll: none loaded, not seated, cover open, roll finished, or a feed error. The Mac's queue shows `media-empty` / `media-needed`. Reseat or replace the roll and close the cover; a waiting job then prints. |
+| Status orange, blinking | Print head cooling. Wait. |
+| Editor Lite green | Editor Lite is on; turn it off (see above). |
+| Battery light | Only used with the optional battery. |
 
 ## Check the Mac can print
 

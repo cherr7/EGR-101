@@ -60,7 +60,7 @@ The installed configuration has `inputBridge: true` and `fixed: false`. PPE / Sh
 
 ## Install on the Pi
 
-1. Install Raspberry Pi OS Desktop and configure networking, time synchronization, landscape display rotation, and SSH for maintenance. No OS reinstall or Lite conversion is required for an existing compatible Desktop station.
+1. Install Raspberry Pi OS Desktop and configure networking, time synchronization, and SSH for maintenance. Display rotation is handled by the installer (below). No OS reinstall or Lite conversion is required for an existing compatible Desktop station.
 2. Install prerequisites:
 
    ```sh
@@ -155,6 +155,10 @@ The bridge listens only on loopback port 8766; nginx exposes same-origin `/stati
 `station-agent.py` (`fabric-scanner-agent.service`) posts this Pi's health to the Mac every 30 seconds at `POST /api/stations/<STATION_ID>/device`, through the local nginx `/api` proxy. The report covers CPU, memory, load, SoC temperature, firmware under-voltage and throttle flags, SD-card space and a read-only root, the default network interface and Wi-Fi signal, NTP sync, the clock, service states and restart counts, the scanner device, and the package build time. The Mac shows it on **System health** and raises issues for heat, under-voltage, a full or read-only SD card, stopped services, and clock drift. The agent never touches scans and stays quiet while the Mac is unreachable. `STATION_ID` comes from the installer-written `station.env`. Under-voltage detection reads `/sys/devices/platform/soc/soc:firmware/get_throttled` and falls back to `vcgencmd`, which needs the kiosk user in the `video` group (the default on Raspberry Pi OS).
 
 The normal operator flow remains persistent **IN / OUT → scan → automatic database confirmation**, with one-tap Undo of the last transaction. The bottom dock stays visible, history scrolls independently, and green confirmation lasts 12 seconds without blocking the next scan. Choose specimens opens a popup. Early checkout uses an explicit override popup. Scanner Enter cannot press a popup's action button.
+
+## Display rotation
+
+The Touch Display 2 (5" and 7") is a 720 × 1280 portrait panel; the station page is laid out for 1280 × 720 landscape. The installer adds a block to the kiosk user's `~/.config/labwc/autostart` that runs `wlr-randr --output <DSI output> --transform 90` for every `DSI-*` output at login, before the kiosk starts. labwc rotates touch input with the output. Set `DISPLAY_ROTATION=270` when running `install.sh` or `scripts/deploy-pi.sh` if the picture is upside down (it depends on how the panel is mounted), `180` for a flipped portrait mount, or `none` to leave rotation to Control Centre → Screens. Rerunning the installer replaces the block rather than adding another.
 
 ## Maintenance and updates
 

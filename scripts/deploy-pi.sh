@@ -35,7 +35,7 @@ sudo apt-get install -y nginx chromium python3 python3-venv python3-evdev ca-cer
 DNS=\$(awk '/^nameserver/ && \$2 !~ /^127\\./ && \$2 ~ /^[0-9.]+\$/ {print \$2; exit}' /etc/resolv.conf)
 [ -n \"\$DNS\" ] || DNS=\$(ip route | awk '/default/ {print \$3; exit}')
 echo \"Pi DNS resolver: \$DNS\"
-sudo sh ~/scanner-kiosk/install.sh --nfc ~/station-ui $API \$(whoami) \$DNS $STATION
+sudo DISPLAY_ROTATION=${DISPLAY_ROTATION:-90} sh ~/scanner-kiosk/install.sh --nfc ~/station-ui $API \$(whoami) \$DNS $STATION
 echo KIOSK_DIRECT_START=true | sudo tee -a /opt/fabric-scanner/station.env
 echo '==> Checking the Pi can reach the Mac API'
 curl -fsS -m 5 $API/api/health || echo 'WARNING: Pi cannot reach $API yet (is the app running / firewall open?)'

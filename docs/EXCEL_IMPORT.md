@@ -109,7 +109,7 @@ By default it reads the six named files from the current user's Downloads direct
     .venv/bin/python scripts/verify-real-workbooks.py --run --downloads /path/to/private/source-files --report /path/to/private/summary.json
     .venv/bin/python scripts/verify-real-workbooks.py --run --job-sheets /path/to/private/job-prep-sheets
 
-If PostgreSQL refuses to start with "postmaster became multithreaded during startup", set a locale first, e.g. `export LC_ALL=en_US.UTF-8`.
+`host.py` sets the locale PostgreSQL needs on macOS automatically.
 
 `--run` is required because the script resets its dedicated verification database. It permits only local PostgreSQL and the exact name `fabric_pipeline_test`. An existing nonempty database must carry the script's ownership marker before it can be reset; an unmarked nonempty database is refused. The normal app database and the ordinary backend test database are never selected.
 

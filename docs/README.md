@@ -18,6 +18,9 @@
 | [EXCEL_IMPORT.md](EXCEL_IMPORT.md) | How prep-sheet workbooks map to stacks, how column B and spares work, and the real-workbook verification. |
 | [BACKUPS.md](BACKUPS.md) | Checkpoints, daily snapshots, extra copy destination, validate and restore. |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Building, running the tests, screenshots, generated `output/` folders. |
+| [SYSTEM_HEALTH.md](SYSTEM_HEALTH.md) | What the System health page checks and its warning rules. |
+| [UI_TEXT_REVIEW.md](UI_TEXT_REVIEW.md) | The review of on-screen wording and what was cut. |
+| [FRIENDLY_URL_PLAN.md](FRIENDLY_URL_PLAN.md) | Plan (not started) for a name like `http://conditioning/` instead of an IP address. |
 | [STATUS.md](STATUS.md) | What is done, what still needs physical testing, known gaps, audit history. |
 | [TEST_RESULTS.md](TEST_RESULTS.md) | Results of the five Testing Plan tests; raw data is in [testing-data/](testing-data/). |
 | [reference/Project Outline.pdf](reference/Project%20Outline.pdf) | The original project outline. |

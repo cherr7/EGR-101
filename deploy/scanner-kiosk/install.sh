@@ -146,6 +146,26 @@ systemctl --user daemon-reload
 systemctl --user restart fabric-scanner.target &
 AUTOSTART
 fi
+# The Touch Display 2 panel is 720 x 1280 portrait; the kiosk is laid out for 1280 x 720.
+# Rotate every DSI output at login, before the kiosk starts. labwc rotates touch with it.
+# DISPLAY_ROTATION=270 if the picture comes out upside down; DISPLAY_ROTATION=none to leave it.
+rotation="${DISPLAY_ROTATION:-90}"
+tmp_autostart="$(mktemp)"
+awk '/^# fabric-scanner landscape/ {skip = 1} !skip {print} /^# end fabric-scanner landscape/ {skip = 0}' "$autostart" > "$tmp_autostart"
+cat "$tmp_autostart" > "$autostart" && rm -f "$tmp_autostart"
+case "$rotation" in
+    90|180|270)
+        tmp_autostart="$(mktemp)"
+        cat > "$tmp_autostart" <<ROTATE
+# fabric-scanner landscape
+for output in \$(wlr-randr 2>/dev/null | awk '/^DSI-/ {print \$1}'); do wlr-randr --output "\$output" --transform $rotation; done
+# end fabric-scanner landscape
+ROTATE
+        cat "$autostart" >> "$tmp_autostart" && cat "$tmp_autostart" > "$autostart" && rm -f "$tmp_autostart" ;;
+    none) ;;
+    *) echo "DISPLAY_ROTATION must be 90, 180, 270 or none" >&2; exit 2 ;;
+esac
+grep -q '^# fabric-scanner landscape' "$autostart" || [ "$rotation" = none ] || { echo "Display rotation was not written" >&2; exit 1; }
 chown "$kiosk_user:$kiosk_group" "$autostart"
 chmod 0755 "$autostart"
 # raspi-config reads the account to autologin from SUDO_USER, so point it at the kiosk user

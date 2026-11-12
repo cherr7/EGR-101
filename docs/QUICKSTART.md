@@ -63,7 +63,6 @@ Optional: start automatically after a reboot, even before anyone logs in. See [M
 
 - **Update the code:** `git pull`, then `deploy/macos/setup.sh` again. Data is kept.
 - **Logs:** `~/Library/Logs/Fabric Conditioning/launcher-error.log` and `~/Library/Application Support/Fabric Conditioning/logs/`.
-- **If PostgreSQL won't start** with "postmaster became multithreaded during startup": run `export LC_ALL=en_US.UTF-8`, then start again.
 
 ## 3. Printer: connect to the Mac
 
@@ -84,7 +83,7 @@ Repeat for each room: `ppe-door`, `shared-door`, `footwear-door`.
 
 1. With [Raspberry Pi Imager](https://www.raspberrypi.com/software/), flash **Raspberry Pi OS (64-bit) with desktop** (not Lite). In Imager's settings, set a username and password, the Wi-Fi network (or use Ethernet), and **enable SSH**.
 2. Connect the Touch Display 2, the Eyoyo scanner (USB) and power. Boot it and finish the desktop setup.
-3. Set the display to **landscape (1280 × 720)**: Raspberry Pi menu → Preferences → Screen Configuration.
+3. Leave the screen as it is. The Touch Display 2 is a 720 × 1280 portrait panel, so it starts up vertical. The deploy script in step 5 turns it to landscape (1280 × 720) at every login.
 4. Find the Pi's address (on the Pi: `hostname -I`) and ask IT to reserve it.
 5. On the **Mac**, with the app running, from the project folder:
 
@@ -92,7 +91,13 @@ Repeat for each room: `ppe-door`, `shared-door`, `footwear-door`.
    bash scripts/deploy-pi.sh PI-USER@PI-ADDRESS shared-door
    ```
 
-   This builds the scanner package, copies it to the Pi, installs everything (nginx, Chromium kiosk, scanner input service, optional NFC), checks the Pi can reach the Mac, and reboots the Pi. It asks for the Pi's password once.
+   This builds the scanner package, copies it to the Pi, installs everything (nginx, Chromium kiosk, scanner input service, health reporting, optional NFC), sets landscape, checks the Pi can reach the Mac, and reboots the Pi. It asks for the Pi's password once.
+
+   If the picture comes out **upside down**, run it again with the other rotation:
+
+   ```bash
+   DISPLAY_ROTATION=270 bash scripts/deploy-pi.sh PI-USER@PI-ADDRESS shared-door
+   ```
 
 6. After the reboot the Pi opens straight into the full-screen scanner. The header should show **Online** in green.
 7. Scan a label. If nothing happens, pin the scanner (step 8).
@@ -120,10 +125,10 @@ The deploy script uses this Mac's current address (`en0`). If the Mac's address 
 
 ## 6. Daily lab use
 
-1. **Specimens → Prepare / import:** upload the prep sheet, review, fill in what's missing, **Register**.
-2. **Preview & print** the labels and stick one on each piece.
+1. **New batch:** upload the prep sheet, fill in what's missing, **Register**.
+2. **Print labels** (the next step) and stick one on each piece.
 3. At the room's Pi: tap **IN**, scan any label in the stack, wait for green.
-4. After 24 hours, the **Stacks** page shows the stack as ready. At the Pi: tap **OUT**, scan.
+4. After 24 hours, the **Dashboard** lists the stack under Ready to remove. At the Pi: tap **OUT**, scan.
 5. Mistakes: **Undo** on the Pi for the last scan, or fix anything on the **Transactions** page.
 
 Full workflow: [STAFF_GUIDE.md](STAFF_GUIDE.md).
@@ -139,5 +144,7 @@ The app makes a backup every day at 2 a.m. and keeps 30 days on the Mac. Once a 
 | Pi shows Offline | Mac asleep, app not running, firewall blocked, or Mac address changed. Open `http://MAC-ADDRESS:8120/api/health` from another computer to check. |
 | Pi scans do nothing | Pin the scanner (section 4, step 8). Check the scanner is plugged into the **Pi**, not the Mac. |
 | Printer missing in the app | `lpstat -p` on the Mac. If it's empty, add the printer again (section 3). Check Editor Lite is off. |
+| Printer light blinking red, nothing prints | No usable roll: reseat the roll, close the cover, or load a new roll. The waiting label prints once it's fixed. |
+| Pi screen is sideways or upside down | Rerun the deploy script; add `DISPLAY_ROTATION=270` if it's upside down. |
 | Labels wrong size or not cut | Use a 62 mm roll. If it still happens, install Brother's QL-810W driver and re-add the printer with it ([PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md#can-i-just-use-airprint-if-theyre-on-the-same-wi-fi)). |
-| App won't start | Check `~/Library/Logs/Fabric Conditioning/launcher-error.log`; try `export LC_ALL=en_US.UTF-8` then `python3 deploy/macos/host.py start`. |
+| App won't start | Check `~/Library/Logs/Fabric Conditioning/launcher-error.log`, then `python3 deploy/macos/host.py start` from the project folder. |

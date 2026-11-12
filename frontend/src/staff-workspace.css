@@ -155,3 +155,7 @@
 .stack-editor > label { display: grid; gap: 5px; font-size: 11px; }
 .inline-form { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
 .inline-form label { display: grid; gap: 5px; font-size: 11px; max-width: 120px; }
+.label-preview-image { border: 1px solid #d9e4cc; border-radius: 7px; background: #e9efe4; max-height: 340px; overflow: auto; }
+.label-preview-image img { display: block; width: 100%; height: auto; }
+.label-preview-image p { margin: 0; padding: 6px 10px; }
+.printer-warnings ul { margin: 0; padding-left: 18px; } .printer-warnings li + li { margin-top: 4px; }

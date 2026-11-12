@@ -47,7 +47,7 @@ def test_selective_preview_print_and_audit_use_identical_registered_ids(client, 
     assert preview.is_success
     document, decoded = decode_pdf(preview.content)
     assert decoded == ids
-    assert "Piece 3 / 10" in document.pages[0].extract_text()
+    assert f"Stack {stack['id']} · Piece 03" in document.pages[0].extract_text()
     calls = install_fake_cups(monkeypatch)
     original_run = printing.subprocess.run
     sent = []

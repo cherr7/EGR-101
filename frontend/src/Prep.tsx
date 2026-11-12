@@ -209,6 +209,11 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
       setMessage(`Registered ${saved.stack_ids.length} stacks.`)
     })
   }
+  async function openLabels() {
+    // After a reload the registered stacks may still be loading; fetch them rather than open an empty dialog.
+    if (registeredStacks.length === registered.length) { setLabelStacks(registeredStacks); return }
+    await run(() => Promise.all(registered.map(id => api<Stack>('/stacks/' + id))), value => { setRegisteredStacks(value); setLabelStacks(value) })
+  }
   function startNew() {
     operation.current++
     const value = fresh()
@@ -300,7 +305,7 @@ export default function Prep({ config, healthy }: { config: Config; healthy: boo
       <div className="card-actions">
         <span className="summary-count">{rows.length} sheet rows · {stacks} stacks · {specimens} specimens</span>
         <button className="button primary" disabled={(!registered.length && problems.length > 0) || !healthy || busy}
-          onClick={() => registered.length ? setLabelStacks(registeredStacks) : void register()}>
+          onClick={() => registered.length ? void openLabels() : void register()}>
           {busy ? 'Working…' : registered.length ? 'Preview / reprint labels →' : 'Register & preview labels →'}
         </button>
       </div>

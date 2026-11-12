@@ -82,11 +82,13 @@ def _label_rows(detail: dict) -> list[dict]:
             for specimen in detail["specimens"]]
 
 
+FONT_PATHS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf")
+
+
 def _font() -> str:
     if "TrackerSans" in pdfmetrics.getRegisteredFontNames():
         return "TrackerSans"
-    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                 "/System/Library/Fonts/Supplemental/Arial.ttf"):
+    for path in FONT_PATHS:
         if Path(path).exists():
             pdfmetrics.registerFont(TTFont("TrackerSans", path))
             return "TrackerSans"
@@ -96,7 +98,7 @@ def _font() -> str:
 def _text_lines(row: dict, font: str, width_mm: float, size: float = FONT_SIZE) -> list[str]:
     """Every field in full, wrapped to the text column instead of cut off."""
     fields = [row["project_number"], row["material_ref"], row["test_code"], row["preconditioning_code"],
-              f'Piece {row["specimen_number"]} / {row["specimen_count"]}',
+              f'Stack {row["stack_id"]} · Piece {row["specimen_number"]:02d}',   # no total: edits change it
               ("DEMO " if row["is_demo"] else "") + "No. " + row["barcode_payload"]]
     width = width_mm * MM - 2 * SIDE - CODE - GAP
     lines = []
@@ -150,6 +152,36 @@ def labels_pdf(detail: dict | list[dict], width_mm: float = LABEL_WIDTH_MM) -> b
         pdf.showPage()
     pdf.save()
     return stream.getvalue()
+
+
+def labels_png(details: list[dict], width_mm: float = LABEL_WIDTH_MM, limit: int = 12, px_per_mm: int = 8) -> tuple[bytes, int]:
+    """A picture of the first `limit` labels, laid out exactly as labels_pdf draws them, for the print
+    dialog. Browsers show an <img> everywhere; an embedded PDF needs the browser's PDF viewer.
+    Returns (PNG bytes, total label count)."""
+    from PIL import Image, ImageDraw, ImageFont
+    rows = [row for item in details for row in _label_rows(item)]
+    font, path = _font(), next((p for p in FONT_PATHS if Path(p).exists()), None)
+    scale = px_per_mm / MM                                     # PDF points -> pixels
+    w, h = round(width_mm * px_per_mm), round(LABEL_HEIGHT_MM * px_per_mm)
+    gap, columns = 3 * px_per_mm, 2
+    shown = rows[:limit]
+    lines_needed = max(1, -(-len(shown) // columns))
+    sheet = Image.new("RGB", (columns * w + (columns + 1) * gap, lines_needed * h + (lines_needed + 1) * gap), "#e9efe4")
+    draw = ImageDraw.Draw(sheet)
+    for index, row in enumerate(shown):
+        x0, y0 = gap + (index % columns) * (w + gap), gap + (index // columns) * (h + gap)
+        draw.rounded_rectangle([x0, y0, x0 + w - 1, y0 + h - 1], radius=2 * px_per_mm, fill="white", outline="#b9c8b3")
+        code = datamatrix_image(row["barcode_payload"]).convert("RGB").resize((round(CODE * scale),) * 2, Image.Resampling.NEAREST)
+        sheet.paste(code, (x0 + round(SIDE * scale), y0 + round((h - CODE * scale) / 2)))
+        lines, size = _fitted_text(row, font, width_mm)
+        face = ImageFont.truetype(path, round(size * scale)) if path else ImageFont.load_default()
+        baseline = (LABEL_HEIGHT_MM * MM + _text_height(lines, size)) / 2 - .85 * size   # same maths as the PDF
+        for line in lines:
+            draw.text((x0 + (SIDE + CODE + GAP) * scale, y0 + h - baseline * scale), line, font=face, fill="black", anchor="ls")
+            baseline -= size * LEADING_RATIO
+    out = io.BytesIO()
+    sheet.save(out, "PNG", optimize=True)
+    return out.getvalue(), len(rows)
 
 
 @router.get("/stacks/{stack_id}/labels.pdf")

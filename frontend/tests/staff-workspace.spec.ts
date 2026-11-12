@@ -99,7 +99,7 @@ test('replacement preview and lost print retry keep the exact specimen and reque
   const previews: { selected_specimen_ids: string[] }[] = []
   const printJobs: { request_id: string; selected_specimen_ids: string[] }[] = []
   page.on('request', event => {
-    if (event.method() === 'POST' && event.url().endsWith('/api/labels/preview')) previews.push(event.postDataJSON())
+    if (event.method() === 'POST' && event.url().endsWith('/api/labels/preview.png')) previews.push(event.postDataJSON())
   })
   await page.route('**/api/printers', route => route.fulfill({ json: {
     available: true, enabled: true, configured_queue: 'TEST_QUEUE', message: 'Simulated printer, no physical jobs',
@@ -118,12 +118,12 @@ test('replacement preview and lost print retry keep the exact specimen and reque
   await page.getByRole('checkbox', { name: 'Select label 3 ' + value.material_ref, exact: true }).check()
   await page.getByRole('button', { name: 'Preview / reprint selected' }).click()
   const dialog = page.getByRole('dialog', { name: 'Preview & print labels' })
-  await expect(dialog.locator('iframe')).toHaveAttribute('src', /^blob:/)
+  await expect(dialog.locator('.label-preview-image img')).toHaveAttribute('src', /^blob:/)
   expect(previews.at(-1)?.selected_specimen_ids).toEqual([value.specimens[2].id])
   await expect(dialog.getByLabel('Label width', { exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel('Label height', { exact: true })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Print 1 label', exact: true }).click()
-  await expect(dialog.getByText('Sent to printer.', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Sent to the Mac print queue.', { exact: true })).toBeVisible()
   expect(printJobs).toHaveLength(2)
   expect(printJobs[0].request_id).toBe(printJobs[1].request_id)
   expect(printJobs[1].selected_specimen_ids).toEqual([value.specimens[2].id])

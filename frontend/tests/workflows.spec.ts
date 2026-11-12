@@ -16,7 +16,7 @@ function eastern(value: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZo
 
 test('Excel import shows the prep sheet as printed and keeps the same labels on reprint', async ({ page, request }) => {
   const previews: { selected_specimen_ids: number[] }[] = []
-  page.on('request', value => { if (value.method() === 'POST' && value.url().endsWith('/api/labels/preview')) previews.push(value.postDataJSON()) })
+  page.on('request', value => { if (value.method() === 'POST' && value.url().endsWith('/api/labels/preview.png')) previews.push(value.postDataJSON()) })
   await page.goto('/#prep'); await expect(page.getByText('Database connected')).toBeVisible()
   await page.getByLabel('Import prep workbook').setInputFiles({ name: 'DEMO-prep.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.concat([await readFile(fileURLToPath(new URL('./fixtures/DEMO-prep.xlsx', import.meta.url))), Buffer.from(tag())]) })
   // Same columns in the same order as the sheet; one row per sheet row; header values once.
@@ -34,7 +34,7 @@ test('Excel import shows the prep sheet as printed and keeps the same labels on 
   await page.getByLabel('Sample Number, row 1').fill('DEMO-S1'); await page.getByLabel('Sample Number, row 2').fill('DEMO-S2')
   await expect(page.locator('.summary-count')).toHaveText('2 sheet rows · 2 stacks · 20 specimens')
   await page.getByRole('button', { name: 'Register & preview labels →' }).click(); await expect(page.getByRole('dialog', { name: 'Preview & print labels' })).toBeVisible()
-  const labels = page.locator('iframe[title="Actual label PDF preview"]')
+  const labels = page.locator('.label-preview-image img')
   await expect(labels).toHaveAttribute('src', /^blob:/)
   const before = previews.at(-1)!
   expect(before.selected_specimen_ids).toHaveLength(20)

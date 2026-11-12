@@ -12,7 +12,7 @@ from app import printing
 from helpers import prep_sheet, request_id
 
 
-def install_fake_cups(monkeypatch, *, timeout=False):
+def install_fake_cups(monkeypatch, *, timeout=False, alerts=None, waiting=()):
     calls = []
     monkeypatch.delenv("TRACKER_PRINTER_QUEUE", raising=False)
     monkeypatch.setattr(printing.shutil, "which", lambda command: "/usr/bin/" + command)
@@ -21,7 +21,10 @@ def install_fake_cups(monkeypatch, *, timeout=False):
         calls.append(argv)
         assert not kwargs.get("shell")
         if argv[0].endswith("lpstat"):
-            value = "Brother_QL accepting requests since today\n" if "-a" in argv else "system default destination: Brother_QL\n"
+            value = ("Brother_QL accepting requests since today\n" if "-a" in argv else
+                     "printer Brother_QL is idle.  enabled since today\n\tAlerts: " + " ".join(alerts or ["none"]) + "\n" if "-l" in argv else
+                     "".join(f"{job} staff 1024 today\n" for job in waiting) if "-o" in argv else
+                     "system default destination: Brother_QL\n")
             return subprocess.CompletedProcess(argv, 0, value, "")
         if timeout:
             raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
@@ -70,7 +73,8 @@ def test_printer_inventory_never_enables_default_without_configuration(monkeypat
     result = printing.printer_inventory()
     assert result["available"] and not result["enabled"]
     assert result["configured_queue"] is None
-    assert result["printers"] == [{"name": "Brother_QL", "is_default": True}]
+    assert result["printers"] == [{"name": "Brother_QL", "is_default": True, "label_printer": True, "state": "idle",
+                                   "alerts": [], "waiting_jobs": 0, "warnings": []}]
     assert not any(call[0].endswith("/lp") for call in calls)
     monkeypatch.setenv("TRACKER_PRINTER_QUEUE", "Brother_QL")
     assert printing.printer_inventory()["enabled"]
@@ -138,3 +142,31 @@ def test_print_requires_available_explicit_queue_and_rejects_command_options(cli
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "-h attacker"}).status_code == 422
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "Unknown"}).status_code == 409
     assert not any(call[0].endswith("/lp") for call in calls)
+
+
+def test_printer_state_warns_about_offline_printer_and_waiting_jobs(monkeypatch):
+    install_fake_cups(monkeypatch, alerts=["offline-report", "media-empty-error"], waiting=["Brother_QL-7", "Brother_QL-8"])
+    printer = printing.printer_inventory()["printers"][0]
+    assert printer["alerts"] == ["offline", "media-empty"] and printer["waiting_jobs"] == 2
+    assert any("offline" in w for w in printer["warnings"]) and any("out of labels" in w for w in printer["warnings"])
+    assert any("2 job(s) are already waiting" in w for w in printer["warnings"])
+
+
+def test_print_status_reports_labels_still_waiting_in_the_mac_queue(client, stack_factory, monkeypatch):
+    stack = stack_factory(count=1)
+    install_fake_cups(monkeypatch, waiting=["Brother_QL-42"])
+    body = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
+    assert client.post("/api/print-jobs", json=body).json()["status"] == "submitted"
+    status = client.get(f'/api/print-jobs/{body["request_id"]}').json()
+    assert status["waiting_cups_jobs"] == 1 and "do not reprint" in status["message"]
+    install_fake_cups(monkeypatch)
+    assert client.get(f'/api/print-jobs/{body["request_id"]}').json()["waiting_cups_jobs"] == 0
+
+
+def test_image_preview_shows_the_same_codes_as_the_printed_pdf(client, stack_factory):
+    stack = stack_factory(count=14)
+    response = client.post("/api/labels/preview.png", json={"stack_ids": [stack["id"]]})
+    assert response.status_code == 200 and response.headers["content-type"] == "image/png"
+    assert response.headers["x-label-count"] == "14"
+    found = {code_id(result.text) for result in zxingcpp.read_barcodes(Image.open(io.BytesIO(response.content)))}
+    assert found == {p["id"] for p in stack["specimens"][:12]}   # the first 12, decodable as drawn

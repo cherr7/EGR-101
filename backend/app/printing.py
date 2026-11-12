@@ -24,7 +24,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .exports import label_height_mm, labels_pdf
+from .exports import label_height_mm, labels_pdf, labels_png
 from .models import AuditEvent, PrintJob, Stack, utcnow
 from .schemas import split_request_id
 from .services import check_request_number, stack_detail
@@ -67,6 +67,48 @@ class PrintBody(LabelPreviewBody):
         return value
 
 
+ALERT_MESSAGES = {   # CUPS printer-state-reasons a label printer reports, in staff words
+    "offline": "The printer is offline. Jobs sent now wait on the Mac and print when it reconnects.",
+    "media-empty": "The printer is out of labels.", "media-needed": "The printer needs labels loaded.",
+    "media-jam": "Labels are jammed.", "cover-open": "The printer cover is open.",
+    "door-open": "The printer cover is open.", "paused": "The Mac's queue for this printer is paused.",
+}
+
+
+def _lpstat(lpstat: str, *args: str) -> str:
+    try:
+        return subprocess.run([lpstat, *args], check=False, capture_output=True, text=True, timeout=5,
+                              env={**os.environ, "LC_ALL": "C"}).stdout or ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def waiting_jobs(lpstat: str, queue: str) -> list[str]:
+    """CUPS job ids still queued (not yet printed) for this printer."""
+    return [line.split()[0] for line in _lpstat(lpstat, "-o", queue).splitlines()
+            if line.split() and line.split()[0].startswith(queue + "-")]
+
+
+def queue_health(lpstat: str, queue: str) -> dict:
+    """What the Mac knows about one printer: state, alerts, and jobs still waiting to print.
+    CUPS keeps accepting jobs for an offline printer and prints them when it returns, so a
+    backlog here means a reprint now would come out twice."""
+    detail = _lpstat(lpstat, "-l", "-p", queue)
+    state = ("stopped" if re.search(r"\bdisabled\b", detail) else "printing" if "now printing" in detail
+             else "idle" if " is idle" in detail else "unknown")
+    alerts_line = re.search(r"Alerts:[ \t]*(.*)", detail)
+    alerts = [item.removesuffix("-report").removesuffix("-error").removesuffix("-warning")
+              for item in re.split(r"[\s,]+", alerts_line.group(1)) if item and item != "none"] if alerts_line else []
+    waiting = waiting_jobs(lpstat, queue)
+    warnings = list(dict.fromkeys(ALERT_MESSAGES[a] for a in alerts if a in ALERT_MESSAGES))
+    if state == "stopped":
+        warnings.insert(0, "The Mac has stopped this printer's queue. Resume it in System Settings > Printers.")
+    if waiting:
+        warnings.append(f"{len(waiting)} job(s) are already waiting for this printer. They print when it is ready; "
+                        "cancel them in the Mac's print queue before printing the same labels again.")
+    return {"state": state, "alerts": alerts, "waiting_jobs": len(waiting), "warnings": warnings}
+
+
 def printer_inventory() -> dict:
     configured = os.getenv("TRACKER_PRINTER_QUEUE", "").strip() or None
     lp, lpstat = shutil.which("lp"), shutil.which("lpstat")
@@ -89,7 +131,8 @@ def printer_inventory() -> dict:
         parts = line.split(None, 1)
         if parts and QUEUE_PATTERN.fullmatch(parts[0]) and " not accepting " not in line:
             names.append(parts[0])
-    result["printers"] = [{"name": name, "is_default": name == default_name}
+    result["printers"] = [{"name": name, "is_default": name == default_name,
+                           "label_printer": bool(re.search(r"\bQL|Brother", name, re.I)), **queue_health(lpstat, name)}
                           for name in sorted(set(names))]
     result["available"] = bool(names)
     result["enabled"] = configured in names
@@ -136,6 +179,12 @@ def _job_dict(job: PrintJob) -> dict:
 @router.get("/printers")
 def list_printers():
     return printer_inventory()
+
+
+@router.post("/labels/preview.png")
+def preview_labels_image(body: LabelPreviewBody, db: Session = Depends(get_db)):
+    image, total = labels_png(_details(db, body.stack_ids, body.selected_specimen_ids), body.width_mm)
+    return Response(image, media_type="image/png", headers={"Cache-Control": "no-store", "X-Label-Count": str(total)})
 
 
 @router.post("/labels/preview")
@@ -253,6 +302,19 @@ def create_print_job(body: PrintBody, db: Session = Depends(get_db)):
     return submit_print_job(db, body)
 
 
+def _with_queue(job: PrintJob) -> dict:
+    value = _job_dict(job)
+    lpstat = shutil.which("lpstat")
+    if job.status == "submitted" and job.cups_job_id and job.printer_queue and lpstat:
+        mine = set(job.cups_job_id.split(","))
+        value["waiting_cups_jobs"] = sum(1 for item in waiting_jobs(lpstat, job.printer_queue) if item in mine)
+        value["message"] = ("All labels have left the Mac's queue. Check them at the printer."
+                            if not value["waiting_cups_jobs"] else
+                            f"{value['waiting_cups_jobs']} label(s) still waiting in the Mac's queue: the printer may be "
+                            "offline, out of labels, or busy. They print when it is ready; do not reprint them.")
+    return value
+
+
 @router.get("/print-jobs/{request_id}")
 def print_job_status(request_id: Annotated[str, Path(pattern=PRINT_REQUEST)], db: Session = Depends(get_db)):
     with db.begin():
@@ -269,4 +331,4 @@ def print_job_status(request_id: Annotated[str, Path(pattern=PRINT_REQUEST)], db
                                   specimen_ids=[item["id"] for item in detail["specimens"]],
                                   payload={"print_request_id": request_id, "status": "unknown", "physical_print_confirmed": False}))
             db.flush()
-        return _job_dict(job)
+        return _with_queue(job)

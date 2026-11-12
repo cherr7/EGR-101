@@ -39,6 +39,8 @@ export default function LabelDialog({
   const [printers, setPrinters] = useState<PrinterInfo | null>(null)
   const [previewURL, setPreviewURL] = useState('')
   const [previewFingerprint, setPreviewFingerprint] = useState('')
+  const shownURL = useRef(''); shownURL.current = previewURL
+  useEffect(() => () => { if (shownURL.current) URL.revokeObjectURL(shownURL.current) }, [])
   const [previewing, setPreviewing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -75,16 +77,15 @@ export default function LabelDialog({
     const requestSerial = ++serial.current
     const controller = new AbortController()
     let objectURL = ''
-    setPreviewURL('')
     setPreviewFingerprint('')
     setPreviewing(false)
-    if (!healthy || !valid) return () => controller.abort()
+    if (!healthy || !valid) { setPreviewURL(''); return () => controller.abort() }
     setPreviewing(true)
     const timer = setTimeout(() => {
-      void apiBlob('/labels/preview', selection, controller.signal).then(blob => {
+      void apiBlob('/labels/preview.png', selection, controller.signal).then(blob => {
         if (controller.signal.aborted || requestSerial !== serial.current || !alive.current) return
         objectURL = URL.createObjectURL(blob)
-        setPreviewURL(objectURL)
+        setPreviewURL(previous => { if (previous) setTimeout(() => URL.revokeObjectURL(previous), 1000); return objectURL })
         setPreviewFingerprint(fingerprint)
         setError('')
       }).catch(err => {
@@ -96,7 +97,6 @@ export default function LabelDialog({
     return () => {
       clearTimeout(timer)
       controller.abort()
-      if (objectURL) URL.revokeObjectURL(objectURL)
     }
   }, [healthy, valid, fingerprint, selection])
 
@@ -136,6 +136,13 @@ export default function LabelDialog({
       if (alive.current) setBusy(false)
     }
   }
+  useEffect(() => {
+    if (!job || job.status !== 'submitted' || job.waiting_cups_jobs === 0 || !healthy) return
+    const timer = setTimeout(() => {
+      void api<PrintJob>('/print-jobs/' + job.request_id).then(value => { if (alive.current) setJob(value) }).catch(() => {})
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [job, healthy])
   const checkRef = useRef(checkPrevious)
   checkRef.current = checkPrevious
   useEffect(() => {
@@ -179,6 +186,7 @@ export default function LabelDialog({
     }
   }
   const allIds = stacks.flatMap(stack => stack.specimens.map(s => s.id))
+  const chosen = printers?.printers.find(printer => printer.name === queue)
   function toggle(ids: number[], checked: boolean) {
     if (busy) return
     setSelected(previous => checked ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)))
@@ -229,17 +237,24 @@ export default function LabelDialog({
           <label>Printer
             <select aria-label="Printer queue" value={queue} disabled={busy} onChange={e => setQueue(e.target.value)}>
               <option value="">Choose a printer</option>
-              {printers?.printers.map(printer => <option key={printer.name} value={printer.name}>{printer.name}{printer.is_default ? ' (default)' : ''}</option>)}
+              {printers?.printers.map(printer => <option key={printer.name} value={printer.name}>
+                {printer.name}{printer.label_printer ? '' : ' (not a label printer)'}{printer.alerts?.includes('offline') ? ' · offline' : ''}</option>)}
             </select>
           </label>
           <label>Copies<input aria-label="Print copies" type="number" min="1" max="10"
             disabled={busy} value={copies} onChange={e => setCopies(Number(e.target.value))} /></label>
         </div>
-        {previewURL ? <iframe className="pdf-preview" title="Actual label PDF preview" src={previewURL} /> :
+        {previewURL ? <div className="label-preview-image"><img src={previewURL} alt={`Preview of ${Math.min(selected.length, 12)} of ${selected.length} labels`} />
+          {selected.length > 12 && <p className="input-help">Showing the first 12 of {selected.length} labels. Open the PDF to see every page.</p>}</div> :
           <div className="pdf-preview preview-empty" role="status">{previewing ? 'Loading preview…' : !selected.length ? 'Select labels to preview.' : !healthy ? 'Preview unavailable offline.' : 'Preview unavailable.'}</div>}
         {printers && !printers.available && <p className="input-help">No printer available. Open the PDF to print.</p>}
-        {job && <div className={'notice ' + (job.status === 'submitted' ? 'success' : job.status === 'failed' ? 'error' : 'warning')} role="status">
-          {job.status === 'submitted' ? 'Sent to printer.' : job.message || job.error || job.status}
+        {chosen && (!chosen.label_printer || !!chosen.warnings?.length) && <div className="notice warning printer-warnings" role="status"><ul>
+          {!chosen.label_printer && <li>This is not the Brother label printer. Labels are sized for 62 × 29 mm DK-1209 die-cut labels.</li>}
+          {chosen.warnings?.map(warning => <li key={warning}>{warning}</li>)}
+        </ul></div>}
+        <p className="input-help">Load DK-1209 (62 × 29 mm die-cut) labels. Another roll prints the wrong size or makes the printer stop with an error.</p>
+        {job && <div className={'notice ' + (job.status === 'submitted' && !job.waiting_cups_jobs ? 'success' : job.status === 'failed' ? 'error' : 'warning')} role="status">
+          {job.status === 'submitted' ? job.message || 'Sent to the Mac print queue.' : job.message || job.error || job.status}
         </div>}
         {pending && <div className="notice warning">
           <b>Print result unconfirmed. Check the printer before retrying.</b>
@@ -252,7 +267,12 @@ export default function LabelDialog({
       </section>
     </div>
     <div className="modal-actions">
-      {previewURL && <a className="button secondary" href={previewURL} target="_blank" rel="noreferrer">Open PDF ↗</a>}
+      <button className="button secondary" disabled={!valid || !healthy} onClick={() => {
+        // Open the window inside the click so pop-up blockers allow it, then fill it with the exact print PDF.
+        const tab = window.open('', '_blank')
+        void apiBlob('/labels/preview', selection).then(blob => { if (tab) tab.location.href = URL.createObjectURL(blob) })
+          .catch(err => { tab?.close(); setError((err as Error).message) })
+      }}>Open PDF ↗</button>
       <span className="grow" />
       <button className="button secondary" disabled={busy} onClick={onClose}>Close</button>
       <button className="button primary" disabled={!canPrint} onClick={() => void print()}>

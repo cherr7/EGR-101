@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,12 +123,35 @@ def build(source: Path, output: Path, station: str = "shared-door") -> dict:
             shutil.rmtree(temporary)
 
 
+BIN_FILES = ("browser.sh", "watchdog.py", "input-bridge.py", "nfc_tags.py", "station-agent.py", "updater.py", "startup.html")
+
+
+def package(source: Path, destination: Path) -> dict:
+    """The Pi update package: ui/ (without the per-station config) and bin/, as one .tar.gz."""
+    with tempfile.TemporaryDirectory() as folder:
+        ui = Path(folder) / "station-ui"
+        manifest = build(source, ui)
+        (ui / "station-config.js").unlink(missing_ok=True)
+        partial = destination.with_name(destination.name + ".partial")
+        with tarfile.open(partial, "w:gz") as tar:
+            tar.add(ui, arcname="ui")
+            for name in BIN_FILES:
+                tar.add(ROOT / "deploy/scanner-kiosk" / name, arcname="bin/" + name)
+        partial.replace(destination)
+    return manifest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=ROOT / "frontend/dist")
     parser.add_argument("--output", type=Path, default=ROOT / "output/station-ui")
     parser.add_argument("--station", default="shared-door")
+    parser.add_argument("--package", type=Path, help="write the Pi update package (.tar.gz) here instead")
     args = parser.parse_args()
+    if args.package:
+        manifest = package(args.source, args.package.resolve())
+        print(f"Station update package {manifest['release']}: {args.package}")
+        return
     try:
         manifest = build(args.source, args.output, args.station)
     except (OSError, ValueError) as error:

@@ -77,7 +77,7 @@ It needs the frontend Playwright dependency and Google Chrome, creates marked DE
 
 | Folder | Contents |
 | --- | --- |
-| `macOS/` | The built Mac app and LaunchDaemon plan |
+| `macOS/` | The built Mac app |
 | `station-ui/` | The built Pi station package |
 | `qa/` | Verification reports, test sheets, disposable checkpoint exports |
 | `screenshots/` | Captured interface screenshots |

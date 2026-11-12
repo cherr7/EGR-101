@@ -214,21 +214,22 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const panelOnly = panel !== null && !transactionBlocked
   const scanRef = useRef(scan), stateRef = useRef({ healthy, blocked, panelOnly, station, direction, scope }); scanRef.current = scan; stateRef.current = { healthy, blocked, panelOnly, station, direction, scope }
   useEffect(() => {
-    const globals = window as unknown as { fabricScannerCaptureReady: boolean; fabricInputBridgeConnected: boolean; fabricInputBridgeReady: boolean }
+    const globals = window as unknown as { fabricScannerCaptureReady: boolean; fabricInputBridgeConnected: boolean; fabricInputBridgeReady: boolean; fabricLastActivity: number }
+    const touched = () => { globals.fabricLastActivity = Date.now() }   // the station updates only when idle
     const canScan = () => stateRef.current.healthy && !stateRef.current.blocked && !inFlight.current && !document.hidden
     const reject = (message: string) => { if (!stateRef.current.blocked) reportError(message) }
     const refuse = () => { if (stateRef.current.healthy && stateRef.current.panelOnly && !inFlight.current) reportError('Scan not recorded. Close this panel, then rescan the label.') }
     const disposeKeyboard = attachScanner({
       enabled: () => canScan() && document.hasFocus() && (!bridgeConfigured || inputStatusRef.current.fallback),
       context: () => [stateRef.current.station, stateRef.current.direction, stateRef.current.scope, stateRef.current.blocked].join('|'),
-      onScan: code => void scanRef.current(code), onReject: message => { if (!bridgeConfigured || inputStatusRef.current.fallback) reject(message) },
+      onScan: code => { touched(); void scanRef.current(code) }, onReject: message => { if (!bridgeConfigured || inputStatusRef.current.fallback) reject(message) },
       // Never queue input during a popup, pending transaction, or active direct reader; only an open panel is reported.
       onBlocked: () => { if (!bridgeConfigured || inputStatusRef.current.fallback) refuse() },
       onFocusChange: () => setFocused(document.hasFocus() && !document.hidden),
     })
     const disposeBridge = bridgeConfigured ? attachInputBridge({
       url: '/station/input/events', statusUrl: '/station/input/status', enabled: canScan,
-      onScan: code => void scanRef.current(code), onReject: reject, onBlocked: refuse,
+      onScan: code => { touched(); void scanRef.current(code) }, onReject: reject, onBlocked: refuse,
       onStatus: value => { inputStatusRef.current = value; setInputStatus(value); globals.fabricInputBridgeConnected = value.connected; globals.fabricInputBridgeReady = value.ready },
     }) : () => {}
     globals.fabricScannerCaptureReady = true

@@ -1,16 +1,23 @@
 # Roadmap: one Mac app that runs and manages everything
 
-**Status:** plan, revised Nov 12, 2026. Nothing below is built yet unless it says so.
+**Status:** all seven steps built, Nov 12, 2026. What still needs a person is under "Left to do on site".
 
 ## Where things stand
 
 | Piece | Today |
 | --- | --- |
-| Mac (MacBook Neo) | Runs `main` on a fresh database. The app is started by hand from `output/macOS/Fabric Conditioning.app` (a small launcher, not in `/Applications`). **It doesn't start on its own after a restart.** |
-| Pis A, B, C | On Tailscale (`ulscanner-a/b/c`) and reach the Mac by its Tailscale name. **The scanner kiosk isn't installed yet.** |
-| Printer | USB is the default. A Wi-Fi printer is also set up on the Mac as a fallback. |
-| Updates | By hand: pull, build and restart over SSH. Today's outage (a migration the old database couldn't take) shows why that's risky. |
-| Outside access | None. Only DukeOpen and Tailscale. |
+| Mac (MacBook Neo) | `/Applications/Fabric Conditioning.app` (menu bar) registers the boot service. It needs one approval in Login Items. |
+| Pis A, B, C | On Tailscale, with the local-IP fallback. They update themselves from the Mac when idle, once installed with the new layout. |
+| Printer | USB is the default. Jobs fall back to the Wi-Fi queue when USB isn't connected. The Mac re-finds the Wi-Fi printer when its address changes. |
+| Updates | System health → Update to vX: backup, migration check, rollback. |
+| Outside access | Cloudflare quick tunnel with a passcode, off until turned on. |
+
+## Left to do on site
+
+- **Approve the boot service** on the Neo: System Settings → General → Login Items → allow Fabric Conditioning. Then restart the Neo without logging in and check the app from another computer.
+- **Reinstall each Pi once** with `scripts/deploy-pi.sh` so it uses release folders; after that it updates itself.
+- **Outside link:** set a passcode and turn it on in System health (needs `brew install cloudflared` on the Neo).
+- **Printer:** check a print falls back to Wi-Fi with the USB cable unplugged.
 
 ## The target
 
@@ -86,7 +93,7 @@ A daily check only *notifies* that a new release exists. Installing is always a 
 - **Automatic fallback:** if the USB printer reports offline and the Wi-Fi printer is idle, the Print panel picks Wi-Fi for that job and says so. The saved default stays USB.
 - **Wi-Fi address changes:** the Mac looks for the printer's hardware address on the local network and updates its Wi-Fi printer entry. A reserved address from OIT, and from UL IT later, makes this unnecessary.
 
-## Build order
+## Build order (all done)
 
 1. **Pi install from the Mac over Tailscale,** with the Tailscale-first and local-IP fallback, Tailscale SSH and the narrow sudo rule. Then install all three kiosks and test them.
 2. **The Mac app in `/Applications`,** with the background service at boot, the menu bar, and Login Items approval.

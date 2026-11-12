@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Native Mac host: one private PostgreSQL cluster and the shared FastAPI/web process."""
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import time
 import tempfile
+import re
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -76,6 +78,8 @@ def environment(database=None):
                "@127.0.0.1:" + str(cfg["db_port"]) + "/" + name,
                FRONTEND_DIST=str(ROOT / "frontend/dist"),
                FABRIC_STATE_DIR=str(state_dir()), COOKIE_SECURE="false")
+    if cfg.get("source_repo"):
+        env["FABRIC_SOURCE_REPO"] = cfg["source_repo"]
     env.pop("FABRIC_BACKUP_DIR", None)
     if database is None:
         # Live-database archives go to a visible folder (outside TCC-protected Documents/Desktop).
@@ -215,7 +219,94 @@ def stop():
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+HOLD_SECONDS = 15 * 60
+TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+
+
+def held():
+    """The updater asks the service to leave the app stopped while it switches releases."""
+    try:
+        return time.time() - float((state_dir() / "hold").read_text()) < HOLD_SECONDS
+    except (OSError, ValueError):
+        return False
+
+
+def current_release():
+    link = state_dir() / "releases/current"
+    return link.resolve() if link.exists() else None
+
+
+def supervisor_pid():
+    try:
+        pid = int((state_dir() / "serve.pid").read_text())
+        command = subprocess.check_output(["ps", "-p", str(pid), "-o", "command="], stderr=subprocess.DEVNULL, text=True)
+        return pid if "host.py serve" in command else None
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return None
+
+
+def cloudflared():
+    return shutil.which("cloudflared") or next((p for p in ("/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared")
+                                                if Path(p).is_file()), None)
+
+
+def tunnel_pid():
+    try:
+        pid = int((state_dir() / "tunnel.pid").read_text())
+        command = subprocess.check_output(["ps", "-p", str(pid), "-o", "command="], stderr=subprocess.DEVNULL, text=True)
+        return pid if "cloudflared" in command else None
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return None
+
+
+def outside_enabled():
+    try:
+        facts = json.loads((state_dir() / "outside.json").read_text())
+        return bool(facts.get("enabled") and facts.get("passcode_hash"))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def stop_tunnel():
+    pid = tunnel_pid()
+    if pid:
+        os.kill(pid, signal.SIGTERM)
+    for name in ("tunnel.pid", "tunnel.json"):
+        (state_dir() / name).unlink(missing_ok=True)
+
+
+def tunnel_tick():
+    """Keep the Cloudflare quick tunnel running while outside access is on, and record its link."""
+    folder = state_dir()
+    if not outside_enabled():
+        if tunnel_pid() or (folder / "tunnel.json").exists():
+            stop_tunnel()
+        return
+    pid, binary, log = tunnel_pid(), cloudflared(), folder / "logs/tunnel.log"
+    if not pid:
+        (folder / "tunnel.json").unlink(missing_ok=True)
+        if not binary:
+            (folder / "tunnel.json").write_text(json.dumps({"url": None, "error": "cloudflared is not installed"}))
+            return
+        with log.open("wb") as stream:
+            process = subprocess.Popen([binary, "tunnel", "--no-autoupdate", "--url",
+                                        "http://127.0.0.1:" + str(config()["http_port"])],
+                                       stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, start_new_session=True)
+        (folder / "tunnel.pid").write_text(str(process.pid))
+        return
+    if not (folder / "tunnel.json").exists():
+        try:
+            found = TUNNEL_URL.search(log.read_text(errors="replace"))
+        except OSError:
+            found = None
+        if found:
+            (folder / "tunnel.json").write_text(json.dumps({"url": found.group(0), "pid": pid,
+                                                            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
+
+
 def serve():
+    """Run by launchd. Keeps the database, the app and the tunnel up; exits when the update switches
+    releases, so launchd starts the new one."""
     stopping = False
 
     def on_signal(_number, _frame):
@@ -224,16 +315,36 @@ def serve():
 
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
-    init_database()
-    migrate()
-    while not stopping:
+    folder = state_dir()
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock = (folder / "serve.lock").open("a")
+    fcntl.flock(lock, fcntl.LOCK_EX)   # a second copy (boot service and login fallback) waits here
+    if stopping:
+        return
+    (folder / "serve.pid").write_text(str(os.getpid()))
+    started_from = current_release()
+    while held() and not stopping:
+        time.sleep(1)
+    if not stopping:
         init_database()
-        start_api()
+        migrate()
+    while not stopping:
+        if current_release() != started_from:
+            break   # the updater switched releases; launchd restarts this service from the new one
+        if not held():
+            init_database()
+            start_api()
+        try:
+            tunnel_tick()
+        except OSError:
+            pass
         for _ in range(5):
             if stopping:
                 break
             time.sleep(1)
-    stop()
+    if not held():
+        stop()
+    (folder / "serve.pid").unlink(missing_ok=True)
 
 
 def main():

@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
@@ -86,6 +87,8 @@ def build_release(commit, destination):
             partial = destination.with_name(destination.name + ".partial")
             shutil.rmtree(partial, ignore_errors=True)
             copy_code(tree, partial)
+            subprocess.run([sys.executable, str(tree / "scripts/build-station.py"), "--source", str(tree / "frontend/dist"),
+                            "--package", str(partial / "station-package.tar.gz")], check=True, stdout=subprocess.DEVNULL)
             facts = stamp(tree)
             write(partial, facts)
             shutil.rmtree(destination, ignore_errors=True)
@@ -143,13 +146,59 @@ def start_release(release):
     return subprocess.run([sys.executable, str(release / "deploy/macos/host.py"), "start"], env=env).returncode == 0
 
 
-def stop_running():
-    host = load_host(REPO)
+def wait_healthy(host, seconds=180):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if host.healthy():
+            return True
+        time.sleep(2)
+    return False
+
+
+def switch_to(host, release, releases):
+    """Stop the app, point current at release, and start it. True if it came up healthy.
+
+    Under the boot service, the service starts the new release itself: it exits when current changes
+    and launchd starts it again. Without it, start the release here."""
+    if host.supervisor_pid():
+        hold = host.state_dir() / "hold"
+        hold.write_text(str(time.time()))
+        try:
+            host.stop()
+            if release:
+                point_current(release, releases)
+            else:
+                (releases / "current").unlink(missing_ok=True)
+        finally:
+            hold.unlink(missing_ok=True)
+        return wait_healthy(host)
     host.stop()
+    if release:
+        point_current(release, releases)
+        return start_release(release)
+    (releases / "current").unlink(missing_ok=True)
+    return subprocess.run([sys.executable, str(REPO / "deploy/macos/host.py"), "start"]).returncode == 0
+
+
+def remember_repo(host):
+    """The web app's Update button runs this checkout's updater."""
+    path = host.state_dir() / "config.json"
+    try:
+        facts = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return
+    if facts.get("source_repo") != str(REPO):
+        facts["source_repo"] = str(REPO)
+        temporary = path.with_suffix(".tmp")
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as stream:
+            json.dump(facts, stream, indent=2)
+        os.replace(temporary, path)
 
 
 def update(ref, check_only):
     host = load_host(REPO)
+    remember_repo(host)
     releases = releases_dir(host)
     previous = running_release(host)
     previous_version = release_version(previous) if previous else (stamp(REPO)["version"] + " (git checkout)")
@@ -185,22 +234,14 @@ def update(ref, check_only):
     host.export_checkpoint(backup)
 
     say("Switching: stop, point to the new release, start")
-    stop_running()
-    point_current(release, releases)
-    if start_release(release):
+    if switch_to(host, release, releases):
         record(host, result="updated", version=target_version, previous=previous_version, backup=str(backup))
         say(f"Updated to {target_version}. Backup: {backup}")
         prune(releases, keep={release.name, previous.name if previous else ""})
         return 0
 
     say("The new release did not come up healthy. Rolling back.")
-    load_host(release).stop()
-    if previous:
-        point_current(previous, releases)
-        ok = start_release(previous)
-    else:
-        (releases / "current").unlink(missing_ok=True)
-        ok = subprocess.run([sys.executable, str(REPO / "deploy/macos/host.py"), "start"]).returncode == 0
+    ok = switch_to(host, previous, releases)
     record(host, result="rolled back", version=target_version, previous=previous_version, backup=str(backup),
            reason="the new release did not report healthy", restored=ok)
     raise RuntimeError(f"Update to {target_version} failed and was rolled back to {previous_version}"

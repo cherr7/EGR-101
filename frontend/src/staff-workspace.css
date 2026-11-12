@@ -326,3 +326,14 @@ td.row-actions { text-align: right; white-space: nowrap; }
 .label-preview-image img { display: block; width: 100%; height: auto; }
 .label-preview-image p { margin: 0; padding: 6px 10px; }
 .printer-warnings ul { margin: 0; padding-left: 18px; } .printer-warnings li + li { margin-top: 4px; }
+.update-control { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; }
+.update-control .button.text { padding: 0; }
+.error-text { color: var(--bad, #b42318); }
+.outside-link p { margin: 0 0 12px; }
+.outside-url { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; overflow-wrap: anywhere; }
+.outside-passcode { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.outside-passcode label { display: grid; gap: 4px; font-size: 12px; }
+.passcode-screen { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.passcode-screen form { display: grid; gap: 14px; width: min(340px, 100%); }
+.passcode-screen h1 { margin: 0; font-size: 20px; }
+.passcode-screen label { display: grid; gap: 6px; }

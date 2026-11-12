@@ -31,9 +31,11 @@ Do this once, on the MacBook Neo that will host everything.
    deploy/macos/setup.sh
    ```
 
-   This installs the Python runtime, builds the web app and creates `output/macOS/Fabric Conditioning.app`.
+   This installs the Python runtime, builds the web app and the Mac app.
 
-3. Double-click **output/macOS/Fabric Conditioning.app**. It starts the database and server and opens **http://127.0.0.1:8120**. (You can drag the app into Applications; your data isn't stored in it.)
+3. Install the app: `python3 deploy/macos/build_app.py --install`. It goes into **/Applications** and opens. A dot appears in the menu bar and the staff app opens at **http://127.0.0.1:8120**.
+   - macOS asks once to allow **Fabric Conditioning** in **System Settings → General → Login Items** ("Allow in the background"). Turn it on. After that the server starts at boot, before anyone logs in, and restarts if it crashes.
+   - Until then it starts when you log in.
 4. When macOS asks whether Python may accept incoming connections, click **Allow**. Otherwise the Pis can't reach the Mac.
 5. Keep it awake: **System Settings → Battery → Options → "Prevent automatic sleeping on power adapter when the display is off"** on. Keep it plugged in. Locking the screen is fine; sleeping is not.
 6. Put the Mac on the project's Tailscale network, so the Pis find it **by name**, whatever IP the Wi-Fi gives it ([DEVICE_DISCOVERY.md](DEVICE_DISCOVERY.md#2-how-the-pis-find-the-mac-tailscale)):
@@ -61,8 +63,8 @@ Optional: start automatically after a reboot, even before anyone logs in. See [M
   python3 deploy/macos/host.py stop
   ```
 
-- **Update the code:** `git pull`, then `deploy/macos/setup.sh` again. Data is kept.
-- **Logs:** `~/Library/Logs/Fabric Conditioning/launcher-error.log` and `~/Library/Application Support/Fabric Conditioning/logs/`.
+- **Update:** System health → **Update to vX** (or `scripts/update-host.sh`). It backs up first and rolls back if the new version doesn't start. Data is kept. The Pis update themselves afterwards, when idle.
+- **Logs:** `~/Library/Application Support/Fabric Conditioning/logs/` (`service.log`, `app.log`, `update.log`, `tunnel.log`).
 
 ## 3. Printer: connect to the Mac
 
@@ -153,4 +155,4 @@ The app makes a backup every day at 2 a.m. and keeps 30 days on the Mac. Once a 
 | Printer light blinking red, nothing prints | No usable roll: reseat the roll, close the cover, or load a new roll. The waiting label prints once it's fixed. |
 | Pi screen is sideways or upside down | Rerun the deploy script; add `DISPLAY_ROTATION=270` if it's upside down. |
 | Labels wrong size or not cut | Use a 62 mm roll. If it still happens, install Brother's QL-810W driver and re-add the printer with it ([PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md#can-i-just-use-airprint-if-theyre-on-the-same-wi-fi)). |
-| App won't start | Check `~/Library/Logs/Fabric Conditioning/launcher-error.log`, then `python3 deploy/macos/host.py start` from the project folder. |
+| App won't start | Check `~/Library/Application Support/Fabric Conditioning/logs/service.log`, then the menu-bar dot's menu (Login Items approval). |

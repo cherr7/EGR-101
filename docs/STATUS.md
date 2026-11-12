@@ -4,7 +4,7 @@ Last updated November 12, 2026.
 
 ## What works
 
-- **Mac host:** PostgreSQL, FastAPI and the staff web app run from a double-clickable app (native universal launcher, no Rosetta). A LaunchDaemon installer is provided for starting before login.
+- **Mac host:** `/Applications/Fabric Conditioning.app` (menu bar) registers a boot service that runs PostgreSQL, FastAPI, the staff web app and the outside link. Updates come from release tags with a backup and rollback; the Pis then update themselves.
 - **Staff app:** Dashboard, New batch (upload → check the sheet → print → track), Specimens, Transactions, Backups and System health. The prep sheet is checked in the sheet's own layout, and unfinished edits survive reloads. Printed stacks can be edited (fix fields, add or remove specimens) without invalidating labels.
 - **Keys:** every key is a sequential number; scan and print retry IDs are `<station>-<n>` and `print-<n>`. See [DATABASE.md](DATABASE.md).
 - **Excel import:** blank templates and filled-in job prep sheets (2112, 1506, 1850, 1970 families), including sample IDs from Comments, unordered template rows, shared-sample warnings and implied spares. See [EXCEL_IMPORT.md](EXCEL_IMPORT.md).
@@ -28,7 +28,7 @@ Last updated November 12, 2026.
 - **Printer:** add the QL-810W queue on the host Mac; print on a 62 mm roll; confirm size, scale and one cut per label (AirPrint vs Brother driver); scan printed labels; adhesion through lab handling. See [PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md).
 - **Test 5, outage resilience:** recovery under 60 s after power + network reset (not yet run).
 - **Pi:** cold-boot timing, Mac-unavailable boot, USB unplug/replug, focus/freeze recovery on each station.
-- **Mac:** install the LaunchDaemon on the host; check reboot and process recovery, FileVault, sleep settings, LAN access.
+- **Mac:** approve the boot service in Login Items; check a reboot without login, process recovery, sleep settings, LAN access.
 - **Backups:** choose an off-Mac destination and rehearse a restore on another installation.
 - **Import:** one real filled order checked with lab staff against the physical grouping.
 

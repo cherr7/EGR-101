@@ -1,4 +1,5 @@
 """Packaging checks use temporary files and never open a browser or register launchd."""
+import os
 import contextlib
 import hashlib
 import importlib.util
@@ -14,8 +15,6 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import build_app
-import install_daemon
-import launcher
 import host
 
 
@@ -51,60 +50,70 @@ class NativePackagingTests(unittest.TestCase):
             self.assertEqual(destination.read_bytes(), b"original")
             request.assert_not_called()
 
-    def test_bundle_contains_code_and_executable_without_private_state(self):
+    def test_app_registers_a_nonroot_boot_service_and_holds_no_code_or_data(self):
         with tempfile.TemporaryDirectory() as folder:
             app = build_app.build(Path(folder) / "Fabric Conditioning.app")
             info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
             self.assertEqual(info["CFBundleIdentifier"], "org.egr.fabric-conditioning")
-            executable = app / "Contents/MacOS" / info["CFBundleExecutable"]
-            self.assertTrue(executable.stat().st_mode & 0o111)
-            code = app / "Contents/Resources/app"
-            self.assertTrue((code / "backend/app/main.py").is_file())
-            self.assertTrue((code / "frontend/dist/index.html").is_file())
+            self.assertTrue(info["LSUIElement"])
+            for name in (info["CFBundleExecutable"], "fabric-service"):
+                self.assertTrue((app / "Contents/MacOS" / name).stat().st_mode & 0o111)
+            job = plistlib.loads((app / "Contents/Library/LaunchDaemons/org.egr.fabric-conditioning.plist").read_bytes())
+            self.assertEqual(job["BundleProgram"], "Contents/MacOS/fabric-service")
+            self.assertNotEqual(job["UserName"], "root")
+            self.assertTrue(job["RunAtLoad"] and job["KeepAlive"])
+            login = plistlib.loads((app / "Contents/Resources/login-service.plist").read_bytes())
+            self.assertNotIn("UserName", login)
+            self.assertTrue(login["ProgramArguments"][0].endswith("Contents/MacOS/fabric-service"))
+            serve = (app / "Contents/Resources/serve.zsh").read_text()
+            self.assertIn("releases/current", serve)
+            self.assertIn("host.py\" serve", serve)
             self.assertFalse(list(app.rglob("config.json")))
             self.assertFalse(list(app.rglob("PG_VERSION")))
-            self.assertFalse(list(app.rglob(".venv")))
+            self.assertFalse(list(app.rglob("main.py")))
 
-    def test_check_does_not_launch_process_or_browser(self):
-        with patch.object(sys, "argv", ["launcher", "--check"]), \
-             patch.object(launcher, "APP_ROOT", build_app.ROOT), \
-             patch.object(launcher, "runtime_path", return_value=Path(sys.executable)), \
-             patch.object(launcher.subprocess, "run") as run, \
-             contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(launcher.main(), 0)
-            self.assertTrue(json.loads(output.getvalue())["ready_to_launch"])
-            run.assert_not_called()
 
-    def test_healthy_no_open_does_not_start_duplicate_host(self):
-        with patch.object(sys, "argv", ["launcher", "--no-open"]), \
-             patch.object(launcher, "healthy", return_value=True), \
-             patch.object(launcher.subprocess, "run") as run, \
-             contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(launcher.main(), 0)
-            run.assert_not_called()
+class ServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        patcher = patch.dict(os.environ, {"FABRIC_STATE_DIR": self.folder.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.state = Path(self.folder.name)
 
-    def test_daemon_runs_nonroot_outside_home_and_has_restart_policy(self):
-        state = install_daemon.STATE
-        job = install_daemon.daemon_plist("labstaff", state / "runtime/bin/python", Path("/opt/homebrew/opt/postgresql@18/bin"))
-        self.assertEqual(job["UserName"], "labstaff")
-        self.assertTrue(job["RunAtLoad"])
-        self.assertTrue(job["KeepAlive"])
-        self.assertEqual(job["ProgramArguments"][-1], "serve")
-        self.assertTrue(str(job["WorkingDirectory"]).startswith("/Library/"))
-        encoded = plistlib.dumps(job)
-        self.assertNotIn(b"/Users/", encoded)
-        self.assertNotIn(b"db_password", encoded)
-        self.assertEqual(plistlib.loads(encoded), job)
+    def test_hold_expires(self):
+        self.assertFalse(host.held())
+        (self.state / "hold").write_text(str(__import__("time").time()))
+        self.assertTrue(host.held())
+        (self.state / "hold").write_text(str(__import__("time").time() - host.HOLD_SECONDS - 1))
+        self.assertFalse(host.held())
 
-    def test_prepare_only_never_registers_service(self):
-        with tempfile.TemporaryDirectory() as folder:
-            args = ["installer", "--user", __import__("pwd").getpwuid(__import__("os").getuid()).pw_name,
-                    "--plan-dir", folder]
-            with patch.object(sys, "argv", args), patch.object(install_daemon.subprocess, "run") as run, \
-                 contextlib.redirect_stdout(io.StringIO()):
-                install_daemon.main()
-                run.assert_not_called()
-            self.assertTrue((Path(folder) / "org.egr.fabric-conditioning.plist").is_file())
+    def test_current_release_follows_the_link(self):
+        releases = self.state / "releases"
+        (releases / "v1").mkdir(parents=True)
+        (releases / "v2").mkdir()
+        self.assertIsNone(host.current_release())
+        (releases / "current").symlink_to("v1")
+        first = host.current_release()
+        (releases / "current").unlink()
+        (releases / "current").symlink_to("v2")
+        self.assertNotEqual(first, host.current_release())
+
+    def test_tunnel_is_off_without_a_passcode(self):
+        (self.state / "outside.json").write_text(json.dumps({"enabled": True}))
+        self.assertFalse(host.outside_enabled())
+        (self.state / "outside.json").write_text(json.dumps({"enabled": True, "passcode_hash": "x"}))
+        self.assertTrue(host.outside_enabled())
+
+    def test_tunnel_link_is_read_from_the_log(self):
+        (self.state / "logs").mkdir()
+        (self.state / "outside.json").write_text(json.dumps({"enabled": True, "passcode_hash": "x"}))
+        (self.state / "logs/tunnel.log").write_text("INF |  https://quiet-river-abc.trycloudflare.com  |\n")
+        with patch.object(host, "tunnel_pid", return_value=4242):
+            host.tunnel_tick()
+        self.assertEqual(json.loads((self.state / "tunnel.json").read_text())["url"],
+                         "https://quiet-river-abc.trycloudflare.com")
 
 
 if __name__ == "__main__":

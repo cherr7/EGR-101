@@ -52,7 +52,9 @@ Wi-Fi only helps if the printer needs to sit away from the Mac. The printer and 
    `lpadmin -p Brother_QL_810W_WiFi -E -v ipp://<printer-ip>/ipp/print -m everywhere`
 4. In the app's Print panel, pick the Wi-Fi printer and tick **Default for everyone**. The Mac saves that choice, and every staff browser starts on that printer. `TRACKER_PRINTER_QUEUE`, if set, overrides it.
 
-Ask OIT to reserve the printer's IP address. Otherwise a new address breaks printing until the printer is added again by its new address. Keep the USB printer installed as a backup.
+Keep both queues. **If the USB printer isn't plugged in and the Wi-Fi queue answers, a print job goes to Wi-Fi** for that job only, and the Print panel says so. The default stays USB. The pair is found by name (`Brother_QL_810W` and `Brother_QL_810W_WiFi`); set `"fallback_queue"` in `printer.json` in the data folder to name another.
+
+**If the printer gets a new address**, the Mac finds it: every 10 minutes, if the Wi-Fi queue doesn't answer, it looks for the printer by Bonjour, matching the UUID the printer reports over USB, then in the Mac's ARP table, and points the Wi-Fi queue at the new address. If macOS doesn't allow the change, System health shows "Wi-Fi printer is now at <address>". A reserved address from OIT (and later UL IT) makes this unnecessary.
 
 ### Can I just use AirPrint if they're on the same Wi-Fi?
 

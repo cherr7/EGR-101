@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .barcodes import datamatrix_image, label_code
-from .models import AuditEvent, Stack
+from .models import AuditEvent, Project, Stack
 from .services import stack_detail
 
 router = APIRouter(prefix="/api", tags=["Labels and reports"])
@@ -44,9 +44,10 @@ def _stack(db: Session, stack_id: int) -> Stack:
 
 
 def _details(db: Session, project_number: str | None) -> list[dict]:
-    stacks = db.scalars(select(Stack).order_by(Stack.created_at, Stack.id)).all()
-    details = [stack_detail(db, item) for item in stacks]
-    return [item for item in details if project_number is None or item["project_number"] == project_number]
+    query = select(Stack).order_by(Stack.created_at, Stack.id)
+    if project_number is not None:
+        query = query.join(Project).where(Project.project_number == project_number)
+    return [stack_detail(db, item) for item in db.scalars(query).all()]
 
 
 def _safe_csv(value) -> str:

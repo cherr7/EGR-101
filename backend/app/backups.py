@@ -24,6 +24,7 @@ from sqlalchemy import Date, DateTime, create_engine, select, text
 
 from .db import Base, engine
 from .models import utcnow
+from .paths import state_dir
 from .stations import is_local_client
 
 router = APIRouter(prefix="/api/backups", tags=["Backups"])
@@ -49,7 +50,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def folder():
-    base = Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
+    base = state_dir()
     result = base / "backups" / (engine.url.database or "conditioning")
     result.mkdir(parents=True, exist_ok=True, mode=0o700)
     return result
@@ -443,7 +444,9 @@ def storage_summary(items):
 
 
 def is_host_request(request: Request):
-    return is_local_client(request)
+    # Outside-link requests also arrive from 127.0.0.1 (cloudflared runs on this Mac).
+    from .host_control import is_outside
+    return is_local_client(request) and not is_outside(request.scope)
 
 
 @router.get("")

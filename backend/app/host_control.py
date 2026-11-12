@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from . import version as app_version
 from .db import get_db
+from .paths import state_dir
 from .models import Station, utcnow
 from .stations import station_status
 
@@ -29,10 +30,6 @@ COOKIE = "fabric_outside"
 COOKIE_HOURS = 12
 CF_HEADERS = (b"cf-ray", b"cf-connecting-ip", b"cf-visitor")
 OPEN_OUTSIDE = {"/api/health", "/api/outside/status", "/api/outside/login"}
-
-
-def state_dir() -> Path:
-    return Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
 
 
 def read_json(path: Path):
@@ -90,6 +87,22 @@ def check_latest() -> dict:
     return result
 
 
+_CHECKING = threading.Lock()
+
+
+def check_in_background():
+    """Start one check unless one is already running."""
+    if not _CHECKING.acquire(blocking=False):
+        return
+
+    def work():
+        try:
+            check_latest()
+        finally:
+            _CHECKING.release()
+    threading.Thread(target=work, daemon=True).start()
+
+
 def update_running() -> bool:
     facts = read_json(state_dir() / "update.lock") or {}
     return pid_alive(facts.get("pid"))
@@ -103,7 +116,7 @@ def update_status() -> dict:
     except OSError:
         age = None
     if source_repo() and (age is None or age > CHECK_EVERY):
-        threading.Thread(target=check_latest, daemon=True).start()   # once a day; only tells, never installs
+        check_in_background()   # once a day; only tells, never installs
     latest = check.get("latest")
     newer = bool(release_key(latest) and release_key(running) and release_key(latest) > release_key(running))
     return {"running": running, "latest": latest, "available": newer, "checked_at": check.get("checked_at"),

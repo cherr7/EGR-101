@@ -171,3 +171,27 @@ def test_versions_are_reported_and_an_older_pi_is_flagged(client, monkeypatch):
     assert report["application"]["version"] == "v2026.11.12-2"
     behind = [i["title"] for i in report["issues"] if "old version" in i["title"]]
     assert len(behind) == 1 and "v2026.11.12-1" in behind[0] and "PPE" in behind[0]
+
+
+def test_backups_off_is_one_warning_and_unknown_queues_follow_their_name():
+    from app.system_health import find_issues
+    off = {"available": True, "enabled": False, "latest_at": None}
+    assert [i["title"] for i in find_issues(report_with(backups=off))] == ["Daily backups are off"]
+    # A queue that stopped accepting jobs isn't in the inventory: an office printer stays quiet.
+    paused_office = {"queues": [{"name": "QL", "state": "idle", "alerts": None, "jobs_waiting": 0},
+                                {"name": "HP_Office", "state": "disabled", "alerts": None, "jobs_waiting": 5}],
+                     "jobs_last_24h": {}}
+    assert find_issues(report_with(printer=paused_office)) == []
+
+
+def test_label_readiness_ignores_a_non_label_preferred_printer(monkeypatch):
+    from app import system_health
+    asked = []
+    monkeypatch.setattr(system_health.printer_network, "devices", lambda: {})
+    monkeypatch.setattr(system_health.printer_network, "working_queue",
+                        lambda queue, printers, uris: asked.append(queue) or queue)
+    inventory = {"preferred_queue": "Office", "printers": [
+        {"name": "Office", "is_default": True, "label_printer": False},
+        {"name": "Brother_QL_810W", "is_default": False, "label_printer": True}]}
+    assert system_health.label_printer_ready(inventory) is True
+    assert asked == ["Brother_QL_810W"]

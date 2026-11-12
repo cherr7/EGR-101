@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import printer_network
 from .db import get_db
+from .paths import state_dir
 from .exports import label_height_mm, labels_pdf, labels_png
 from .models import AuditEvent, PrintJob, Stack, utcnow
 from .schemas import split_request_id
@@ -108,8 +109,7 @@ def queue_health(lpstat: str, queue: str) -> dict:
 
 
 def _preference_path() -> FilePath:
-    base = FilePath(os.environ.get("FABRIC_STATE_DIR", str(FilePath.home() / "Library/Application Support/Fabric Conditioning")))
-    return base / "printer.json"
+    return state_dir() / "printer.json"
 
 
 def preferred_queue() -> str | None:
@@ -127,6 +127,10 @@ def save_preferred_queue(queue: str | None) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps({"preferred_queue": queue}))
     temporary.replace(path)
+
+
+def is_label_queue(name: str) -> bool:
+    return bool(re.search(r"\bQL|Brother", name, re.I))
 
 
 def printer_inventory() -> dict:
@@ -152,7 +156,7 @@ def printer_inventory() -> dict:
         if parts and QUEUE_PATTERN.fullmatch(parts[0]) and " not accepting " not in line:
             names.append(parts[0])
     result["printers"] = [{"name": name, "is_default": name == default_name,
-                           "label_printer": bool(re.search(r"\bQL|Brother", name, re.I)), **queue_health(lpstat, name)}
+                           "label_printer": is_label_queue(name), **queue_health(lpstat, name)}
                           for name in sorted(set(names))]
     result["available"] = bool(names)
     result["enabled"] = configured in names

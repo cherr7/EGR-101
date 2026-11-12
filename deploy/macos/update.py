@@ -65,7 +65,7 @@ def release_version(folder):
 def pick_target(ref):
     git("fetch", "--quiet", "--tags", "--force", "origin")
     if not ref:
-        tags = [tag for tag in git("tag", "--merged", "origin/main", "--sort=-creatordate", "--list", "v[0-9]*").splitlines() if tag]
+        tags = [tag for tag in git("tag", "--merged", "origin/main", "--sort=-v:refname", "--list", "v[0-9]*").splitlines() if tag]
         if not tags:
             raise RuntimeError("No release tag on main yet. Tag one (git tag v2026.11.12-1 && git push --tags), "
                                "or pass --ref origin/main.")

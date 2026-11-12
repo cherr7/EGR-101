@@ -167,8 +167,8 @@ def csv_draft(rows):
 
 
 @app.post("/api/prep-drafts/csv")
-async def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
-    content = await file.read(2_000_001)
+def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
+    content = file.file.read(2_000_001)
     if len(content) > 2_000_000:
         raise HTTPException(413, "CSV must be smaller than 2 MB.")
     try:

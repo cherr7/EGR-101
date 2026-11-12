@@ -27,18 +27,8 @@ def process_correction(db, body, username):
     if body.kind == "undo":
         from .schemas import TransactionUndoBody
         return undo_transaction(db, body.event_id, TransactionUndoBody(note=body.reason), username)
-    now = utcnow()
-    target = None
     session = None
-    if body.kind == "undo":
-        if not body.event_id:
-            raise HTTPException(422, "An event ID is required.")
-        target = db.get(AuditEvent, body.event_id)
-        if target is None or target.kind != "movement":
-            raise HTTPException(404, "Select a recorded movement to undo.")
-        ids = target.specimen_ids
-        stack_id = target.stack_id
-    elif body.kind == "edit_session":
+    if body.kind == "edit_session":
         if not body.session_id or body.entered_at is None:
             raise HTTPException(422, "Session ID and entry time are required.")
         session = db.get(ConditioningSession, body.session_id)
@@ -64,63 +54,41 @@ def process_correction(db, body, username):
     if len(specimens) != len(ids) or any(p.stack_id != stack_id for p in specimens):
         raise HTTPException(422, "All selected specimens must belong to the same stack.")
     before = snapshot(db, specimens)
-    if body.kind == "undo":
-        if any(p.last_event_id != target.id for p in specimens):
-            raise HTTPException(409, "Cannot undo: an affected specimen has an intervening movement or correction.")
-        for specimen in specimens:
-            original = {s["id"]: s for s in target.payload["before"][str(specimen.id)]}
-            existing = sessions_for(db, specimen.id, include_voided=True)
-            for s in existing:
-                if s.id not in original:
-                    s.voided = True
-            db.flush()  # Release partial unique index before restoring a formerly open session.
-            for s in existing:
-                if s.id in original:
-                    values = original[s.id]
-                    s.entered_at = datetime.fromisoformat(values["entered_at"])
-                    s.exited_at = datetime.fromisoformat(values["exited_at"]) if values["exited_at"] else None
-                    s.corrected = values["corrected"]
-                    s.incomplete = values["incomplete"]
-                    s.early_exit_acknowledged = values.get("early_exit_acknowledged", False)
-                    s.voided = values["voided"]
-        kind = "undo"
+    exit_at = (body.exited_at if "exited_at" in body.model_fields_set else session.exited_at) if body.kind == "edit_session" else body.exited_at
+    if exit_at is not None and exit_at < body.entered_at:
+        raise HTTPException(422, "Exit must be at or after entry.")
+    room_id = body.room_id or session.room_id
+    room = db.get(Room, room_id)
+    if room is None:
+        raise HTTPException(422, "Unknown room.")
+    if body.kind == "edit_session":
+        session.entered_at = body.entered_at.astimezone(timezone.utc)
+        session.exited_at = exit_at.astimezone(timezone.utc) if exit_at else None
+        session.room_id = room_id
+        session.room = room
+        session.corrected = True
+        session.incomplete = bool(session.exited_at and session.exited_at - session.entered_at < timedelta(hours=room.required_hours))
     else:
-        exit_at = (body.exited_at if "exited_at" in body.model_fields_set else session.exited_at) if body.kind == "edit_session" else body.exited_at
-        if exit_at is not None and exit_at < body.entered_at:
-            raise HTTPException(422, "Exit must be at or after entry.")
-        room_id = body.room_id or session.room_id
-        room = db.get(Room, room_id)
-        if room is None:
-            raise HTTPException(422, "Unknown room.")
-        if body.kind == "edit_session":
-            session.entered_at = body.entered_at.astimezone(timezone.utc)
-            session.exited_at = exit_at.astimezone(timezone.utc) if exit_at else None
-            session.room_id = room_id
-            session.room = room
-            session.corrected = True
-            session.incomplete = bool(session.exited_at and session.exited_at - session.entered_at < timedelta(hours=room.required_hours))
-        else:
-            for specimen in specimens:
-                db.add(ConditioningSession(specimen_id=specimen.id, room_id=room_id,
-                                           entered_at=body.entered_at.astimezone(timezone.utc),
-                                           exited_at=body.exited_at.astimezone(timezone.utc) if body.exited_at else None,
-                                           recorded_at=now, source="missed", corrected=True,
-                                           incomplete=bool(body.exited_at and body.exited_at - body.entered_at < timedelta(hours=room.required_hours))))
-        # Validate before flushing: sessions_for needs to include pending ORM changes.
-        try:
-            db.flush()
-        except Exception as error:
-            from sqlalchemy.exc import IntegrityError
-            if isinstance(error, IntegrityError):
-                raise HTTPException(409, "Correction conflicts with an existing open session or session chronology.") from error
-            raise
         for specimen in specimens:
-            validate_timeline(db, specimen, now)
-        kind = "correction"
+            db.add(ConditioningSession(specimen_id=specimen.id, room_id=room_id,
+                                       entered_at=body.entered_at.astimezone(timezone.utc),
+                                       exited_at=body.exited_at.astimezone(timezone.utc) if body.exited_at else None,
+                                       recorded_at=now, source="missed", corrected=True,
+                                       incomplete=bool(body.exited_at and body.exited_at - body.entered_at < timedelta(hours=room.required_hours))))
+    # Validate before flushing: sessions_for needs to include pending ORM changes.
+    try:
+        db.flush()
+    except Exception as error:
+        from sqlalchemy.exc import IntegrityError
+        if isinstance(error, IntegrityError):
+            raise HTTPException(409, "Correction conflicts with an existing open session or session chronology.") from error
+        raise
+    for specimen in specimens:
+        validate_timeline(db, specimen, now)
     db.flush()
-    event = AuditEvent(stack_id=stack_id, kind=kind, actor=username, reason=body.reason,
+    event = AuditEvent(stack_id=stack_id, kind="correction", actor=username, reason=body.reason,
                        recorded_at=now, specimen_ids=ids, room_id=room_id,
-                       payload={"correction_kind": body.kind, "event_id": target.id if target else None,
+                       payload={"correction_kind": body.kind, "event_id": None,
                                 "room_id": room_id, "occurred_at": iso(body.entered_at),
                                 "before": before, "after": snapshot(db, specimens)})
     db.add(event)

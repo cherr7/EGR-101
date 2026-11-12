@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+from .paths import state_dir
+
 USB_SCHEMES = {"usb", "ippusb"}
 FIXABLE_SCHEMES = {"ipp": 631, "ipps": 631, "socket": 9100, "lpd": 515, "http": 631, "https": 631}
 CHECK_EVERY = 600
@@ -87,7 +89,7 @@ def reachable(uri: str, timeout=2.0) -> bool:
 
 
 def preferences() -> dict:
-    base = Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
+    base = state_dir()
     try:
         value = json.loads((base / "printer.json").read_text())
         return value if isinstance(value, dict) else {}
@@ -119,19 +121,27 @@ def usable(queue: dict, uri: str | None, listing: str | None = None) -> bool:
     return "offline" not in queue.get("alerts", [])
 
 
+def working_queue(requested: str, printers: list[dict], uris: dict[str, str]) -> str | None:
+    """The queue a job would print on now: the requested one, else its USB/Wi-Fi partner. None if neither works."""
+    by_name = {item["name"]: item for item in printers}
+    if requested not in by_name or requested not in uris:
+        return None
+    listing = _run(["/usr/sbin/ioreg", "-p", "IOUSB", "-w0"])   # once for both queues
+    if usable(by_name[requested], uris[requested], listing):
+        return requested
+    other = partner(requested, uris)
+    if other in by_name and usable(by_name[other], uris.get(other), listing):
+        return other
+    return None
+
+
 def choose_queue(requested: str, printers: list[dict], uris: dict[str, str] | None = None) -> tuple[str, str | None]:
     """The queue to print on, and a note when it isn't the one asked for."""
     uris = devices() if uris is None else uris
-    by_name = {item["name"]: item for item in printers}
-    if requested not in by_name or requested not in uris:
-        return requested, None
-    listing = _run(["/usr/sbin/ioreg", "-p", "IOUSB", "-w0"])
-    if usable(by_name[requested], uris[requested], listing):
-        return requested, None
-    other = partner(requested, uris)
-    if other in by_name and usable(by_name[other], uris.get(other), listing):
+    chosen = working_queue(requested, printers, uris)
+    if chosen and chosen != requested:
         how = "USB" if kind(uris[requested]) == "usb" else "Wi-Fi"
-        return other, f"{how} printer not connected. Sent to {other}."
+        return chosen, f"{how} printer not connected. Sent to {chosen}."
     return requested, None
 
 
@@ -255,8 +265,7 @@ def refresh_wifi_queue() -> dict:
 
 
 def status_path() -> Path:
-    base = Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
-    return base / "printer-network.json"
+    return state_dir() / "printer-network.json"
 
 
 def write_status(result: dict):

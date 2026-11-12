@@ -20,8 +20,9 @@ from sqlalchemy import func, select, text
 from . import backups
 from . import version as app_version
 from .db import get_db
+from .paths import state_dir
 from .models import AuditEvent, PrintJob, Specimen, Station, utcnow
-from .printing import printer_inventory
+from .printing import is_label_queue, printer_inventory
 from . import printer_network
 from .stations import device_status, lan_ip, mdns_name, station_status
 
@@ -68,10 +69,6 @@ def as_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def state_dir():
-    return Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
 
 
 def iso_from_epoch(seconds):
@@ -281,11 +278,10 @@ def label_printer_ready(inventory):
     labels = [item for item in inventory["printers"] if item.get("label_printer")]
     if not labels:
         return None
-    chosen = inventory.get("preferred_queue") or next((q["name"] for q in labels if q["is_default"]), labels[0]["name"])
-    uris = printer_network.devices()
-    by_name = {item["name"]: item for item in inventory["printers"]}
-    names = [chosen, printer_network.partner(chosen, uris)]
-    return any(printer_network.usable(by_name[name], uris.get(name)) for name in names if name in by_name)
+    names = [item["name"] for item in labels]
+    preferred = inventory.get("preferred_queue")
+    chosen = preferred if preferred in names else next((q["name"] for q in labels if q["is_default"]), names[0])
+    return printer_network.working_queue(chosen, inventory["printers"], printer_network.devices()) is not None
 
 
 def printer_facts(db):
@@ -363,7 +359,7 @@ def find_issues(report):
                 f"{power_info['battery_percent']}% left. Plug in the charger.")
         if power_info["sleep_minutes"] and not power_info.get("sleep_prevented"):
             add("warning", "Host Mac", f"Mac sleeps after {power_info['sleep_minutes']} min",
-                "Stations can't scan while it sleeps. Start the app, or set sleep to Never.")
+                "Stations can't scan while it sleeps. Run it from the Fabric Conditioning app, or set sleep to Never.")
     if not report["database"]["connected"]:
         add("critical", "App", "Database not reachable", "Restart the app.")
     for station in report["stations"]:
@@ -381,7 +377,7 @@ def find_issues(report):
         if fresh:
             pi_issues(add, name, device)
     printer = report["printer"]
-    labels = [queue for queue in printer["queues"] if queue.get("label_printer", True)]
+    labels = [queue for queue in printer["queues"] if queue.get("label_printer", is_label_queue(queue["name"]))]
     if not labels:
         add("warning", "Label printer", "No label printer", "Connect the Brother printer by USB.")
     elif printer.get("ready") is False:
@@ -401,10 +397,10 @@ def find_issues(report):
     if backup.get("available"):
         if backup.get("last_error"):
             add("critical", "Backups", "Last backup failed", backup["last_error"])
+        latest = backup.get("latest_at")
         if backup.get("enabled") is False:
             add("warning", "Backups", "Daily backups are off")
-        latest = backup.get("latest_at")
-        if not latest or utcnow() - datetime.fromisoformat(latest) > BACKUP_STALE:
+        elif not latest or utcnow() - datetime.fromisoformat(latest) > BACKUP_STALE:
             add("warning", "Backups", "No backup in the last day")
     order = {"critical": 0, "warning": 1, "info": 2}
     issues.sort(key=lambda row: order[row["level"]])

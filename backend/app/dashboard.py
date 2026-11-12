@@ -44,7 +44,7 @@ def open_stack_ids(db):
     """Stacks with at least one piece not yet finished (never entered, or inside a room now)."""
     finished = exists().where(ConditioningSession.specimen_id == Specimen.id,
                               ConditioningSession.voided.is_(False), ConditioningSession.exited_at.is_not(None))
-    return set(db.scalars(select(Specimen.stack_id).where(~finished).distinct()))
+    return set(db.scalars(select(Specimen.stack_id).where(~finished, Specimen.removed_at.is_(None)).distinct()))
 
 
 def stack_states(db, stack_ids):

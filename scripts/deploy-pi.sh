@@ -8,6 +8,8 @@
 #             (e.g. fabric-mac.tail1234.ts.net), read from `tailscale status`.
 #   DNS       the resolver the Pi's nginx asks for MAC_HOST. Default for a *.ts.net name:
 #             100.100.100.100 (Tailscale MagicDNS). nginx cannot resolve Bonjour .local names.
+#   DISPLAY_ROTATION  how the installer turns the Touch Display 2 (a portrait panel): 90 (default),
+#             270 if the picture is upside down, or none.
 #
 # SSH checks the Pi's host key. A Pi seen before must present the same key; a new Pi's key
 # is recorded on first contact. If a Pi was re-imaged, remove its old key yourself:
@@ -62,7 +64,7 @@ if [ '$DNS' = 100.100.100.100 ] && ! tailscale status >/dev/null 2>&1; then
     echo 'This Pi is not on the tailnet. Install and log in to Tailscale first (docs/DEVICE_DISCOVERY.md).' >&2
     exit 3
 fi
-sudo sh ~/scanner-kiosk/install.sh --nfc ~/station-ui '$API' \"\$(whoami)\" '$DNS' '$STATION'
+sudo DISPLAY_ROTATION='${DISPLAY_ROTATION:-90}' sh ~/scanner-kiosk/install.sh --nfc ~/station-ui '$API' \"\$(whoami)\" '$DNS' '$STATION'
 grep -qx KIOSK_DIRECT_START=true /opt/fabric-scanner/station.env || echo KIOSK_DIRECT_START=true | sudo tee -a /opt/fabric-scanner/station.env >/dev/null
 curl -fsS -m 5 '$API/api/health' >/dev/null || { echo 'The Pi cannot reach $API. Is the app running and the Mac on the tailnet?' >&2; exit 4; }
 " || die "Install on $PI failed (status $?). The Pi was not rebooted."

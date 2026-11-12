@@ -17,7 +17,6 @@ backups/
 *.dump
 *.partial.*
 *.partial
-output/macOS/
-output/station-ui/
-output/qa/
-output/screenshots/
+# Generated locally: app bundle, Pi package, QA reports, screenshots, test prints.
+/output/
+/tmp/

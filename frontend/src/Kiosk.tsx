@@ -6,9 +6,11 @@ import { attachScanner } from './scannerCapture'
 import { attachInputBridge, INITIAL_INPUT_STATUS } from './inputBridge'
 import type { InputBridgeStatus } from './inputBridge'
 import './kiosk.css'
-import { KioskActivity, KioskInventory, KioskScannerSetup } from './KioskPanels'
+import { IDLE_CHOICES, KioskActivity, KioskInventory, KioskScannerSetup, KioskSettings } from './KioskPanels'
 import type { ActivityItem } from './KioskPanels'
 
+const SERVER_KEY = 'fabric-tracker.server-address', IDLE_KEY = 'fabric-tracker.idle-reset-minutes'
+function savedIdleMinutes() { try { const value = Number(localStorage.getItem(IDLE_KEY) ?? 5); return IDLE_CHOICES.includes(value) ? value : 5 } catch { return 5 } }
 // v3: request IDs are '<station>-<n>' and event IDs are numbers; older pending entries are ignored.
 const PENDING_KEY = 'fabric-tracker.pending-movement.v3', UNDO_KEY = 'fabric-tracker.pending-undo.v2', LEGACY_LAST_KEY = 'fabric-tracker.last-movement.v2'
 function stored<T>(key: string): T | null { try { return JSON.parse(localStorage.getItem(key) || 'null') as T | null } catch { return null } }
@@ -29,7 +31,7 @@ const ROOM_CHOICES = [
 const toUndoTarget = (event: ActivityItem): Last => ({ event_id: event.id, count: event.effective_count ?? event.affected_count, version: event.version })
 
 export default function Kiosk({ config, healthy }: { config: Config; healthy: boolean }) {
-  const stationConfig = (window as unknown as { fabricStationConfig?: { stationId?: string; fixed?: boolean; stationName?: string; roomId?: string; roomName?: string; inputBridge?: boolean } }).fabricStationConfig
+  const stationConfig = (window as unknown as { fabricStationConfig?: { stationId?: string; fixed?: boolean; stationName?: string; roomId?: string; roomName?: string; inputBridge?: boolean; apiOrigin?: string } }).fabricStationConfig
   const bridgeConfigured = stationConfig?.inputBridge === true
   const [inputStatus, setInputStatus] = useState<InputBridgeStatus>(INITIAL_INPUT_STATUS)
   const inputStatusRef = useRef(inputStatus); inputStatusRef.current = inputStatus
@@ -39,7 +41,13 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => stored<PendingUndo>(UNDO_KEY)), [undoMessage, setUndoMessage] = useState(''), [noticeVersion, setNoticeVersion] = useState(0), [errorKind, setErrorKind] = useState<ErrorKind>('scan')
   const [selection, setSelection] = useState<Selection | null>(null), [acknowledge, setAcknowledge] = useState<Acknowledgment | null>(null)
   const [detail, setDetail] = useState<Stack | null>(null), [events, setEvents] = useState<ActivityItem[]>([])
-  const [panel, setPanel] = useState<'activity' | 'inventory' | 'setup' | null>(null)
+  const [panel, setPanel] = useState<'activity' | 'inventory' | 'setup' | 'settings' | null>(null)
+  const [idleMinutes, setIdleMinutes] = useState(savedIdleMinutes)
+  // The server this station talks to: the installer's configured origin works offline; the Mac's own
+  // report (cached) covers stations installed before apiOrigin existed and staff browsers.
+  const configuredServer = (() => { try { return stationConfig?.apiOrigin ? new URL(stationConfig.apiOrigin).host : null } catch { return null } })()
+  const [reportedServer, setReportedServer] = useState<string | null>(() => { try { return localStorage.getItem(SERVER_KEY) } catch { return null } })
+  const serverAddress = configuredServer || reportedServer || location.host
   const [result, setResult] = useState<MovementResult | null>(null), [resultDirection, setResultDirection] = useState<'IN' | 'OUT'>('IN'), [green, setGreen] = useState(false), [error, setError] = useState(''), [focused, setFocused] = useState(document.hasFocus())
   const inFlight = useRef(false), active = useRef(true), greenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), historyRef = useRef<HTMLDivElement>(null)
   const activityRevision = useRef(0), activityFetch = useRef(0), feedbackRevision = useRef(0)
@@ -47,6 +55,13 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const eventRoom = useRef(currentRoomId); eventRoom.current = currentRoomId
   const transactionBlocked = busy || !!pendingUndo || !!pending || !!selection || !!acknowledge
   const blocked = transactionBlocked || panel !== null
+  const roomChoice = ROOM_CHOICES.find(choice => choice.stationId === station)
+  useEffect(() => {
+    // Idle reset: any scan, result, error, panel or mode change restarts the countdown; the room never changes.
+    if (!idleMinutes || (direction === 'IN' && scope === 'stack') || blocked) return
+    const timer = setTimeout(() => { setDirection('IN'); setScope('stack') }, idleMinutes * 60000)
+    return () => clearTimeout(timer)
+  }, [idleMinutes, direction, scope, blocked, result, error])
   // Undo from the dock reverses this station's newest movement, never a staff entry or another door's scan.
   const top = events.find(event => event.actor === station)
   const undoTarget = top && !top.undone && top.can_undo !== false ? toUndoTarget(top) : null
@@ -91,6 +106,20 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   useEffect(() => { localStorage.setItem('fabric-tracker.station', station) }, [station]); useEffect(() => { localStorage.setItem('fabric-tracker.direction', direction) }, [direction])
   useEffect(() => { localStorage.setItem('fabric-tracker.scope', scope) }, [scope])
   useEffect(() => { if (healthy) void reserveAhead(station) }, [healthy, station, events])
+  useEffect(() => { try { localStorage.setItem(IDLE_KEY, String(idleMinutes)) } catch { /* default next time */ } }, [idleMinutes])
+  useEffect(() => {
+    if (!healthy) return
+    let alive = true
+    const load = () => api<{ host: { ip: string | null; port: number } }>('/network/status', {}, 3500).then(value => {
+      if (!alive || !value.host?.ip) return
+      const address = `${value.host.ip}:${value.host.port}`
+      setReportedServer(address)
+      try { localStorage.setItem(SERVER_KEY, address) } catch { /* shown until reload */ }
+    }).catch(() => undefined)
+    void load()
+    const timer = setInterval(load, 60000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [healthy])
   const refreshEvents = useCallback(async () => {
     if (!currentRoomId) return
     const revision = activityRevision.current, fetchId = ++activityFetch.current
@@ -168,12 +197,12 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     if (inFlight.current || !healthy || stored<Movement>(PENDING_KEY) || stored<PendingUndo>(UNDO_KEY)) return
     clearTimeout(greenTimer.current); feedbackRevision.current++
     inFlight.current = true; setBusy(true); setGreen(false); setUndoMessage(''); setError(''); setResult(null)
-    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); reportError('This browser cannot preserve a pending request. Enable local storage before scanning.', 'setup'); return }
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(request)); setPending(request) } catch { inFlight.current = false; setBusy(false); reportError('This browser blocks local storage, which scanning needs. Turn it on.', 'setup'); return }
     try { const value = await post<MovementResult>('/movements', request); if (active.current) await accept(value, request, loaded) }
-    catch (err) { if (!active.current) return; if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); reportError(err.message) } else reportError('Response interrupted. This same request must be confirmed before another scan.') }
+    catch (err) { if (!active.current) return; if (err instanceof ApiError && err.status < 500) { localStorage.removeItem(PENDING_KEY); setPending(null); setSelection(null); setAcknowledge(null); reportError(err.message) } else reportError('Connection dropped. Checking whether the scan saved…') }
     finally { inFlight.current = false; if (active.current) setBusy(false) }
   }
-  const recover = useCallback(async () => { const request = stored<Movement>(PENDING_KEY); if (!request || !healthy || inFlight.current) return; inFlight.current = true; setBusy(true); try { let value: MovementResult; try { value = await api<MovementResult>(`/movement-requests/${request.request_id}`, {}, 4500) } catch (err) { if (err instanceof ApiError && err.status === 404) value = await post<MovementResult>('/movements', request); else throw err } if (active.current) await accept(value, request) } catch { if (active.current) reportError('Confirmation pending. The same request will be checked again when connected.') } finally { inFlight.current = false; if (active.current) setBusy(false) } }, [healthy, accept, reportError])
+  const recover = useCallback(async () => { const request = stored<Movement>(PENDING_KEY); if (!request || !healthy || inFlight.current) return; inFlight.current = true; setBusy(true); try { let value: MovementResult; try { value = await api<MovementResult>(`/movement-requests/${request.request_id}`, {}, 4500) } catch (err) { if (err instanceof ApiError && err.status === 404) value = await post<MovementResult>('/movements', request); else throw err } if (active.current) await accept(value, request) } catch { if (active.current) reportError('Still checking whether the scan saved.') } finally { inFlight.current = false; if (active.current) setBusy(false) } }, [healthy, accept, reportError])
   useEffect(() => { if (!pending || !healthy) return; void recover(); const timer = setInterval(() => void recover(), 5000); return () => clearInterval(timer) }, [pending, healthy, recover])
   async function scan(code: string) {
     if (!healthy || blocked || inFlight.current) return
@@ -225,26 +254,39 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     try {
       const status = await undoStatus(intent)
       if (status.undone) { await finishUndo(intent); return }
-      if (status.can_undo === false) { reject('Undo was not applied: a specimen has intervening activity. Review the transaction log.'); return }
+      if (status.can_undo === false) { reject('Can’t undo: a later scan includes these pieces.'); return }
       const result = await post<{ version?: number }>(`/transactions/${intent.event_id}/undo`, intent.body)
       if (active.current) await finishUndo(intent, result.version)
     } catch (err) {
       if (!active.current) return
       if (err instanceof ApiError && err.status < 500) {
         try { const status = await undoStatus(intent); if (status.undone) await finishUndo(intent); else reject(err.message) }
-        catch (checkError) { if (checkError instanceof ApiError && checkError.status === 404) reject(checkError.message); else reportError('Undo confirmation is pending. This transaction will be checked again before scanning resumes.', 'undo') }
-      } else reportError('Undo confirmation is pending. This transaction will be checked again before scanning resumes.', 'undo')
+        catch (checkError) { if (checkError instanceof ApiError && checkError.status === 404) reject(checkError.message); else reportError('Still checking whether Undo worked.', 'undo') }
+      } else reportError('Still checking whether Undo worked.', 'undo')
     } finally { inFlight.current = false; if (active.current) setBusy(false) }
   }, [healthy, finishUndo, reportError])
   useEffect(() => { if (!pendingUndo || !healthy) return; void reconcileUndo(); const timer = setInterval(() => void reconcileUndo(), 5000); return () => clearInterval(timer) }, [pendingUndo, healthy, reconcileUndo])
   async function undo(target: Last | null = undoTarget) {
     if (!target || !healthy || transactionBlocked || inFlight.current || stored<PendingUndo>(UNDO_KEY)) return
     const intent: PendingUndo = { ...target, body: { expected_version: target.version }, submitted_at: new Date().toISOString() }
-    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { reportError('This browser cannot preserve a pending undo. Enable local storage before continuing.', 'setup'); return }
+    try { localStorage.setItem(UNDO_KEY, JSON.stringify(intent)) } catch { reportError('This browser blocks local storage, which Undo needs. Turn it on.', 'setup'); return }
     setPendingUndo(intent); setGreen(false); setResult(null); setUndoMessage(''); setError('')
     await reconcileUndo()
   }
   const inputReady = bridgeConfigured ? inputStatus.ready || inputStatus.fallback && focused : focused
+  // Presence for the staff sidebar: the host records this page's station, scanner readiness,
+  // and the address it arrived from (the Pi's LAN IP when proxied through its nginx).
+  const presenceRef = useRef({ station, inputReady, bridgeConfigured }); presenceRef.current = { station, inputReady, bridgeConfigured }
+  useEffect(() => {
+    if (!healthy) return
+    const beat = () => {
+      const { station: id, inputReady: ready, bridgeConfigured: bridge } = presenceRef.current
+      void post(`/stations/${encodeURIComponent(id)}/heartbeat`, { scanner_ready: ready, input: bridge ? 'usb-bridge' : 'keyboard' }).catch(() => undefined)
+    }
+    beat()
+    const timer = setInterval(beat, 5000)
+    return () => clearInterval(timer)
+  }, [healthy, station, inputReady])
   const title = !healthy ? 'Offline' : pendingUndo ? 'Confirming undo…' : pending ? 'Confirming scan…' : !inputReady ? bridgeConfigured && !inputStatus.fallback ? inputStatus.busy ? 'Scanner in use' : 'Connect scanner' : 'Tap to resume' : busy ? 'Reading…' : error ? ERROR_TITLES[errorKind] : green && result ? `${resultDirection} confirmed` : result?.status === 'already_recorded' ? 'Already recorded' : undoMessage ? 'Transaction undone' : `Ready for ${direction}`
   const eligible = selection?.stack.specimens.filter(s => selection.direction === 'IN' ? !entryOf(s) : s.state === 'IN') || []
   const early = acknowledge?.stack.specimens.filter(s => s.state === 'IN' && !isReady(s) && (acknowledge.request.scope === 'stack' || acknowledge.request.selected_specimen_ids?.includes(s.id))) || []
@@ -254,7 +296,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     setGreen(false); setResult(null); setError(''); setUndoMessage(''); setDetail(null)
   }
   function chooseRoom(value: string) {
-    if (blocked || value === station) return
+    // Called from Station settings, so an open panel is fine; a pending scan or undo is not.
+    if (transactionBlocked || value === station) return
     clearFeedback(); activityRevision.current++; setEvents([]); setStation(value)
     localStorage.setItem('fabric-tracker.station', value)
     const url = new URL(location.href); url.searchParams.set('station', value)
@@ -267,12 +310,9 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   return (
     <div className="kiosk-shell scanner-v2">
       <header className="kiosk-header">
-        <nav className="scanner-rooms" aria-label="Conditioning room">
-          {ROOM_CHOICES.map(choice => <button key={choice.stationId} type="button"
-            className={station === choice.stationId ? 'selected' : ''}
-            aria-pressed={station === choice.stationId} disabled={blocked}
-            onClick={() => chooseRoom(choice.stationId)}>{choice.label}</button>)}
-        </nav>
+        <div className="scanner-room-current" aria-label="Conditioning room" data-testid="current-room">
+          {roomChoice?.label ?? stationConfig?.roomName ?? station}<small>room</small>
+        </div>
         <div className="scanner-scope" role="group" aria-label="Movement scope">
           <button type="button" aria-pressed={scope === 'stack'} disabled={blocked}
             onClick={() => { clearFeedback(); setScope('stack') }}>Stack</button>
@@ -282,8 +322,10 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         <div className="scanner-network">
           <div className="scanner-status"><span className={'scanner-connection ' + (healthy ? 'online' : 'offline')} role="status"><i aria-hidden="true" />{healthy ? 'Online' : 'Offline'}</span>
             {bridgeConfigured && <small className={'scanner-ip ' + (inputStatus.localIps.length ? '' : 'missing')} aria-label="Station IP address">
-              {inputStatus.localIps.length ? inputStatus.localIps.join(' · ') : inputStatus.connected ? 'No network' : 'IP unknown'}</small>}</div>
-          <button type="button" className="scanner-setup-button" aria-label="Scanner setup" title="Scanner setup" disabled={blocked} onClick={() => setPanel('setup')}>
+              Station {inputStatus.localIps.length ? inputStatus.localIps.join(' · ') : inputStatus.connected ? 'no network' : 'IP unknown'}</small>}
+            <small className={'scanner-ip ' + (healthy ? '' : 'missing')} aria-label="Server address" data-testid="server-address">
+              {healthy ? 'Server ' : 'Can’t reach '}{serverAddress}</small></div>
+          <button type="button" className="scanner-setup-button" aria-label="Station settings" title="Station settings" disabled={blocked} onClick={() => setPanel('settings')}>
             <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button></div>
       </header>
@@ -343,10 +385,15 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
       {panel === 'activity' && <KioskActivity events={events} disabled={!healthy || transactionBlocked} error={error} onClose={() => setPanel(null)}
         onUndo={event => void undo(toUndoTarget(event))} />}
       {panel === 'setup' && <KioskScannerSetup onClose={() => setPanel(null)} />}
+      {panel === 'settings' && <KioskSettings rooms={ROOM_CHOICES} station={station} roomLocked={transactionBlocked} onChooseRoom={chooseRoom}
+        onScannerSetup={() => setPanel('setup')} idleMinutes={idleMinutes} onIdleMinutes={setIdleMinutes} onClose={() => setPanel(null)}
+        info={{ stationId: station, roomName: roomChoice?.name ?? stationConfig?.roomName ?? station, stationIps: inputStatus.localIps,
+          server: serverAddress, reportedServer, online: healthy, onPi: !!stationConfig,
+          scanner: bridgeConfigured ? inputStatus.scannerName || inputStatus.scanner : 'Keyboard capture (this browser)' }} />}
       {panel === 'inventory' && <KioskInventory roomId={currentRoomId} healthy={healthy} notice={error} onClose={() => setPanel(null)} />}
 
-      {selection && <Modal title="Choose the specimens moving" onClose={() => !busy && setSelection(null)} wide>
-        <div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · Move <b>{selection.direction}</b>. Choose the numbered physical specimens.</p>
+      {selection && <Modal title="Choose pieces" onClose={() => !busy && setSelection(null)} wide>
+        <div className="modal-body"><p className="modal-intro">{selection.stack.project_number} / {selection.stack.material_ref} · Move <b>{selection.direction}</b>. Pick the pieces.</p>
           <div className="selection-tools"><button className="button secondary" onClick={() => setSelection(old => old && { ...old, ids: eligible.map(s => s.id) })}>Select all eligible ({eligible.length})</button>
             <button className="button text" onClick={() => setSelection(old => old && { ...old, ids: [] })}>Clear</button></div>
           <div className="selection-grid">{selection.stack.specimens.map(s => {
@@ -367,7 +414,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         </div>
       </Modal>}
       {acknowledge && <Modal title="Early checkout" onClose={() => !busy && setAcknowledge(null)}>
-        <div className="modal-body"><div className="notice warning">These specimens have not completed 24 hours. Override records their actual removal and incomplete conditioning.</div>
+        <div className="modal-body"><div className="notice warning">These haven’t finished 24 hours. Taking them out now records them as not fully conditioned.</div>
           <div className="early-list">{early.map(s => <div key={s.id}><b>Specimen {specimenNumber(s.number)}</b><span>{elapsed(entryOf(s))} of 24h</span></div>)}</div>
           {!early.length && <p>{acknowledge.result.message}</p>}
         </div>
@@ -376,7 +423,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
             const chosen = acknowledge
             void nextRequestId(chosen.request.station_id).then(id => submit({ ...chosen.request, request_id: id, acknowledge_early: true }, chosen.stack))
               .catch(err => reportError((err as Error).message))
-          }}>Override & record OUT</button></div>
+          }}>Take out anyway</button></div>
       </Modal>}
     </div>
   )

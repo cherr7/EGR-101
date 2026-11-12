@@ -60,7 +60,7 @@ Record the result here:
 2. Mac: `brew install tailscale`, then `sudo brew services start tailscale` and
    `sudo tailscale up --hostname fabric-mac`. That runs `tailscaled` as a system LaunchDaemon. It
    starts at boot, before anyone logs in, like the app's own LaunchDaemon
-   ([deploy/macos/README.md](../deploy/macos/README.md)).
+   ([MAC_HOST.md](MAC_HOST.md)).
 3. Each Pi:
 
    ```sh

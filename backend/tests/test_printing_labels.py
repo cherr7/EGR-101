@@ -170,3 +170,9 @@ def test_image_preview_shows_the_same_codes_as_the_printed_pdf(client, stack_fac
     assert response.headers["x-label-count"] == "14"
     found = {code_id(result.text) for result in zxingcpp.read_barcodes(Image.open(io.BytesIO(response.content)))}
     assert found == {p["id"] for p in stack["specimens"][:12]}   # the first 12, decodable as drawn
+
+
+def test_label_job_accepts_every_stack_of_a_large_registered_job():
+    # A filled 1970 job prep sheet registers 120+ stacks; previewing them is one job.
+    from app.printing import LabelPreviewBody
+    assert len(LabelPreviewBody(stack_ids=list(range(1, 151))).stack_ids) == 150

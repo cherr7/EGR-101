@@ -37,4 +37,4 @@ fi
 "$STATE/runtime/bin/python" "$ROOT/deploy/macos/build_app.py"
 print "Installed the user runtime and built output/macOS/Fabric Conditioning.app."
 print "Double-click the app to start the local host and open the staff interface."
-print "For startup before interactive login, review deploy/macos/README.md and install-daemon.sh."
+print "For startup before interactive login, see docs/MAC_HOST.md."

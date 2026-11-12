@@ -56,9 +56,25 @@ async function openKiosk(page: Page) {
   await page.goto('/#kiosk')
   await expect(page.getByText('Online', { exact: true })).toBeVisible()
   await expect.poll(() => page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true)
-  await page.getByRole('button', { name: 'Shared', exact: true }).tap()
+  await pickRoom(page, 'Shared')
   await page.getByRole('button', { name: 'IN', exact: true }).tap()
   await page.getByRole('button', { name: 'Stack', exact: true }).tap()
+}
+/** The room is chosen in Station settings (gear button); the header only shows it. */
+async function pickRoom(page: Page, room: 'Shared' | 'PPE' | 'Footwear', audit = false) {
+  await page.getByRole('button', { name: 'Station settings', exact: true }).tap()
+  const settings = page.getByRole('dialog', { name: 'Station settings' })
+  await expect(settings).toBeVisible()
+  if (audit) {
+    const found = await auditButtons(page, settings)
+    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Show scanner setup codes', 'Reload page', 'Done', 'Close dialog']))
+  }
+  const button = settings.getByRole('group', { name: 'Conditioning room' }).getByRole('button', { name: room, exact: true })
+  await button.tap()
+  await expect(button).toHaveAttribute('aria-pressed', 'true')
+  await settings.getByRole('button', { name: 'Done', exact: true }).tap()
+  await expect(settings).toBeHidden()
+  await expect(page.getByTestId('current-room')).toContainText(room)
 }
 const heading = (page: Page) => page.locator('.readiness-area h2')
 const dock = (page: Page, name: string) => page.locator('.kiosk-dock').getByRole('button', { name, exact: true })
@@ -74,16 +90,15 @@ test('main screen: every control is named, touch-sized, uncovered and visibly en
   await openKiosk(page)
   const shell = page.locator('.kiosk-shell')
   let audit = await auditButtons(page, shell)
-  expect(names(audit)).toEqual(expect.arrayContaining(['PPE', 'Shared', 'Footwear', 'Stack', 'Individual', 'Scanner setup',
+  expect(names(audit)).toEqual(expect.arrayContaining(['Station settings', 'Stack', 'Individual',
     'Inventory', 'Expand Activity', 'IN', 'OUT', 'Undo']))
   // Nothing scanned at this station yet in this test's view of Undo: it is disabled and says so visually.
   const undo = dock(page, 'Undo')
   if (await undo.isDisabled()) expect(names(audit, true)).toContain('Undo')
 
-  // Room, scope and direction buttons are toggles that report their state.
-  for (const room of ['PPE', 'Footwear', 'Shared']) {
-    await page.getByRole('button', { name: room, exact: true }).tap()
-    await expect(page.getByRole('button', { name: room, exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // Room (in Station settings), scope and direction buttons are toggles that report their state.
+  for (const room of ['PPE', 'Footwear', 'Shared'] as const) {
+    await pickRoom(page, room, room === 'PPE')
     await expect(page).toHaveURL(new RegExp('station=' + room.toLowerCase()))
   }
   for (const scope of ['Individual', 'Stack']) {
@@ -115,7 +130,8 @@ test('panels: setup, inventory and activity buttons work by touch and block scan
   await move(request, stack)
   await openKiosk(page)
 
-  await page.getByRole('button', { name: 'Scanner setup', exact: true }).tap()
+  await page.getByRole('button', { name: 'Station settings', exact: true }).tap()
+  await page.getByRole('dialog', { name: 'Station settings' }).getByRole('button', { name: 'Show scanner setup codes', exact: true }).tap()
   const setup = page.getByRole('dialog', { name: 'Scanner setup' })
   await expect(setup).toBeVisible()
   await auditButtons(page, setup)
@@ -162,7 +178,7 @@ test('popups: individual selection and early checkout buttons are touch-sized an
   await dock(page, 'OUT').tap()
   await page.getByRole('button', { name: 'Individual', exact: true }).tap()
   await scan(page, stack.specimens[1].barcode_value)
-  const selection = page.getByRole('dialog', { name: 'Choose the specimens moving' })
+  const selection = page.getByRole('dialog', { name: 'Choose pieces' })
   await expect(selection.getByRole('checkbox', { name: /^02/ })).toBeChecked()
   await auditButtons(page, selection)
   await selection.getByRole('button', { name: 'Clear', exact: true }).tap()
@@ -182,7 +198,7 @@ test('popups: individual selection and early checkout buttons are touch-sized an
   await expect(selection).toBeHidden()
   await scan(page, stack.specimens[1].barcode_value)
   await selection.getByRole('button', { name: 'Record 1 OUT', exact: true }).tap()
-  await early.getByRole('button', { name: 'Override & record OUT', exact: true }).tap()
+  await early.getByRole('button', { name: 'Take out anyway', exact: true }).tap()
   await expect(heading(page)).toHaveText('OUT confirmed')
   expect((await stackState(request, stack.id)).inside_count).toBe(3)
 })
@@ -196,7 +212,7 @@ test('pending scan: the recovery button is touch-sized and everything else is vi
   await scan(page, stack.specimens[0].barcode_value)
   await expect(page.getByRole('button', { name: 'Check scan result', exact: true })).toBeVisible()
   const audit = await auditButtons(page, page.locator('.kiosk-shell'))
-  expect(names(audit, true)).toEqual(expect.arrayContaining(['PPE', 'Shared', 'Footwear', 'Stack', 'Individual', 'IN', 'OUT', 'Undo', 'Inventory', 'Expand Activity']))
+  expect(names(audit, true)).toEqual(expect.arrayContaining(['Station settings', 'Stack', 'Individual', 'IN', 'OUT', 'Undo', 'Inventory', 'Expand Activity']))
   hold = false
   await page.getByRole('button', { name: 'Check scan result', exact: true }).tap()
   await expect(heading(page)).toHaveText('IN confirmed')
@@ -212,8 +228,8 @@ test('several scans of one stack: only scans with nothing later can be undone, a
   await page.getByRole('button', { name: 'Individual', exact: true }).tap()
   for (const at of [2, 3]) {                                                  // two early individual OUTs
     await scan(page, stack.specimens[at].barcode_value)
-    await page.getByRole('dialog', { name: 'Choose the specimens moving' }).getByRole('button', { name: 'Record 1 OUT', exact: true }).tap()
-    await page.getByRole('dialog', { name: 'Early checkout' }).getByRole('button', { name: 'Override & record OUT', exact: true }).tap()
+    await page.getByRole('dialog', { name: 'Choose pieces' }).getByRole('button', { name: 'Record 1 OUT', exact: true }).tap()
+    await page.getByRole('dialog', { name: 'Early checkout' }).getByRole('button', { name: 'Take out anyway', exact: true }).tap()
     await expect(heading(page)).toHaveText('OUT confirmed')
   }
   const events = (await (await request.get(`/api/events?stack_id=${stack.id}&kind=movement`)).json()).items

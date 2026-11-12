@@ -89,6 +89,32 @@ class WatchdogTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_exit_route_answers_then_stops_kiosk_units_once(self):
+        calls, done = [], threading.Event()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), module.handler_for(module.Health(0), on_exit=lambda: (calls.append(1), done.set())))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            base = "http://127.0.0.1:" + str(server.server_port)
+            with urllib.request.urlopen(urllib.request.Request(base + "/exit", data=b"", method="POST")) as response:
+                self.assertEqual(response.status, 202)
+            self.assertTrue(done.wait(2))
+            self.assertEqual(calls, [1])
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(urllib.request.Request(base + "/other", data=b"", method="POST"))
+            self.assertEqual(error.exception.code, 404)
+            error.exception.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_exit_stops_browser_input_and_watchdog_but_not_the_agent(self):
+        self.assertEqual(set(module.EXIT_UNITS), {"fabric-scanner-browser.service", "fabric-scanner-input.service",
+                                                  "fabric-scanner-watchdog.service"})
+        nginx = Path(__file__).with_name("nginx.conf.template").read_text()
+        self.assertIn("location = /station/exit", nginx)
+        self.assertIn("limit_except POST { deny all; }", nginx)
+        self.assertIn("listen 127.0.0.1:8080", nginx)
+
 
 if __name__ == "__main__":
     unittest.main()

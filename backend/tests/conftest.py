@@ -66,3 +66,11 @@ def supervisor(client):
                                                     "password": os.getenv("SUPERVISOR_PASSWORD", "classroom-demo")})
     assert response.status_code == 200
     return client
+
+
+@pytest.fixture(autouse=True)
+def isolated_backup_folder(monkeypatch):
+    """Tests must never write into the host's real ~/Fabric Conditioning Backups."""
+    monkeypatch.delenv("FABRIC_BACKUP_DIR", raising=False)
+    from app import backups
+    backups._MIGRATED.clear()

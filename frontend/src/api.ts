@@ -75,3 +75,14 @@ export async function nextRequestId(client: string): Promise<string> {
 export async function reserveAhead(client: string) {
   try { if (remaining(readPools()[client]) < 10) await reserve(client) } catch { /* The next scan reserves its own block. */ }
 }
+/** Compact duration since/until an ISO time, e.g. "45 min", "3 h 10 min", "2 d 4 h". */
+export function duration(value?: string | null, until = serverNow()) {
+  if (!value) return '—'
+  const minutes = Math.max(0, Math.round((until - Date.parse(value)) / 60000))
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`
+  return hours % 24 ? `${Math.floor(hours / 24)} d ${hours % 24} h` : `${Math.floor(hours / 24)} d`
+}
+/** Hash-route query parameters, e.g. #dashboard?room=shared -> {room: 'shared'}. */
+export const hashParams = () => new URLSearchParams(location.hash.split('?')[1] || '')

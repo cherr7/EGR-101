@@ -20,16 +20,18 @@ async function move(request: APIRequestContext, value: { specimens: { id: number
 }
 
 test('prep edits survive reload and navigation without an extra Save step', async ({ page }) => {
-  await page.goto('/#prep')
-  await expect(page.getByText('Database connected', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '＋ New prep sheet' }).click()
+  await page.goto('/#batch/new')
+  await expect(page.getByText('Online', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Type the prep sheet →' }).click()
   await page.getByLabel('Oracle project').fill('00073-DEMO-REVIEW')
   await page.getByLabel('Sample Number, row 1').fill('DEMO material edit to preserve')
   await page.getByLabel('Specimens per sample for Conditioning, row 1').fill('17')
   await page.reload()
   await expect(page.getByLabel('Sample Number, row 1')).toHaveValue('DEMO material edit to preserve')
-  await page.getByRole('tab', { name: 'Registered specimens', exact: true }).click()
-  await page.getByRole('tab', { name: 'Prepare / import', exact: true }).click()
+  const nav = page.getByRole('navigation', { name: 'Main navigation' })
+  await nav.getByRole('button', { name: 'Specimens', exact: true }).click()
+  await nav.getByRole('button', { name: 'New batch', exact: true }).click()
+  await expect(page.getByText('Continuing your unfinished batch.')).toBeVisible()
   await expect(page.getByLabel('Oracle project')).toHaveValue('00073-DEMO-REVIEW')
   await expect(page.getByLabel('Specimens per sample for Conditioning, row 1')).toHaveValue('17')
 })
@@ -38,7 +40,7 @@ test('registration recovers a saved prep sheet after its PUT response is lost', 
   const draftResponse = await request.post('/api/prep-drafts', { data: sheet('DEMO-LOST-REVIEW-' + tag(), 'DEMO original', 'D5034', 'AR', 5) })
   expect(draftResponse.ok()).toBe(true)
   const draft = await draftResponse.json()
-  await page.goto('/#overview')
+  await page.goto('/#dashboard')
   await page.evaluate(value => localStorage.setItem('fabric-tracker.prep-sheet.v4', JSON.stringify({ draft: value, headers: value.headers, rows: value.rows })), draft)
   let lost = false
   await page.route('**/api/prep-drafts/' + draft.id, async route => {
@@ -49,16 +51,17 @@ test('registration recovers a saved prep sheet after its PUT response is lost', 
       await route.abort('failed')
     } else await route.continue()
   })
-  await page.goto('/#prep')
+  await page.goto('/#batch/new')
   await page.getByLabel('Sample Number, row 1').fill('DEMO reviewed and saved')
-  await page.getByRole('button', { name: 'Register & preview labels →', exact: true }).click()
+  await page.getByRole('button', { name: 'Register 1 stack', exact: true }).click()
   await expect(page.getByRole('alert')).toBeVisible()
   expect(lost).toBe(true)
   await page.reload()
   await expect(page.getByLabel('Sample Number, row 1')).toHaveValue('DEMO reviewed and saved')
   // The lost save did land; registration finds the same values on the server and uses them.
-  await page.getByRole('button', { name: 'Register & preview labels →', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: 'Preview & print labels' })).toBeVisible()
+  await page.getByRole('button', { name: 'Register 1 stack', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '3 · Print labels' })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp('#batch/' + draft.id + '/print$'))
   const registered = await (await request.get('/api/prep-drafts/' + draft.id)).json()
   expect(registered.committed).toBe(true)
   expect(registered.stack_ids).toHaveLength(1)
@@ -123,7 +126,7 @@ test('replacement preview and lost print retry keep the exact specimen and reque
   await expect(dialog.getByLabel('Label width', { exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel('Label height', { exact: true })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Print 1 label', exact: true }).click()
-  await expect(dialog.getByText('Sent to the Mac print queue.', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Sent to printer.', { exact: true })).toBeVisible()
   expect(printJobs).toHaveLength(2)
   expect(printJobs[0].request_id).toBe(printJobs[1].request_id)
   expect(printJobs[1].selected_specimen_ids).toEqual([value.specimens[2].id])
@@ -137,39 +140,42 @@ test('specimen history opens only that piece and offers its existing label', asy
   await page.getByRole('button', { name: 'History specimen 3 ' + value.material_ref, exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Specimen 03 · history' })
   await expect(dialog).toContainText(value.specimens[2].barcode_value)
-  await expect(dialog).toContainText('This specimen’s observations & changes')
+  await expect(dialog).toContainText('History')
   await dialog.getByRole('button', { name: 'Reprint this specimen’s label' }).click()
   await expect(page.getByTestId('label-scope')).toHaveText('1 selected')
 })
 
-test('overview counts and remaining time follow the selected room and project', async ({ page, request }) => {
+test('dashboard room chips count the filtered project and the room filter persists in the URL', async ({ page, request }) => {
   const project = 'DEMO-ROOM-' + tag()
   const shared = await stack(request, 2, project, 'DEMO Shared pieces')
   const ppe = await stack(request, 3, project, 'DEMO PPE pieces')
   await move(request, shared)
   await move(request, ppe, 'IN', 'ppe-door')
-  await page.goto('/#overview')
-  await page.getByLabel('Search stacks').fill(project)
-  const inside = page.locator('.metric').filter({ hasText: 'Inside specimens' }).locator('b')
-  await expect(inside).toHaveText('5')
-  await page.getByLabel('Overview room').selectOption('ppe')
-  await expect(inside).toHaveText('3')
-  await expect(page.locator('.overview-table')).toContainText('DEMO PPE pieces')
-  await expect(page.locator('.overview-table')).not.toContainText('DEMO Shared pieces')
-  await expect(page.locator('.overview-table')).toContainText('Ready in')
+  await page.goto('/#dashboard?q=' + project)
+  const chips = page.getByRole('group', { name: 'Room' })
+  await expect(chips.getByRole('button', { name: /^Shared/ })).toContainText('2 in')
+  await expect(chips.getByRole('button', { name: /^PPE/ })).toContainText('3 in')
+  await chips.getByRole('button', { name: /^PPE/ }).click()
+  await expect(page).toHaveURL(/room=ppe/)
+  await expect(page.locator('.ready-room')).toHaveCount(1)
+  await expect(page.locator('.ready-room')).toContainText('PPE')
+  // Not ready yet, so nothing to remove; the batch cards still show both stacks conditioning.
+  await expect(page.locator('.ready-room')).toContainText('nothing ready')
+  await page.reload()
+  await expect(chips.getByRole('button', { name: /^PPE/ })).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('backup page surfaces overdue scheduling and failed copies', async ({ page }) => {
   await page.route('**/api/backups', route => route.fulfill({ json: {
-    items: [{ id: 'a'.repeat(32), created_at: '2026-10-21T06:00:00Z', filename: 'DEMO-checkpoint.zip',
+    items: [{ id: 'fabric-20261021T060000000000', created_at: '2026-10-21T06:00:00Z', filename: 'DEMO-checkpoint.zip',
       size: 100, sha256: '0'.repeat(64), verified: true, cloud_copy_state: 'copy_failed' }],
     settings: { destination: '/TEST/synced-folder', retention_days: 30, daily_hour: 2, enabled: true },
     scheduler: { enabled: true, overdue: true, last_success_at: '2026-10-21T06:00:00Z', last_error: 'Simulated failure' },
   } }))
   await page.goto('/#backups')
-  await expect(page.getByLabel('Backup health')).toContainText('Checkpoint overdue')
-  await expect(page.getByLabel('Backup health')).toContainText('Latest copy failed')
-  await expect(page.getByRole('alert')).toContainText('scheduled backup could not finish')
+  await expect(page.getByLabel('Backup health')).toContainText('Overdue')
+  await expect(page.getByLabel('Backup health')).toContainText('Last copy failed')
+  await expect(page.getByRole('alert')).toContainText('The last scheduled backup failed.')
 })
 
 test('a committed restore with a lost response reconciles after reload without another replacement', async ({ page, request }) => {
@@ -193,11 +199,11 @@ test('a committed restore with a lost response reconciles after reload without a
   const dialog = page.getByRole('dialog', { name: 'Restore validated backup?' })
   await dialog.getByLabel('Restore confirmation').fill('RESTORE')
   await dialog.getByRole('button', { name: 'Restore backup', exact: true }).click()
-  await expect(page.getByRole('alert').filter({ hasText: /Restore result is not confirmed|still unconfirmed/ }).first()).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: /No answer yet|Still checking whether the restore finished/ }).first()).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-restore.v1'))).not.toBeNull()
   holdStatus = false
   await page.reload()
-  await expect(page.getByText('Backup restored. Refresh the other pages to load the restored records.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Backup restored. Reload the other pages.', { exact: true })).toBeVisible()
   expect(replacements).toBe(1)
   expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-restore.v1'))).toBeNull()
 })

@@ -58,6 +58,9 @@ def source_count(value):
     if normalized.isascii() and normalized.isdecimal():
         number = int(normalized)
         return number if 1 <= number <= 500 else None
+    panel = re.fullmatch(r"(\d+) \d+x\d+", normalized)  # e.g. '3 15x15': three panels
+    if panel:
+        return int(panel.group(1))
     return None
 
 
@@ -77,12 +80,18 @@ def successful(response, operation):
     return response.json()
 
 
-def run(downloads: Path, report_path: Path):
+def run(downloads: Path, report_path: Path, job_sheets: Path | None = None):
     from sqlalchemy import create_engine, text
     from sqlalchemy.engine import make_url
 
-    sources = [downloads / name for name in (*WORKBOOKS, *REFERENCES)]
-    require(all(path.is_file() for path in sources), "One or more of the six supplied source files are missing.")
+    # Filled-in job prep sheets carry real job numbers in their names, so they are
+    # passed as a folder rather than listed in this public repository.
+    extra = sorted(path for path in job_sheets.iterdir()
+                   if path.suffix.lower() in {".xlsm", ".xlsx"} and path.is_file()) if job_sheets else []
+    workbook_paths = [downloads / name for name in WORKBOOKS] + extra
+    sources = [*workbook_paths, *(downloads / name for name in REFERENCES)]
+    require(all(path.is_file() for path in sources), "One or more of the supplied source files are missing.")
+    require(len({path.name for path in sources}) == len(sources), "Two source files share a filename.")
     hashes_before = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
     environment = native_environment()
     url = make_url(environment["DATABASE_URL"])
@@ -124,7 +133,7 @@ def run(downloads: Path, report_path: Path):
         from app.db import SessionLocal, engine
         from app.main import app
         from app.models import Stack
-        from app.workbooks import conditioning_count
+        from app.prepsheet import conditioning_count, header_project, resolve as resolve_prep, split_samples
 
         # Regression checks for real panel descriptors and deliberately ambiguous inputs.
         for descriptor, expected in (("1 24x18", 1), ("6 15x15", 6),
@@ -154,49 +163,59 @@ def run(downloads: Path, report_path: Path):
                     fields["new_batch"] = "true"
                 return successful(client.post("/api/prep-drafts/workbook", files={"file": (filename, data)}, data=fields), "Workbook upload")
 
-            def reviewed(rows, tag):
-                result = copy.deepcopy(rows)
-                for index, row in enumerate(result, 1):
-                    # These values authorize no real lab work: this DB is test-only.
-                    defaults = {"project_number": "TEST-PIPELINE-000A", "material_ref": f"TEST-{tag}-{index:03d}",
-                                "test_code": "TEST-REVIEW", "preconditioning_code": "TEST-REVIEW"}
+            def reviewed(headers, rows, tag):
+                """Fill only what the sheet left blank, with values marked as synthetic, test-only review inputs."""
+                headers, rows = copy.deepcopy(headers), copy.deepcopy(rows)
+                for header in headers.values():
+                    if not header_project(header):
+                        header["project_number"] = "TEST-PIPELINE-000A"
+                seen = set()
+                for index, row in enumerate(rows, 1):
                     changed = []
-                    for field, value in defaults.items():
-                        if not row.get(field):
-                            row[field] = value
-                            changed.append(field)
-                    if row.get("specimen_count") is None:
-                        row["specimen_count"] = 1
-                        changed.append("specimen_count")
+                    if not row["test"] and row["sheet"] not in seen:
+                        row["test"] = "TEST-REVIEW"; changed.append("test")
+                    seen.add(row["sheet"])
+                    if not row["conditions"]:
+                        row["conditions"] = "TEST-REVIEW"; changed.append("conditions")
+                    if conditioning_count(row["conditioning"])[0] is None:
+                        row["conditioning"] = "1"; changed.append("conditioning")
                         summary["totals"]["manual_test_count_overrides"] += 1
+                    expected = row["metadata"].get("sample_count")
+                    samples = split_samples(row["sample"])
+                    if not samples or (isinstance(expected, int) and len(samples) != expected):
+                        row["sample"] = ", ".join(f"TEST-{tag}-{index:03d}-{n}" for n in range(1, (expected or 1) + 1))
+                        changed.append("sample")
                     row["metadata"]["pipeline_verification"] = {
                         "test_only": True, "placeholder_fields": changed,
                         "note": "Explicit synthetic review inputs; not an interpretation of missing customer data."}
-                return result
+                return headers, rows
 
-            def register(draft, rows):
-                successful(client.put(f'/api/prep-drafts/{draft["id"]}', json={"rows": rows}), "Reviewed draft save")
+            def register(draft, headers, rows):
+                saved = successful(client.put(f'/api/prep-drafts/{draft["id"]}', json={
+                    "headers": headers, "rows": rows, "expected_revision": draft["revision"]}), "Reviewed draft save")
+                require(saved["problems"] == [], "Reviewed sheet still has problems: " + json.dumps(saved["problems"][:3]))
                 result = successful(client.post(f'/api/prep-drafts/{draft["id"]}/commit'), "Reviewed registration")
                 repeat = successful(client.post(f'/api/prep-drafts/{draft["id"]}/commit'), "Repeated registration")
                 require(result["stack_ids"] == repeat["stack_ids"], "Repeated commit changed stack identities.")
                 summary["totals"]["repeat_commits"] += 1
-                require(len(result["stack_ids"]) == len(rows), "Stack count differs from the reviewed row count.")
+                expected = resolve_prep(headers, rows)[0]
+                require(len(result["stack_ids"]) == len(expected), "Stack count differs from the samples on the reviewed sheet.")
                 with SessionLocal.begin() as db:
                     for identifier in result["stack_ids"]:
                         db.get(Stack, identifier).is_demo = True
                 stacks = [successful(client.get(f"/api/stacks/{identifier}"), "Registered stack lookup")
                           for identifier in result["stack_ids"]]
-                for stack, row in zip(stacks, rows):
-                    require(stack["specimen_count"] == row["specimen_count"], "Specimen count differs from approved conditioning count.")
-                    require(stack["preconditioning_code"] == row["preconditioning_code"], "Treatment changed during registration.")
-                    require(stack["metadata"]["source"] == row["metadata"]["source"], "Registration lost source provenance.")
-                    identifiers = [item["id"] for item in stack["specimens"]]
+                for stack, item in zip(stacks, expected):
+                    for field in ("project_number", "material_ref", "test_code", "preconditioning_code", "specimen_count"):
+                        require(stack[field] == item[field], f"Registration changed {field}.")
+                    require(stack["metadata"].get("cells") == item["metadata"].get("cells"), "Registration lost source provenance.")
+                    identifiers = [entry["id"] for entry in stack["specimens"]]
                     require(not all_ids.intersection(identifiers), "Different stacks/batches reused a specimen identity.")
                     all_ids.update(identifiers)
-                    require([item["number"] for item in stack["specimens"]] == list(range(1, row["specimen_count"] + 1)), "Specimen numbering is incomplete.")
-                    require(all(item["ENTRY"] is None and item["EXIT"] is None for item in stack["specimens"]), "Import invented conditioning timestamps.")
+                    require([entry["number"] for entry in stack["specimens"]] == list(range(1, item["specimen_count"] + 1)), "Specimen numbering is incomplete.")
+                    require(all(entry["ENTRY"] is None and entry["EXIT"] is None for entry in stack["specimens"]), "Import invented conditioning timestamps.")
                 summary["totals"]["registered_reviewed_stacks"] += len(stacks)
-                summary["totals"]["registered_specimens"] += sum(len(item["specimens"]) for item in stacks)
+                summary["totals"]["registered_specimens"] += sum(len(entry["specimens"]) for entry in stacks)
                 return stacks
 
             def decode_preview(stacks):
@@ -219,8 +238,9 @@ def run(downloads: Path, report_path: Path):
                 require(decoded_ids == expected, "Decoded PDF identities do not match the registered specimens.")
                 return decoded_ids
 
-            for workbook_index, filename in enumerate(WORKBOOKS, 1):
-                data = (downloads / filename).read_bytes()
+            for workbook_index, path in enumerate(workbook_paths, 1):
+                filename = path.name
+                data = path.read_bytes()
                 workbook = openpyxl.load_workbook(io.BytesIO(data), data_only=True, keep_links=False, keep_vba=False)
                 formulas = openpyxl.load_workbook(io.BytesIO(data), data_only=False, keep_links=False, keep_vba=False)
                 source_formula_workbooks.append(formulas)
@@ -228,14 +248,13 @@ def run(downloads: Path, report_path: Path):
                 book_report = {"filename": filename, "worksheets": [], "source_sha256": hashes_before[filename]}
                 for sheet_index, sheet in enumerate(workbook, 1):
                     draft = upload(filename, data, sheet.title)
-                    rows = draft["rows"]
+                    rows, headers = draft["rows"], draft["headers"]
                     inventory = next(item for item in draft["sheets"] if item["name"] == sheet.title)
                     kind = inventory["kind"]
-                    missing = Counter(field for row in rows for field in
-                                      ("project_number", "material_ref", "test_code", "preconditioning_code", "specimen_count")
-                                      if not row.get(field))
-                    sheet_report = {"sheet": sheet.title, "kind": kind, "candidates": len(rows),
-                                    "missing_fields": dict(missing), "warnings": len(draft["warnings"]),
+                    missing = Counter(problem["column"] for problem in draft["problems"])
+                    sheet_report = {"sheet": sheet.title, "kind": kind, "sheet_rows": len(rows),
+                                    "stacks_named_on_sheet": draft["stack_count"],
+                                    "cells_to_fill": dict(missing), "warnings": len(draft["warnings"]),
                                     "registered_review_examples": 0}
                     book_report["worksheets"].append(sheet_report)
                     summary["totals"]["worksheets"] += 1
@@ -243,7 +262,7 @@ def run(downloads: Path, report_path: Path):
                     duplicate = upload(filename, data, sheet.title)
                     require(duplicate["id"] == draft["id"], "Repeated file/sheet import created a second draft.")
                     summary["totals"]["repeat_imports"] += 1
-                    if filename == WORKBOOKS[3]:
+                    if filename == "PPE Test Training Matrix - XXX.xlsx":
                         require(not rows, "Training reference workbook incorrectly created specimen rows.")
                     if kind == "reference":
                         require(not rows, "Reference worksheet incorrectly created specimen rows.")
@@ -251,32 +270,29 @@ def run(downloads: Path, report_path: Path):
                         continue
                     if not rows:
                         continue
+                    require(draft["source"]["filename"] == filename, "Imported draft lost its filename.")
                     for row in rows:
-                        source = row["metadata"]["source"]
-                        require(source["filename"] == filename and source["sheet"] == sheet.title and source["cells"],
-                                "Imported candidate lost filename/sheet/cell provenance.")
-                        cells = source["cells"]
+                        cells = row["metadata"]["cells"]
+                        require(row["sheet"].startswith(sheet.title) and cells, "Imported sheet row lost sheet/cell provenance.")
                         require(all(value.get("cell") for value in cells.values()), "A mapped field has no source-cell address.")
                         if kind in {"ppe_prep", "ppe_board"}:
                             oracle = source_identifier(sheet[cells["oracle_project"]["cell"]])
                             labware = source_identifier(sheet[cells["labware"]["cell"]])
-                            require(row["metadata"]["oracle_project_number"] == oracle
-                                    and row["metadata"]["labware_number"] == labware,
+                            header = headers[row["sheet"]]
+                            require(header["project_number"] == oracle and header["labware_number"] == labware,
                                     "Project/LabWare source identifiers changed during import.")
-                            require((row.get("project_number") or "") == (oracle or labware),
-                                    "Primary project mapping does not match its source identifiers.")
                             summary["totals"]["source_project_checks"] += 1
-                        treatment = cells["treatment"]["value"]
                         if kind == "ppe_prep":
-                            require(row["preconditioning_code"] == treatment, "Prep treatment text was rewritten.")
+                            require(row["conditions"] == cells["conditions"]["value"], "Prep treatment text was rewritten.")
                             summary["totals"]["source_treatment_checks"] += 1
-                            raw = sheet[cells["conditioning_count"]["cell"]].value
+                            raw = sheet[cells["conditioning"]["cell"]].value
                             expected_count = source_count(raw)
-                            require(row["specimen_count"] == expected_count, "Source conditioning count does not match imported count.")
+                            require(conditioning_count(row["conditioning"])[0] == expected_count,
+                                    "Source conditioning count does not match imported count.")
                             if expected_count is not None:
                                 summary["totals"]["source_count_checks"] += 1
                         elif kind == "ppe_board":
-                            require(row["specimen_count"] is None, "Aggregate board quantity was treated as a physical stack count.")
+                            require(row["conditioning"] == "", "Aggregate board quantity was treated as a physical stack count.")
                     if missing:
                         blocked = client.post(f'/api/prep-drafts/{draft["id"]}/commit')
                         require(blocked.status_code == 422, "Unreviewed missing/aggregate fields did not block registration.")
@@ -288,11 +304,13 @@ def run(downloads: Path, report_path: Path):
                         selected_rows = rows[:1]  # One explicitly synthetic physical-stack example per board sheet.
                     elif kind == "ppe_prep":
                         summary["totals"]["prep_rows"] += len(rows)
-                        selected_rows = rows  # Every detected test/treatment candidate in every prep worksheet.
+                        selected_rows = rows  # Every row of every prep worksheet.
                     else:
                         selected_rows = rows
-                    reviewed_rows = reviewed(selected_rows, f"W{workbook_index}-S{sheet_index}")
-                    stacks = register(draft, reviewed_rows)
+                    used = {row["sheet"] for row in selected_rows}
+                    reviewed_headers, reviewed_rows = reviewed({name: value for name, value in headers.items() if name in used},
+                                                               selected_rows, f"W{workbook_index}-S{sheet_index}")
+                    stacks = register(draft, reviewed_headers, reviewed_rows)
                     first_ids = decode_preview(stacks)
                     summary["totals"]["decoded_label_pages"] += len(first_ids)
                     second_ids = decode_preview(stacks)
@@ -315,7 +333,9 @@ def run(downloads: Path, report_path: Path):
                         require(fresh["id"] != draft["id"], "Explicit new batch reused the existing draft.")
                         # Identical prep values, including the same material, must
                         # still yield a distinct set of physical-batch identities.
-                        fresh_stacks = register(fresh, copy.deepcopy(reviewed_rows[:1]))
+                        first_row = copy.deepcopy(reviewed_rows[:1])
+                        first_row[0]["test"] = first_row[0]["test"] or resolve_prep(reviewed_headers, reviewed_rows)[0][0]["test_code"]
+                        fresh_stacks = register(fresh, {first_row[0]["sheet"]: reviewed_headers[first_row[0]["sheet"]]}, first_row)
                         require(all(fresh_stacks[0][field] == stacks[0][field] for field in
                                     ("project_number", "material_ref", "test_code", "preconditioning_code", "specimen_count")),
                                 "New-batch verification did not retain identical prep values.")
@@ -357,11 +377,13 @@ def main():
     parser.add_argument("--run", action="store_true", help="Explicitly reset and use only fabric_pipeline_test.")
     parser.add_argument("--downloads", type=Path, default=Path.home() / "Downloads")
     parser.add_argument("--report", type=Path, default=ROOT / "output/qa/excel-pipeline-verification.json")
+    parser.add_argument("--job-sheets", type=Path, help="Folder of additional filled-in job prep sheets to verify.")
     args = parser.parse_args()
     if not args.run:
         parser.error("Add --run to opt in. This resets only the owned fabric_pipeline_test database.")
     try:
-        run(args.downloads.resolve(), args.report.resolve())
+        run(args.downloads.resolve(), args.report.resolve(),
+            args.job_sheets.resolve() if args.job_sheets else None)
     except (AssertionError, ValueError, OSError) as error:
         raise SystemExit("Verification failed: " + str(error))
 

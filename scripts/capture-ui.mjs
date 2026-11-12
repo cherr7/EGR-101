@@ -48,7 +48,7 @@ try {
     files.push(name);
   }
   await page.goto('/#overview');
-  await page.getByText('Database connected', { exact: true }).waitFor();
+  await page.getByText('Online', { exact: true }).waitFor();
   await page.getByLabel('Search stacks').fill(project);
   await page.locator('.overview-table tbody tr').first().waitFor();
   await capture('staff-overview.png');
@@ -95,7 +95,7 @@ try {
   await page.getByRole('button', { name: 'Individual' }).click();
   await page.keyboard.type(second.specimens[0].barcode_value);
   await page.keyboard.press('Enter');
-  await page.getByRole('dialog', { name: 'Choose the specimens moving' }).waitFor();
+  await page.getByRole('dialog', { name: 'Choose pieces' }).waitFor();
   await capture('scanner-partial.png');
   if (errors.length) throw new Error(errors.join('\n'));
   await writeFile(resolve(folder, 'manifest.json'), JSON.stringify({

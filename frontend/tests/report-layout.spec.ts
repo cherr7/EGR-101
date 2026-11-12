@@ -49,7 +49,7 @@ test('staff records and label-preview actions fit shorter laptop browser viewpor
   for (const viewport of [{ width: 1204, height: 650 }, { width: 1280, height: 720 }, { width: 1408, height: 760 }, { width: 1440, height: 800 }]) {
     await page.setViewportSize(viewport)
     await page.goto('/#records')
-    await expect(page.getByText('Database connected', { exact: true })).toBeVisible()
+    await expect(page.getByText('Online', { exact: true })).toBeVisible()
     await page.getByLabel('Search records').fill(project)
     await page.getByRole('checkbox', { name: /^Select label / }).first().check()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

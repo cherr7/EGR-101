@@ -275,6 +275,26 @@ def set_outside(body: OutsideBody, request: Request):
     return outside_status(request)
 
 
+@router.post("/outside/new-link")
+def new_outside_link(request: Request):
+    """Stop the tunnel; the boot service starts a new one within seconds, with a new link."""
+    if is_outside(request.scope):
+        raise HTTPException(403, "Change this from a computer at the lab.")
+    if not outside_settings().get("enabled"):
+        raise HTTPException(409, "Outside link is off.")
+    folder = state_dir()
+    try:
+        pid = int((folder / "tunnel.pid").read_text())
+        command = subprocess.run(["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True, timeout=5).stdout
+        if "cloudflared" in command:
+            os.kill(pid, 15)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    for name in ("tunnel.pid", "tunnel.json"):
+        (folder / name).unlink(missing_ok=True)
+    return outside_status(request)
+
+
 # ---------- Pi update package ----------
 
 def package_path() -> Path:

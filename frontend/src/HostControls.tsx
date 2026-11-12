@@ -53,6 +53,12 @@ export function OutsideCard() {
     try { setStatus(await api<Outside>('/outside', { method: 'PUT', body: JSON.stringify(body) })); setPasscode('') }
     catch (err) { setError((err as Error).message) }
   }
+  async function newLink() {
+    if (!window.confirm('Get a new link? The current link stops working.')) return
+    setError('')
+    try { setStatus(await api<Outside>('/outside/new-link', { method: 'POST', body: '{}' })) }
+    catch (err) { setError((err as Error).message) }
+  }
   return <section className="card" aria-label="Outside link">
     <div className="card-heading compact"><div><h2>Outside link</h2></div>
       {status.has_passcode && <button className="button small secondary" onClick={() => void save({ enabled: !status.enabled })}>{status.enabled ? 'Turn off' : 'Turn on'}</button>}
@@ -61,7 +67,8 @@ export function OutsideCard() {
       {status.enabled
         ? status.url
           ? <div className="outside-url"><a href={status.url} target="_blank" rel="noreferrer">{status.url}</a>
-              <button className="button small secondary" onClick={() => { void navigator.clipboard?.writeText(status.url!); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? 'Copied' : 'Copy'}</button></div>
+              <button className="button small secondary" onClick={() => { void navigator.clipboard?.writeText(status.url!); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? 'Copied' : 'Copy'}</button>
+              <button className="button small secondary" onClick={() => void newLink()}>New link</button></div>
           : <p>{status.error ?? 'Starting…'}</p>
         : <p>Off</p>}
       <form className="outside-passcode" onSubmit={event => { event.preventDefault(); void save({ passcode }) }}>
@@ -86,7 +93,6 @@ export function PasscodeScreen({ onDone }: { onDone: () => void }) {
   }
   return <main className="passcode-screen">
     <form className="card padded" onSubmit={submit}>
-      <h1>Fabric Conditioning</h1>
       <label>Passcode<input type="password" autoFocus autoComplete="current-password" value={passcode} onChange={event => setPasscode(event.target.value)} /></label>
       <ErrorNotice message={error} />
       <button className="button" disabled={busy || !passcode}>Open</button>

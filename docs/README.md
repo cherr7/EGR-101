@@ -22,6 +22,8 @@
 | [BACKUPS.md](BACKUPS.md) | Checkpoints, daily snapshots, extra copy destination, validate and restore. |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Building, running the tests, screenshots, generated `output/` folders. |
 | [SYSTEM_HEALTH.md](SYSTEM_HEALTH.md) | What the System health page checks and its warning rules. |
+| [UPDATE_SYSTEM_PLAN.md](UPDATE_SYSTEM_PLAN.md) | Plan for one-step updates: the Mac updates itself with backup and rollback; the Pis pull new versions from the Mac. |
+| [AFM_EVALUATION.md](AFM_EVALUATION.md) | Apple's on-device AI model tested on the prep sheets and comments; not used, and why. |
 | [UI_TEXT_REVIEW.md](UI_TEXT_REVIEW.md) | The review of on-screen wording and what was cut. |
 | [FRIENDLY_URL_PLAN.md](FRIENDLY_URL_PLAN.md) | Earlier plan for a name like `http://conditioning/`; replaced by DEVICE_DISCOVERY.md, except the QR-code ideas. |
 | [STATUS.md](STATUS.md) | What is done, what still needs physical testing, known gaps, audit history. |

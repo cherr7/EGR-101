@@ -10,11 +10,15 @@ Daily snapshots default to **2 a.m. America/New_York**, enabled, with **30 days*
 
 The Backups page can change the hour, enable/disable automatic snapshots, set retention in days, and configure an additional destination folder. A successful manual checkpoint also counts as that day's backup. Retention is based on age, not a fixed number of copies; newly created and retained recent archives are not removed simply because many manual checkpoints exist.
 
-The app always keeps its local checkpoint under the host state directory, separated by database name:
+**Weekly backups kept forever:** the first checkpoint made on each Monday (America/New_York), normally the Sunday-night 2 a.m. run or its same-day catch-up, is never deleted by retention. All other checkpoints are deleted once they are older than the retention period (30 days by default). If the host is off for an entire Monday, that week has no permanent checkpoint. The Backups page labels permanent archives "Weekly · kept forever" and shows a deletion date on the others. Permanent archives grow the backup folder by one archive per week; check its total size on the Backups page.
 
-    ~/Library/Application Support/Fabric Conditioning/backups/DATABASE_NAME/
+The app always keeps its local checkpoint archives in a dedicated, visible folder on the host Mac:
 
-A system installation uses /Library/Application Support/Fabric Conditioning instead. Archives and local metadata are private to the service account. Do not put the live PostgreSQL data directory on a network share or in a synchronization folder.
+    ~/Fabric Conditioning Backups/
+
+The Backups page shows the total size of the saved archives and, in a browser on the host Mac, an **Open backup folder** link that opens this folder in Finder. Other computers see the folder path instead. Backup settings and staged restores stay in the private state directory (`~/Library/Application Support/Fabric Conditioning/backups/DATABASE_NAME/`). Archives written there by earlier versions are moved to the dedicated folder automatically. Set `"backup_dir"` in the host's `config.json` to use a different folder. Avoid Documents, Desktop, and Downloads, which macOS privacy controls can block for background services.
+
+A system installation (/Library/Application Support/Fabric Conditioning) keeps its archives under its state directory unless `backup_dir` is configured. Archives and local metadata are private to the service account. Do not put the live PostgreSQL data directory on a network share or in a synchronization folder.
 
 For a command-line export of the same checked ZIP while the host is running:
 

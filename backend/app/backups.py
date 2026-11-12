@@ -25,6 +25,7 @@ from sqlalchemy import Date, DateTime, create_engine, select, text
 
 from .db import Base, engine
 from .models import utcnow
+from .stations import is_local_client
 
 router = APIRouter(prefix="/api/backups", tags=["Backups"])
 LOCK = threading.RLock()
@@ -38,6 +39,33 @@ def folder():
     base = Path(os.environ.get("FABRIC_STATE_DIR", str(Path.home() / "Library/Application Support/Fabric Conditioning")))
     result = base / "backups" / (engine.url.database or "conditioning")
     result.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return result
+
+
+_MIGRATED = set()
+
+
+def archive_folder():
+    """Where checkpoint archives live. The Mac host sets FABRIC_BACKUP_DIR to a visible
+    folder (~/Fabric Conditioning Backups); otherwise archives stay beside the settings."""
+    configured = os.environ.get("FABRIC_BACKUP_DIR")
+    if not configured:
+        return folder()
+    result = Path(configured).expanduser()
+    result.mkdir(parents=True, exist_ok=True, mode=0o700)
+    legacy = folder()
+    key = (str(legacy), str(result))
+    if key not in _MIGRATED and legacy.resolve() != result.resolve():
+        # One-time move of archives written before the dedicated folder existed.
+        with LOCK:
+            for info_path in legacy.glob("*.info.json"):
+                identifier = info_path.name.split(".", 1)[0]
+                archive = legacy / (identifier + ".zip")
+                if archive.exists() and not (result / archive.name).exists():
+                    shutil.move(str(archive), result / archive.name)
+                if not (result / info_path.name).exists():
+                    shutil.move(str(info_path), result / info_path.name)
+        _MIGRATED.add(key)
     return result
 
 
@@ -75,13 +103,34 @@ def digest(path):
 def item_paths(identifier):
     if not re.fullmatch(r"[0-9a-f]{32}", identifier):
         raise HTTPException(404, "Backup not found.")
-    return folder() / (identifier + ".zip"), folder() / (identifier + ".info.json")
+    return archive_folder() / (identifier + ".zip"), archive_folder() / (identifier + ".info.json")
 
 
 def encode(value):
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     raise TypeError("Unsupported snapshot value.")
+
+
+EASTERN = ZoneInfo("America/New_York")
+KEEP_WEEKDAY = 0  # Monday: the Sunday-night (Monday 2 a.m.) checkpoint
+
+
+def weekly_keepers(records):
+    """IDs kept forever: the first checkpoint made on each Monday, Eastern time.
+
+    That is normally the 2 a.m. scheduled run (or its same-day catch-up). It is derived
+    from timestamps, so it is stable: cleanup never deletes the earliest of a day.
+    """
+    first = {}
+    for record in records:
+        local = datetime.fromisoformat(record["created_at"]).astimezone(EASTERN)
+        if local.weekday() != KEEP_WEEKDAY:
+            continue
+        day = local.date()
+        if day not in first or local < first[day][0]:
+            first[day] = (local, record["id"])
+    return {identifier for _, identifier in first.values()}
 
 
 def make_backup():
@@ -133,8 +182,11 @@ def make_backup():
         save_json(folder() / "settings.json", config)
         if info["cloud_copy_state"] != "copy_failed":
             cutoff = utcnow() - timedelta(days=config["retention_days"])
-            for old in folder().glob("*.info.json"):
-                record = json.loads(old.read_text())
+            records = [(old, json.loads(old.read_text())) for old in archive_folder().glob("*.info.json")]
+            permanent = weekly_keepers(record for _, record in records)
+            for old, record in records:
+                if record["id"] in permanent:
+                    continue
                 if record["id"] != identifier and datetime.fromisoformat(record["created_at"]) < cutoff:
                     item_paths(record["id"])[0].unlink(missing_ok=True)
                     old.unlink()
@@ -360,17 +412,40 @@ class RestoreConfirmation(BaseModel):
     confirmation: str
 
 
+def storage_summary(items):
+    """Bytes actually on disk for the listed archives, plus where they live."""
+    total = 0
+    for item in items:
+        archive = archive_folder() / (item["id"] + ".zip")
+        try:
+            total += archive.stat().st_size
+        except OSError:
+            pass
+    return {"folder": str(archive_folder()), "total_bytes": total, "archive_count": len(items)}
+
+
+def is_host_request(request: Request):
+    return is_local_client(request)
+
+
 @router.get("")
-def list_backups():
-    items = [json.loads(path.read_text()) for path in folder().glob("*.info.json")]
+def list_backups(request: Request):
+    items = [json.loads(path.read_text()) for path in archive_folder().glob("*.info.json")]
     items.sort(key=lambda row: row["created_at"], reverse=True)
     config = settings()
+    permanent = weekly_keepers(items)
+    for item in items:
+        item["keep_forever"] = item["id"] in permanent
+        item["expires_at"] = None if item["keep_forever"] else (
+            datetime.fromisoformat(item["created_at"]) + timedelta(days=config["retention_days"])).isoformat()
     now = utcnow().astimezone(ZoneInfo("America/New_York"))
     planned = datetime.combine(now.date(), clock_time(config["daily_hour"]), tzinfo=now.tzinfo)
     overdue = config["enabled"] and now >= planned and config.get("last_day") != now.date().isoformat()
     if not overdue and (now >= planned or config.get("last_day") == now.date().isoformat()):
         planned = datetime.combine(now.date() + timedelta(days=1), clock_time(config["daily_hour"]), tzinfo=now.tzinfo)
-    return {"items": items, "settings": config, "timezone": "America/New_York",
+    storage = storage_summary(items)
+    storage["can_open"] = sys.platform == "darwin" and is_host_request(request)
+    return {"items": items, "settings": config, "timezone": "America/New_York", "storage": storage,
             "scheduler": {"enabled": config["enabled"], "last_success_at": config.get("last_success_at"),
                           "last_error": config.get("last_error"), "last_day": config.get("last_day"),
                           "next_run_at": planned.isoformat() if config["enabled"] else None,
@@ -384,7 +459,7 @@ def update_settings(body: BackupSettings):
         path = Path(value["destination"]).expanduser()
         if not path.is_absolute():
             raise HTTPException(422, "Use an absolute Mac folder path.")
-        if path.resolve() == folder().resolve():
+        if path.resolve() in {folder().resolve(), archive_folder().resolve()}:
             raise HTTPException(422, "Choose a separate destination folder.")
         value["destination"] = str(path)
     with LOCK:
@@ -397,6 +472,23 @@ def update_settings(body: BackupSettings):
 @router.post("")
 def create_backup():
     return make_backup()
+
+
+@router.post("/open-folder")
+def open_backup_folder(request: Request):
+    # Finder opens on the host Mac's own screen, so only a browser running on
+    # that Mac may ask for it; staff computers and Pi stations get the path instead.
+    if not is_host_request(request):
+        raise HTTPException(403, "The backup folder can only be opened from a browser on the host Mac.")
+    if sys.platform != "darwin":
+        raise HTTPException(501, "Opening the backup folder is only supported on the macOS host.")
+    try:
+        subprocess.run(["/usr/bin/open", str(archive_folder())], check=True, timeout=10,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except (OSError, subprocess.SubprocessError) as error:
+        LOGGER.warning("Could not open backup folder: %s", error)
+        raise HTTPException(500, "Finder could not open the backup folder. Is someone logged in to the host Mac?")
+    return {"opened": str(archive_folder())}
 
 
 @router.get("/{identifier}/download")

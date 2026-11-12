@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import asyncio
 import io
 import os
@@ -20,6 +21,9 @@ from .backups import TrafficGate, daily_scheduler, router as backups_router
 from .exports import router as exports_router
 from .workbooks import router as workbooks_router
 from .printing import router as printing_router
+from .stations import router as stations_router
+from .dashboard import router as dashboard_router
+from .system_health import ensure_sampler, router as system_health_router
 from .models import AuditEvent, Material, MovementRequest, PrepDraft, Project, Room, Specimen, Stack, Station, Treatment, utcnow
 from .movements import process_movement
 from .schemas import CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, PrepCommitBody, TransactionEditBody, TransactionUndoBody
@@ -34,6 +38,7 @@ async def lifespan(app):
     scheduler = None
     if not (engine.url.database or "").endswith("_test"):
         scheduler = asyncio.create_task(daily_scheduler())
+        ensure_sampler()  # CPU/memory history for System health starts with the host, not the first page view
     try:
         yield
     finally:
@@ -54,6 +59,9 @@ app.include_router(exports_router)
 app.include_router(workbooks_router)
 app.include_router(printing_router)
 app.include_router(backups_router)
+app.include_router(stations_router)
+app.include_router(dashboard_router)
+app.include_router(system_health_router)
 
 
 class RestoreMaintenanceGate:
@@ -138,7 +146,14 @@ async def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
         raise HTTPException(422, "CSV must use UTF-8 encoding.")
     except (ValidationError, csv.Error) as error:
         raise HTTPException(422, str(error))
-    return create_draft(body, db)
+    # Keep the file's identity so the batch is named after its prep sheet, like workbook imports.
+    with db.begin():
+        draft = PrepDraft(rows=[r.model_dump() for r in body.rows],
+                          source={"filename": (file.filename or "prep-sheet.csv")[:255], "format": "csv",
+                                  "sha256": hashlib.sha256(content).hexdigest()})
+        db.add(draft)
+        db.flush()
+        return draft_dict(draft)
 
 
 @app.get("/api/prep-drafts/{draft_id}")
@@ -251,10 +266,17 @@ def logout(request: Request):
 @app.get("/api/events")
 def events(stack_id: int | None = None, room_id: str | None = None, station_id: str | None = None,
            limit: int = Query(default=100, ge=1, le=500), q: str | None = None,
-           kind: str | None = Query(default=None, max_length=32), db=Depends(get_db)):
+           kind: str | None = Query(default=None, max_length=32),
+           batch_id: str | None = Query(default=None, max_length=36), db=Depends(get_db)):
     query = select(AuditEvent).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id.desc())
     if stack_id:
         query = query.where(AuditEvent.stack_id == stack_id)
+    if batch_id:
+        # A batch is one committed prep draft; its history is every event on its stacks.
+        draft = db.get(PrepDraft, batch_id)
+        if draft is None:
+            raise HTTPException(404, "Batch not found.")
+        query = query.where(AuditEvent.stack_id.in_([int(i) for i in draft.stack_ids or []] or [-1]))
     if room_id:
         # Events recorded in this room, plus events a staff modification moved into it (both indexed).
         moved_here = select(AuditEvent.payload["event_id"].astext).where(

@@ -146,11 +146,13 @@ On ULScanner1 with Chromium 155, the file-origin starting screen did not reach t
 
 The dedicated kiosk Chromium profile uses `--password-store=basic` to avoid an unlock-keyring prompt after desktop autologin. Do not save passwords in this profile; it only displays the lab station. The system keyring and other browser profiles are unchanged. The optional starting screen displays only “Starting…” during normal startup.
 
-`fabric-scanner.target` starts the browser, watchdog, and input service. Chromium's persistent profile retains room selection and interrupted-request IDs across restarts. Do not erase that profile during ordinary updates.
+`fabric-scanner.target` starts the browser, watchdog, input service, and health agent. Chromium's persistent profile retains room selection and interrupted-request IDs across restarts. Do not erase that profile during ordinary updates.
 
 The page posts `/station/heartbeat` every two seconds with `focused`, `visible`, `capture_ready`, and `input_bridge` booleans. `input_bridge` is true only when this page owns a calibrated stream and at least one reader is usable; an open socket alone is insufficient. The watchdog allows loss of browser focus only in that usable direct-input state. Hidden pages, missing capture, or a frozen page still fail health checks. After a 45-second startup grace period, over 15 seconds without a healthy heartbeat triggers browser restart, with restart backoff. A database outage does not cause browser restart loops.
 
 The bridge listens only on loopback port 8766; nginx exposes same-origin `/station/input/events` and `/station/input/status`. The first active event-stream page owns input. An extra page receives an occupied status and cannot steal or duplicate scans. A dropped / overflowing connection closes and must reconnect; delayed frames are rejected and require a rescan. Status and frames carry a process session ID and monotonic timestamps. The browser calibrates against the local status endpoint, so an incorrect wall clock does not decide scan freshness. No scan replay or offline movement queue is provided.
+
+`station-agent.py` (`fabric-scanner-agent.service`) posts this Pi's health to the Mac every 30 seconds at `POST /api/stations/<STATION_ID>/device`, through the local nginx `/api` proxy. The report covers CPU, memory, load, SoC temperature, firmware under-voltage and throttle flags, SD-card space and a read-only root, the default network interface and Wi-Fi signal, NTP sync, the clock, service states and restart counts, the scanner device, and the package build time. The Mac shows it on **System health** and raises issues for heat, under-voltage, a full or read-only SD card, stopped services, and clock drift. The agent never touches scans and stays quiet while the Mac is unreachable. `STATION_ID` comes from the installer-written `station.env`. Under-voltage detection reads `/sys/devices/platform/soc/soc:firmware/get_throttled` and falls back to `vcgencmd`, which needs the kiosk user in the `video` group (the default on Raspberry Pi OS).
 
 The normal operator flow remains persistent **IN / OUT → scan → automatic database confirmation**, with one-tap Undo of the last transaction. The bottom dock stays visible, history scrolls independently, and green confirmation lasts 12 seconds without blocking the next scan. Choose specimens opens a popup. Early checkout uses an explicit override popup. Scanner Enter cannot press a popup's action button.
 
@@ -160,15 +162,20 @@ From the kiosk user's graphical session:
 
 ```sh
 systemctl --user status fabric-scanner.target
-systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service
+systemctl --user status fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service fabric-scanner-agent.service
 journalctl --user -u fabric-scanner-browser.service -n 50
 journalctl --user -u fabric-scanner-watchdog.service -n 50
 journalctl --user -u fabric-scanner-input.service -n 50
+journalctl --user -u fabric-scanner-agent.service -n 50
 curl -fsS http://127.0.0.1:8080/station/input/status
 sudo nginx -t
 ```
 
 If managing the user services as root over SSH, address the kiosk user's manager, for example with `sudo -u kiosk XDG_RUNTIME_DIR=/run/user/$(id -u kiosk) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u kiosk)/bus systemctl --user …`. The graphical session must already exist. Running bare `sudo systemctl --user` addresses root's manager and is incorrect.
+
+**Station settings** (gear button, top right) holds the room selector, the idle reset (back to IN + Stack after Off / 2 / 5 / 10 min without scans; default 5), the scanner setup codes, station info (station and server addresses, scanner, package build) with **Reload page**, and **Exit kiosk mode**. The header shows the current room and, under Online/Offline, the station's IP and the server it uses. The server address comes from `apiOrigin` in the installer-written `station-config.js`, or from the Mac's own report for older installs.
+
+**Exit kiosk mode** asks three times (the last button unlocks after a 3-second countdown) and needs no password. It posts to `/station/exit`, which nginx serves on loopback only. The watchdog then stops the browser, input bridge and itself, leaving the Pi desktop; `fabric-scanner-agent.service` keeps reporting, so System health on the Mac shows the station as "Pi on, kiosk page not running". **Reboot** to return to kiosk mode (labwc autostart restarts the target), or run `systemctl --user start fabric-scanner.target`.
 
 Stop the **target** for maintenance so the watchdog cannot reopen Chromium:
 

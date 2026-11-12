@@ -76,6 +76,56 @@ def conditioning_count(value) -> tuple[int | None, list[dict]]:
     return (total if 1 <= total <= 500 else None), groups
 
 
+_SAMPLE_ID = r"(?:(?i:(samples?))\s*)?#?\s*([A-Z]{0,4})(\d{0,4})"
+_SAMPLE_RANGE = re.compile(_SAMPLE_ID + r"(?:\s*(?:-|–|—|(?i:to|thru|through))\s*" + _SAMPLE_ID + r")?")
+
+
+def sample_identifiers(value, expected: int | None) -> list[str]:
+    """Sample names written in the Comments column, e.g. 'Sample A', 'C1-C6',
+    'Sample 3-Sample 20', 'A-V'. Returned only when the text is nothing but
+    identifiers and names exactly the expected number of samples; anything
+    else is an ordinary comment and stays a review field."""
+    source = " ".join(_text(value).split())
+    if not source or not expected:
+        return []
+    found = _identifier_list(source, expected)
+    # An instruction can come first ('If samples are attached ... Samples DRD, M-O'):
+    # then the names start at a later 'Sample(s)' word.
+    for word in list(re.finditer(r"(?i)\bsamples?\b", source))[1:] if not found else []:
+        found = _identifier_list(source[word.start():], expected)
+        if found:
+            break
+    return found
+
+
+def _identifier_list(source: str, expected: int) -> list[str]:
+    found = []
+    for piece in re.split(r"\s*(?:,|;|&|\band\b)\s*", source, flags=re.I):
+        match = _SAMPLE_RANGE.fullmatch(piece)
+        if not match:
+            return []
+        word, letters, digits, _, end_letters, end_digits = match.groups()
+        if not (letters or digits):
+            return []
+        # 'Samples A-C & F': the word applies to every name that follows it.
+        prefix = "Sample " if word or (found and found[-1].startswith("Sample ")) else ""
+        if end_letters is None or not (end_letters or end_digits):
+            if piece.rstrip().endswith(("-", "–", "—")) or re.search(r"(?i)\b(?:to|thru|through)\s*$", piece):
+                return []
+            found.append(prefix + letters + digits)
+        elif digits and end_digits and end_letters in ("", letters):
+            first, last = int(digits), int(end_digits)
+            if not first <= last <= first + 200:
+                return []
+            width = len(digits) if digits.startswith("0") else 0
+            found.extend(prefix + letters + str(number).zfill(width) for number in range(first, last + 1))
+        elif not digits and not end_digits and len(letters) == 1 and len(end_letters) == 1 and letters <= end_letters:
+            found.extend(prefix + chr(code) for code in range(ord(letters), ord(end_letters) + 1))
+        else:
+            return []
+    return found if len(found) == expected and len(set(found)) == expected else []
+
+
 class SheetReader:
     def __init__(self, sheet, formulas):
         self.sheet, self.formulas = sheet, formulas
@@ -85,9 +135,11 @@ class SheetReader:
                 for col in range(merged.min_col, merged.max_col + 1):
                     self.origins[(row, col)] = (merged.min_row, merged.min_col)
 
+    def origin(self, row, col):
+        return self.origins.get((row, col), (row, col))
+
     def cell(self, row, col):
-        row, col = self.origins.get((row, col), (row, col))
-        return self.sheet.cell(row, col)
+        return self.sheet.cell(*self.origin(row, col))
 
     def value(self, row, col):
         cell = self.cell(row, col)
@@ -119,215 +171,191 @@ def _candidate(filename, sheet, cells, *, project="", material="", test="", trea
 def _prep_header(reader):
     for row in range(1, min(reader.sheet.max_row, 20) + 1):
         keys = [_key(reader.value(row, col)) for col in range(1, 7)]
-        if keys[0] != "test" or "conditioning" not in keys[3]:
-            continue
-        # The 1850 seam template leaves the '# of samples' heading blank; its
-        # 'Conditions' column still identifies the same layout.
-        if keys[4] in {"ofsamples", "samples", "numberofsamples", "samplenumber"} or keys[2] == "conditions":
+        # Some project copies lose the '# of samples' / 'Sample Type' headings;
+        # the columns keep their positions, so a blank heading is accepted.
+        if (keys[0] == "test" and "conditioning" in keys[3]
+                and keys[4] in {"ofsamples", "samples", "numberofsamples", "samplenumber", ""}
+                and (keys[4] or keys[2].startswith("condition"))):
             return row
     return None
 
 
 def _context_row(reader, header):
-    """Row holding LabWare/Oracle/standard values: below the 'LabWareDx | Oracle' labels.
-
-    A 'Note to Lab' row can sit between those values and the Test header, so the
-    context is not always the row directly above the header."""
+    """Row holding the LabWare/Oracle/standard values, just below the 'LabWareDx | Oracle'
+    labels. A 'Note to Lab' row can sit between it and the Test header."""
     for row in range(1, header):
         if _key(reader.value(row, 3)).startswith("labware") and _key(reader.value(row, 4)) == "oracle":
             return row + 1
     return header - 1
 
 
-ID_TOKEN = re.compile(r"[A-Za-z]{0,4}\d{0,4}")
-
-
-def _expand_id_range(start: str, end: str) -> list[str] | None:
-    a, b = re.fullmatch(r"([A-Za-z]*)(\d*)", start), re.fullmatch(r"([A-Za-z]*)(\d*)", end)
-    if not (a and b):
-        return None
-    if a.group(2) and b.group(2) and a.group(1).upper() == b.group(1).upper():
-        first, last = int(a.group(2)), int(b.group(2))
-        if 0 < last - first < 200:
-            return [f"{a.group(1)}{number}" for number in range(first, last + 1)]
-    if not a.group(2) and not b.group(2) and len(start) == len(end) == 1:
-        first, last = ord(start.upper()), ord(end.upper())
-        if 0 < last - first < 26:
-            return [chr(code) for code in range(first, last + 1)]
-    return None
-
-
-def sample_ids(comment: str) -> list[str] | None:
-    """Sample identifiers written in a prep-sheet comment, or None when unclear.
-
-    'Sample A-C' -> A, B, C; 'Samples OS1-OS2, TB1-TB2' -> OS1, OS2, TB1, TB2;
-    'Sample 3-Sample 20' -> 3..20; free-text instructions before the last
-    'Sample(s)' word are ignored."""
-    text = (comment or "").strip()
-    found = list(re.finditer(r"\bsamples?\b", text, re.I))
-    if not found:
-        return _parse_ids(text) if len(text) <= 40 else None
-    # Try each 'Sample(s)' word in turn: earlier ones may start an instruction.
-    for match in found:
-        ids = _parse_ids(text[match.end():])
-        if ids:
-            return ids
-    return None
-
-
-def _parse_ids(text: str) -> list[str] | None:
-    text = re.sub(r"\bsamples?\b", "", text, flags=re.I).strip(" .:")
-    if not text:
-        return None
-    ids = []
-    for token in re.split(r"\s*(?:,|;|&|\band\b)\s*", text, flags=re.I):
-        token = token.strip()
-        if not token:
-            continue
-        parts = [part.strip() for part in re.split(r"\s*[-–]\s*", token)]
-        if len(parts) == 1 and ID_TOKEN.fullmatch(parts[0]):
-            ids.append(parts[0])
-        elif len(parts) == 2 and all(ID_TOKEN.fullmatch(part) and part for part in parts):
-            expanded = _expand_id_range(*parts)
-            if expanded is None:
-                return None
-            ids.extend(expanded)
-        else:
-            return None
-    if not ids or len(ids) != len(set(ids)):
-        return None
-    # A bare number such as '3' would read like a count on a label.
-    return [f"Sample {item}" if item.isdecimal() else item for item in ids]
-
-
 SHARED_SAMPLES = re.compile(r"shares samples|additional prep not needed", re.I)
 
 
 def _prep_rows(reader, filename, header):
-    rows = []
+    """Return (review rows, sheet notes) for one preparation worksheet."""
     context_row = _context_row(reader, header)
     labware = reader.string(context_row, 3)
     oracle = reader.string(context_row, 4)
     standard = reader.string(context_row, 7)
     regime = reader.string(context_row, 8)
     released = reader.string(context_row, 11)
+    filled = bool(oracle or labware)
     sample_number_column = _key(reader.value(header, 5)) == "samplenumber"
     comment_column = next((col for col in range(6, min(reader.sheet.max_column, 20) + 1)
                            if _key(reader.value(header, col)) == "comments"), 11)
-    # A test block is the row naming the test plus following treatment rows whose
-    # Test cell is merged into it or left blank (e.g. Flame AR then 100L).
-    previous_test, block_comment, current_block, blocks = "", "", None, {}
+    records, notes, unused = [], [], 0
+    previous_test, block = "", None
+    # A comment written on a test's first row also names the samples of the treatment
+    # rows below it whose Test cell is merged into it (e.g. Flame AR, then 100L).
+    block_comment = {}
     for row in range(header + 1, min(reader.sheet.max_row, 5000) + 1):
-        test = reader.string(row, 1)
+        test = " ".join(reader.string(row, 1).split())
         if test:
-            origin = reader.origins.get((row, 1), (row, 1))[0]
-            if origin != current_block:
-                current_block, block_comment = origin, ""
             previous_test = test
+        # An instruction typed across the Conditions/count columns ('Please cut
+        # 7 yards ...') is not a stack of specimens; surface it, never count it.
+        if reader.origin(row, 3)[1] != 3 or reader.origin(row, 4)[1] != 4:
+            instruction = " ".join(reader.string(row, 3).split())
+            if instruction and reader.origin(row, 3)[0] == row:
+                notes.append(f"Row {row} · {test or previous_test or 'Note'}: “{instruction}” is an instruction, "
+                             "not a specimen count. No labels were created for it; add a stack by hand if it needs tracking.")
+            continue
+        source_row = row
         treatment, raw_count = reader.string(row, 3), reader.value(row, 4)
         count_source = reader.source(row, 4)
         uncached_count = "formula" in count_source and not count_source.get("cached")
-        comment = reader.string(row, comment_column)
-        if comment:
-            block_comment = comment
-        if not treatment or (raw_count is None and not uncached_count):
-            continue
-        # An instruction typed across the Conditions and count columns is one merged
-        # cell, e.g. 'Please cut 7 yards of Sample A-F ... for sending to AITEX.'
-        if reader.origins.get((row, 3)) and reader.origins.get((row, 3)) == reader.origins.get((row, 4)):
-            continue
+        sample_origin = reader.origin(row, 5)
+        material = reader.string(row, 5) if sample_number_column else ""
+        sample_count, _ = conditioning_count(reader.value(row, 5)) if not sample_number_column else (1 if material else None, [])
+        active = bool(sample_count and sample_count > 0)
+        if treatment or raw_count is not None or uncached_count:
+            block = {"test": reader.origin(row, 1), "samples": sample_origin, "row": row}
+        elif (active and block and block["test"] == reader.origin(row, 1) and block["samples"] != sample_origin):
+            # A second sample type under the same test ('Coats' / 'Pants') has its
+            # own sample count but shares the Conditions and count written above it.
+            source_row = block["row"]
+            treatment, raw_count = reader.string(source_row, 3), reader.value(source_row, 4)
+            count_source = reader.source(source_row, 4)
+            uncached_count = "formula" in count_source and not count_source.get("cached")
+        has_count = raw_count is not None or uncached_count
         count, groups = conditioning_count(raw_count)
-        # Narrative rows ('Notes', schedules, references) are not specimens.
-        if count is None and not uncached_count and (not re.search(r"\d", _text(raw_count))
-                                                     or len(_text(raw_count).split()) >= 6):
+        if not active:
+            if not treatment or not has_count:
+                continue
+            # Narrative rows ('Notes', schedules, references) are not specimens.
+            if count is None and not uncached_count and (not re.search(r"\d", _text(raw_count))
+                                                         or len(_text(raw_count).split()) >= 6):
+                continue
+            if filled:
+                # A filled-in project sheet still lists every test of the
+                # template; the ones without a sample count are not being run.
+                unused += 1
+                continue
+        elif not (treatment or has_count):
             continue
         test = test or previous_test
         if not test:
             continue
-        material = reader.string(row, 5) if sample_number_column else ""
-        sample_count, _ = conditioning_count(reader.value(row, 5)) if not sample_number_column else (1 if material else None, [])
-        tested_count = reader.value(row, 2)
-        active = bool(sample_count and sample_count > 0)
-        comment = comment or block_comment
-        ids = sample_ids(comment) if comment and not material else None
-        ids_match = bool(ids and sample_count and len(ids) == sample_count)
-        notes = " ".join(reader.string(row, col) for col in range(7, comment_column + 1))
-        row_warnings = []
-        if not material and not ids_match:
-            row_warnings.append("Enter the actual material/sample identifier; Sample Type is not a material identifier.")
-            if ids:
-                row_warnings.append(f"Comment lists {len(ids)} sample IDs ({', '.join(ids)}) but # of samples is "
-                                    f"{sample_count or 'blank'}; assign the IDs during review.")
-        if not (oracle or labware):
-            row_warnings.append("Project identifier is blank in the prep workbook.")
-        if not active:
-            row_warnings.append("Template row: confirm this test/treatment is required before registering labels.")
-        if count is None:
-            row_warnings.append("Conditioning count is ambiguous or uncached; enter the number of physical pieces.")
-        if sample_count and sample_count > 50:
-            row_warnings.append("The sample count is unusually large; split into actual material groups during review.")
-        if SHARED_SAMPLES.search(notes):
-            row_warnings.append("The prep sheet says this test shares samples with another test. "
-                                "Remove this row unless separate physical pieces are conditioned.")
-        if re.fullmatch(r"\d+(?:\.\d+)?", treatment):
-            row_warnings.append(f"Treatment is only the number '{treatment}'; confirm the actual condition.")
-        source = {name: reader.source(row, col) for name, col in
-                  (("test", 1), ("tested_count", 2), ("treatment", 3),
-                   ("conditioning_count", 4), ("sample_count", 5), ("sample_type", 6))}
+        test_origin = reader.origin(row, 1)
+        comment_origin, comment, carried = reader.origin(row, comment_column), reader.string(row, comment_column), None
         if comment:
-            source["comments"] = reader.source(row, comment_column) if reader.string(row, comment_column) \
-                else {"value": comment, "cell": "carried from test block"}
-        source["labware"] = reader.source(context_row, 3)
-        source["oracle_project"] = reader.source(context_row, 4)
-        source["standard"] = reader.source(context_row, 7)
-        source["project_regime"] = reader.source(context_row, 8)
-        if released:
-            source["sample_released"] = reader.source(context_row, 11)
-        metadata = {"import_kind": "ppe_prep", "labware_number": labware,
-                    "oracle_project_number": oracle, "standard": standard,
-                    "project_regime": regime, "raw_treatment": treatment,
-                    "sample_type": reader.string(row, 6), "raw_tested_count": _text(tested_count),
-                    "raw_conditioning_count": _text(raw_count), "sample_count": sample_count,
-                    "piece_groups": groups, "template_row": not active,
-                    "shares_samples": bool(SHARED_SAMPLES.search(notes))}
-        if released:
-            metadata["sample_released"] = released
-        if comment:
-            metadata["source_comment"] = comment
-        info = blocks.setdefault(current_block if current_block is not None else row,
-                                 {"pieces": 0, "known": True, "tested": tested_count, "rows": [],
-                                  "tested_is_formula": "formula" in source["tested_count"]})
-        if count is None:
-            info["known"] = False
-        else:
-            info["pieces"] += count
-        copies = sample_count if sample_count and sample_count <= 50 else 1
-        for sample_index in range(1, copies + 1):
-            candidate = _candidate(filename, reader.sheet.title, source, project=oracle or labware,
-                                   material=material or (ids[sample_index - 1] if ids_match else ""),
-                                   test=test, treatment=treatment, count=count,
-                                   metadata={**metadata, "sample_index": sample_index},
-                                   row_warnings=list(row_warnings))
-            info["rows"].append((candidate, sample_count))
-            rows.append(candidate)
+            block_comment[test_origin] = (comment_origin, sample_origin)
+        elif test_origin in block_comment:
+            carried = block_comment[test_origin]
+            comment = reader.string(*carried[0])
+        records.append({"row": row, "source_row": source_row, "test": test, "treatment": treatment,
+                        "raw_count": raw_count, "count": count, "groups": groups, "active": active,
+                        "material": material, "sample_count": sample_count, "sample_origin": sample_origin,
+                        "comment_origin": comment_origin, "comment": comment, "carried": carried,
+                        "test_origin": test_origin, "tested": reader.value(row, 2),
+                        "tested_is_formula": "formula" in reader.source(row, 2),
+                        "notes": " ".join(reader.string(row, col) for col in range(7, comment_column + 1))})
+    # The Comments cell names the samples. One merged cell can cover several
+    # sample-count cells (Coats + Pants), which then take its names in order.
+    names = {}
+    for origin in dict.fromkeys(item["comment_origin"] for item in records):
+        groups_here = {}
+        for item in records:
+            if item["comment_origin"] == origin and item["active"] and not item["carried"] and not sample_number_column:
+                groups_here.setdefault(item["sample_origin"], item["sample_count"])
+        found = sample_identifiers(reader.string(*origin), sum(groups_here.values()))
+        position = 0
+        for sample_origin, size in groups_here.items():
+            names[(origin, sample_origin)] = found[position:position + size]
+            position += size
     # Spares are never stated. They are the difference between pieces cut for every
     # treatment row of a test (D x E) and that test's tested total (column B), when B
     # is the template's formula. Panels (e.g. Trap Tear '1 24x18') are cut into
     # several test specimens later, so a tested total above the pieces is not a spare.
-    for info in blocks.values():
-        samples = info["rows"][0][1] if info["rows"] else None
-        tested = info["tested"]
-        if not (info["known"] and info["tested_is_formula"] and samples
-                and isinstance(tested, (int, float)) and tested > 0):
+    spares = {}
+    for test_origin in dict.fromkeys(item["test_origin"] for item in records):
+        block_rows = [item for item in records if item["test_origin"] == test_origin]
+        first = block_rows[0]
+        tested, samples = first["tested"], first["sample_count"]
+        if (any(item["count"] is None for item in block_rows) or not first["tested_is_formula"]
+                or not samples or not isinstance(tested, (int, float)) or tested <= 0):
             continue
-        conditioned = info["pieces"] * int(samples)
-        if conditioned < tested:
-            continue
-        for candidate, _ in info["rows"]:
-            candidate["metadata"].update({"test_conditioned_pieces": conditioned,
-                                          "test_tested_total": int(tested),
-                                          "implied_spare_pieces": conditioned - int(tested)})
-    return rows
+        conditioned = sum(item["count"] for item in block_rows) * int(samples)
+        if conditioned >= tested:
+            spares[test_origin] = {"test_conditioned_pieces": conditioned, "test_tested_total": int(tested),
+                                   "implied_spare_pieces": conditioned - int(tested)}
+    rows = []
+    for item in records:
+        row, source_row, active = item["row"], item["source_row"], item["active"]
+        treatment, count, sample_count = item["treatment"], item["count"], item["sample_count"]
+        identifiers = names.get(item["carried"] or (item["comment_origin"], item["sample_origin"])) or []
+        row_warnings = []
+        if not (oracle or labware):
+            row_warnings.append("Project identifier is blank in the prep workbook.")
+        if not active:
+            row_warnings.append("Template row: confirm this test/treatment is required before registering labels.")
+        if not treatment:
+            row_warnings.append("Conditions is blank in the prep workbook; enter the treatment.")
+        if count is None:
+            row_warnings.append("Conditioning count is ambiguous or uncached; enter the number of physical pieces.")
+        if sample_count and sample_count > 50:
+            row_warnings.append("The sample count is unusually large; split into actual material groups during review.")
+        shares_samples = bool(SHARED_SAMPLES.search(item["notes"]))
+        if shares_samples:
+            row_warnings.append("The prep sheet says this test shares samples with another test. "
+                                "Remove this row unless separate physical pieces are conditioned.")
+        if re.fullmatch(r"\d+(?:\.\d+)?", treatment):
+            row_warnings.append(f"Treatment is only the number '{treatment}'; confirm the actual condition.")
+        source = {name: reader.source(source_row if col in (3, 4) else row, col) for name, col in
+                  (("test", 1), ("tested_count", 2), ("treatment", 3),
+                   ("conditioning_count", 4), ("sample_count", 5), ("sample_type", 6),
+                   ("comments", comment_column))}
+        if item["carried"]:
+            source["comments"] = {"value": item["comment"], "cell": "carried from test block"}
+        source["labware"] = reader.source(context_row, 3)
+        source["oracle_project"] = reader.source(context_row, 4)
+        source["standard"] = reader.source(context_row, 7)
+        source["project_regime"] = reader.source(context_row, 8)
+        source["sample_released"] = reader.source(context_row, 11)
+        metadata = {"import_kind": "ppe_prep", "labware_number": labware,
+                    "oracle_project_number": oracle, "standard": standard,
+                    "project_regime": regime, "sample_released": released, "raw_treatment": treatment,
+                    "sample_type": reader.string(row, 6), "raw_tested_count": _text(reader.value(row, 2)),
+                    "raw_conditioning_count": _text(item["raw_count"]), "sample_count": sample_count,
+                    "comments": item["comment"], "piece_groups": item["groups"], "template_row": not active,
+                    "shares_samples": shares_samples, **spares.get(item["test_origin"], {})}
+        copies = sample_count if sample_count and sample_count <= 50 else 1
+        for sample_index in range(1, copies + 1):
+            material = item["material"] or (identifiers[sample_index - 1] if len(identifiers) == copies else "")
+            notes_here = list(row_warnings)
+            if not material:
+                notes_here.insert(0, "Enter the actual material/sample identifier; Sample Type is not a material identifier."
+                                  + (f" The Comments cell says “{item['comment']}”, which does not name {copies} "
+                                     f"{'sample' if copies == 1 else 'samples'}." if item["comment"] and active else ""))
+            rows.append(_candidate(filename, reader.sheet.title, source, project=oracle or labware,
+                                   material=material, test=item["test"], treatment=treatment, count=count,
+                                   metadata={**metadata, "sample_index": sample_index},
+                                   row_warnings=notes_here))
+    if unused:
+        notes.append(f"{unused} template {'row' if unused == 1 else 'rows'} with no “# of samples” "
+                     f"{'was' if unused == 1 else 'were'} left out: those tests are not part of this project.")
+    return rows, notes
 
 
 def _board_header(reader):
@@ -457,7 +485,6 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
         raise HTTPException(422, "A selected worksheet is not present in this workbook.")
     all_candidates, sheets = {}, []
     for sheet in values:
-        # Versioned copies such as 'Formula Map 2025' are the same reference sheet.
         if _key(sheet.title).startswith(("formulamap", "namingconventions", "zipperstrengthcalculations")):
             sheets.append({"name": sheet.title, "kind": "reference", "candidate_count": 0,
                            "warnings": ["Reference or calculation worksheet; no physical specimens imported."]})
@@ -468,36 +495,35 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
             continue
         reader = SheetReader(sheet, formulas[sheet.title])
         prep, board, table = _prep_header(reader), _board_header(reader), _table_header(reader)
-        kind, candidates = "reference", []
+        kind, candidates, notes = "reference", [], []
         if prep:
-            kind, candidates = "ppe_prep", _prep_rows(reader, filename, prep)
+            kind = "ppe_prep"
+            candidates, notes = _prep_rows(reader, filename, prep)
         elif board:
             kind, candidates = "ppe_board", _board_rows(reader, filename, board)
         elif table:
             kind, candidates = "table", _table_rows(reader, filename, *table)
-        sheet_warnings = [] if candidates else ["No specimen preparation rows detected."]
-        ordered = [row for row in candidates if row["metadata"].get("import_kind") == "ppe_prep"
-                   and not row["metadata"].get("template_row")]
-        if ordered and len(ordered) < len(candidates):
-            # In a filled job sheet a blank '# of samples' (tested total 0) means the
-            # test was not ordered; keep those template rows only for blank templates.
-            sheet_warnings.append(f"{len(candidates) - len(ordered)} template rows with a blank '# of samples' "
-                                  "were left out because this job does not order them.")
-            candidates = ordered
         all_candidates[sheet.title] = candidates
         sheets.append({"name": sheet.title, "kind": kind, "candidate_count": len(candidates),
-                       "has_ordered_rows": bool(ordered), "selected": False, "warnings": sheet_warnings})
+                       "filled_count": sum(not row["metadata"].get("template_row") for row in candidates),
+                       "selected": False,
+                       "warnings": notes + ([] if candidates else ["No specimen preparation rows detected."])})
     recognized = [item["name"] for item in sheets if item["candidate_count"]]
-    # Select every sheet this job actually orders work on (it is often not the first
-    # sheet, e.g. Moisture Barriers); a blank template falls back to its first sheet.
-    ordered_sheets = [item["name"] for item in sheets if item.get("has_ordered_rows")]
-    selected = sheet_names if sheet_names is not None else (ordered_sheets or recognized[:1])
+    # Worksheets with filled-in sample counts are the project's actual work;
+    # blank template worksheets in the same file are offered but not preselected.
+    filled = [item["name"] for item in sheets if item.get("filled_count")]
+    selected = sheet_names if sheet_names is not None else (filled or recognized[:1])
     rows = [row for name in selected for row in all_candidates.get(name, [])]
     warnings = ["Review physical material groups and conditioning counts before registration. No scan times were imported."]
     if len(recognized) > len(selected) and sheet_names is None:
-        warnings.append("Only worksheets with ordered tests are selected. Choose other worksheets to import their groups."
-                        if ordered_sheets else
+        warnings.append("Only the filled-in preparation worksheet is selected. Choose the needed worksheets before importing other groups."
+                        if filled else
                         "Only the first preparation worksheet is selected. Choose the needed worksheets before importing other groups.")
+    for sheet in sheets:
+        # A sheet holding only an instruction has no rows to select, but its
+        # note must still reach the reviewer.
+        if sheet["kind"] == "ppe_prep" and (sheet["name"] in selected or not sheet["candidate_count"]):
+            warnings.extend(f'{sheet["name"]} · {note}' for note in sheet["warnings"] if not note.startswith("No specimen"))
     if any(row["metadata"].get("template_row") for row in rows):
         warnings.append("This workbook contains template rows. Remove unneeded tests and fill the project/material before registering.")
     if not rows:

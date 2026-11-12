@@ -1,33 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import type { Config } from './types'
-import Prep from './Prep'
+import BatchWizard from './BatchWizard'
 import Kiosk from './Kiosk'
 import Records from './Records'
 import Transactions from './Transactions'
-import Overview from './Overview'
+import Dashboard from './Dashboard'
 import Backups from './Backups'
+import NetworkStatus from './NetworkStatus'
+import SystemHealth, { type HealthReport } from './SystemHealth'
 
-type View = 'overview' | 'prep' | 'records' | 'transactions' | 'backups' | 'kiosk'
+type View = 'dashboard' | 'batch' | 'records' | 'transactions' | 'backups' | 'health' | 'kiosk'
 const pages = [
-  { key: 'overview', title: 'Stacks', icon: '▦' },
-  { key: 'specimens', title: 'Specimens', icon: '▤' },
+  { key: 'dashboard', title: 'Dashboard', icon: '◉' },
+  { key: 'batch', title: 'New batch', icon: '⇪' },
+  { key: 'records', title: 'Specimens', icon: '▤' },
   { key: 'transactions', title: 'Transactions', icon: '↔' },
   { key: 'backups', title: 'Backups', icon: '◫' },
+  { key: 'health', title: 'System health', icon: '♡' },
 ] as const
 function currentView(): View {
-  const value = location.hash.slice(1).split('?')[0]
-  if (value === 'supervisor') return 'transactions'
-  if (value === 'specimens') return 'records'
-  return ['overview', 'prep', 'records', 'transactions', 'backups', 'kiosk'].includes(value) ? value as View : 'overview'
+  const value = location.hash.slice(1).split('?')[0].split('/')[0]
+  // Older links keep working: the Stacks overview became the dashboard, Prep became the batch wizard.
+  const aliases: Record<string, View> = { supervisor: 'transactions', specimens: 'records', overview: 'dashboard', prep: 'batch' }
+  if (aliases[value]) return aliases[value]
+  return ['dashboard', 'batch', 'records', 'transactions', 'backups', 'health', 'kiosk'].includes(value) ? value as View : 'dashboard'
 }
 export default function App() {
   const [view, setView] = useState<View>(currentView)
   const [config, setConfig] = useState<Config>({ rooms: [], stations: [], treatments: [] })
   const [healthy, setHealthy] = useState<boolean | null>(null)
-  const lastSpecimenPage = useRef<View>(view === 'prep' ? 'prep' : 'records')
-  const workspace = view === 'prep' || view === 'records'
-  if (workspace) lastSpecimenPage.current = view
+  const [alert, setAlert] = useState<{ level: HealthReport['overall']; count: number }>({ level: 'ok', count: 0 })
   useEffect(() => {
     const change = () => setView(currentView())
     window.addEventListener('hashchange', change)
@@ -49,16 +52,29 @@ export default function App() {
     const timer = setInterval(check, 5000)
     return () => { alive = false; clearInterval(timer) }
   }, [])
-  function navigate(next: View) { location.hash = next; setView(next) }
+  const kiosk = view === 'kiosk'
+  useEffect(() => {
+    // Sidebar badge on System health; the page itself refreshes faster while it is open.
+    if (!healthy || kiosk) return
+    let alive = true
+    const load = () => api<HealthReport>('/system/health', {}, 8000).then(report => {
+      if (alive) setAlert({ level: report.overall, count: report.issues.filter(issue => issue.level !== 'info').length })
+    }).catch(() => undefined)
+    void load()
+    const timer = setInterval(load, 30000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [healthy, kiosk])
+  function navigate(next: View) { location.hash = next === 'batch' ? 'batch/new' : next; setView(next) }
   if (view === 'kiosk') return <Kiosk config={config} healthy={healthy === true} />
-  const page = pages.find(item => workspace ? item.key === 'specimens' : item.key === view)!
+  const page = pages.find(item => item.key === view)!
   return <div className="app-shell">
     <aside className="sidebar">
       <nav aria-label="Main navigation">
         {pages.map(item => <button key={item.key}
           className={'nav-item ' + (page.key === item.key ? 'active' : '')} aria-current={page.key === item.key ? 'page' : undefined}
-          onClick={() => navigate(item.key === 'specimens' ? lastSpecimenPage.current : item.key)}>
+          onClick={() => navigate(item.key)}>
           <span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.title}</span>
+          {item.key === 'health' && alert.count > 0 && <span className={'nav-alert ' + alert.level} title={`${alert.count} system health ${alert.count === 1 ? 'issue' : 'issues'}`}>{alert.count}</span>}
         </button>)}
       </nav>
       <div className="side-foot">
@@ -66,20 +82,18 @@ export default function App() {
         <span className={'connection ' + (healthy === false ? 'bad' : healthy ? 'good' : '')} role="status">
           <i aria-hidden="true" />{healthy === null ? 'Connecting…' : healthy ? 'Database connected' : 'Offline'}
         </span>
+        <NetworkStatus healthy={healthy} />
       </div>
     </aside>
     <div className="main-shell">
       {healthy === false && <div className="offline-banner" role="alert"><strong>NOT AVAILABLE</strong>The database cannot be reached. Changes and printing are unavailable.</div>}
       <main>
-        {workspace && <div className="workspace-tabs" role="tablist" aria-label="Specimen workspace">
-          <button role="tab" aria-selected={view === 'prep'} onClick={() => navigate('prep')}>Prepare / import</button>
-          <button role="tab" aria-selected={view === 'records'} onClick={() => navigate('records')}>Registered specimens</button>
-        </div>}
-        {view === 'overview' && <Overview config={config} healthy={healthy === true} />}
-        {view === 'prep' && <Prep config={config} healthy={healthy === true} />}
+        {view === 'dashboard' && <Dashboard config={config} healthy={healthy === true} />}
+        {view === 'batch' && <BatchWizard config={config} healthy={healthy === true} />}
         {view === 'records' && <Records config={config} healthy={healthy === true} />}
         {view === 'transactions' && <Transactions config={config} healthy={healthy === true} />}
         {view === 'backups' && <Backups healthy={healthy === true} />}
+        {view === 'health' && <SystemHealth healthy={healthy === true} />}
       </main>
     </div>
   </div>

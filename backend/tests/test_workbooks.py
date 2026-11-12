@@ -6,7 +6,7 @@ from html import escape
 import pytest
 from fastapi import HTTPException
 
-from app.workbooks import conditioning_count, inspect_workbook, sample_ids
+from app.workbooks import conditioning_count, inspect_workbook, sample_identifiers
 
 
 def workbook_bytes(cells, *, sheet="Preparation", merges=(), extra_sheets=(), sheet_cells=None):
@@ -74,6 +74,73 @@ def test_ppe_count_uses_conditioning_column_and_preserves_context():
     assert second["specimen_count"] == 8
     assert first["metadata"]["source"]["cells"]["conditioning_count"]["cell"] == "D5"
     assert result["review_data"]["macros_executed"] is False
+
+
+def project_cells(**rows):
+    """A filled-in project copy of the template: context row 3, header row 4."""
+    return {"C3": "LW-0009D1", "D3": "00073-LAB", "G3": "2112", "H3": "NW", "K3": "000111 (1-A)",
+            "A4": "Test", "B4": "Total Number of Specimens to be Tested", "C4": "Conditions",
+            "D4": "Specimens per sample for Conditioning", "E4": "# of samples", "F4": "Sample Type",
+            "K4": "Comments", **rows}
+
+
+def test_sample_identifiers_only_accepts_a_complete_list_of_names():
+    assert sample_identifiers("Sample A", 1) == ["Sample A"]
+    assert sample_identifiers("C1-C6", 6) == ["C1", "C2", "C3", "C4", "C5", "C6"]
+    assert sample_identifiers("Sample 3-Sample 20", 18)[::17] == ["Sample 3", "Sample 20"]
+    assert sample_identifiers("A-V", 22)[::21] == ["A", "V"]
+    assert sample_identifiers("Samples A-C & F", 4) == ["Sample A", "Sample B", "Sample C", "Sample F"]
+    assert sample_identifiers("C1-C2, P1", 3) == ["C1", "C2", "P1"]
+    assert sample_identifiers("A-V", 21) == []  # names must match '# of samples' exactly
+    assert sample_identifiers("If samples are attached, take pictures", 1) == []
+    assert sample_identifiers("Sample A-", 1) == []
+    assert sample_identifiers("", 1) == []
+
+
+def test_filled_project_sheet_names_samples_and_drops_unused_template_rows():
+    cells = project_cells(
+        A5="Flame", B5={"formula": "E5*8", "cached": 8}, C5="AR", D5="3 Warp, 3 Fill", E5=(1, 0),
+        F5="Insulation", K5="Sample A", C6="100L", D6="3 Warp, 3 Fill",
+        A7="Seams", C7="5L", D7=(6, 0), E7=(3, 0), F7="Seams", K7="A-C",
+        A9="Heat", B9={"formula": "E9*3", "cached": 0}, C9="AR", D9=(3, 0),  # template row, not ordered
+        A11="Label Heat", C11="AR", E11=(1, 0), K11="Sample A")  # ordered, count entered by hand later
+    del cells["E4"], cells["F4"]  # one supplied project copy has lost these two headings
+    merges = ("A5:A6", "E5:E6", "F5:F6", "K5:K6", "A7:A8", "E7:E8", "K7:K8")
+    result = inspect_workbook(workbook_bytes(cells, merges=merges), "project.xlsm")
+    rows = result["rows"]
+    assert [(r["test_code"], r["preconditioning_code"], r["material_ref"], r["specimen_count"]) for r in rows] == [
+        ("Flame", "AR", "Sample A", 6), ("Flame", "100L", "Sample A", 6),
+        ("Seams", "5L", "A", 6), ("Seams", "5L", "B", 6), ("Seams", "5L", "C", 6),
+        ("Label Heat", "AR", "Sample A", None)]
+    assert all(r["project_number"] == "00073-LAB" and not r["metadata"]["template_row"] for r in rows)
+    assert rows[0]["metadata"]["sample_released"] == "000111 (1-A)"
+    assert rows[2]["metadata"]["source"]["cells"]["comments"]["cell"] == "K7"
+    assert any("1 template row" in warning for warning in result["warnings"])
+
+
+def test_sample_types_under_one_test_share_conditions_and_split_the_names():
+    cells = project_cells(A5="Shower", C5="AR", D5=(1, 0), E5=(2, 0), F5="Coats", K5="C1-C2, P1",
+                          E6=(1, 0), F6="Pants", E7=(0, 0), F7="Hoods")
+    result = inspect_workbook(workbook_bytes(cells, merges=("A5:A7", "K5:K7")), "shower.xlsm")
+    assert [(r["material_ref"], r["metadata"]["sample_type"], r["preconditioning_code"], r["specimen_count"])
+            for r in result["rows"]] == [("C1", "Coats", "AR", 1), ("C2", "Coats", "AR", 1), ("P1", "Pants", "AR", 1)]
+
+
+def test_unmatched_comment_leaves_material_for_review():
+    cells = project_cells(A5="Heat", C5="AR", D5=(3, 0), E5=(2, 0), K5="Sample A")
+    rows = inspect_workbook(workbook_bytes(cells), "mismatch.xlsm")["rows"]
+    assert [r["material_ref"] for r in rows] == [None, None]
+    assert "does not name 2 samples" in rows[0]["metadata"]["warnings"][0]
+
+
+def test_instruction_row_is_reported_and_never_becomes_a_stack():
+    cells = project_cells(A5="ARC Prep", B5="Please cut 7 yards of Sample A-F and return to shipping.",
+                          A7="Flame", C7="AR", D7="6 Warp, 6 Fill")
+    result = inspect_workbook(workbook_bytes(cells, sheet="ASTM 1506", merges=("A5:A6", "B5:K6"),
+                                             extra_sheets=("Formula Map 2025",)), "arc.xlsm")
+    assert result["rows"] == []
+    assert any("ARC Prep" in warning and "instruction" in warning for warning in result["warnings"])
+    assert [sheet["kind"] for sheet in result["sheets"]] == ["ppe_prep", "reference"]
 
 
 def test_tabular_import_preserves_alphanumeric_and_formatted_leading_zero_project():
@@ -157,14 +224,11 @@ def filled_cells(**overrides):
     return cells
 
 
-def test_sample_ids_expand_ranges_and_ignore_instructions():
-    assert sample_ids("Sample A-C") == ["A", "B", "C"]
-    assert sample_ids("Samples OS1-OS2, TB1-TB2") == ["OS1", "OS2", "TB1", "TB2"]
-    assert sample_ids("Sample 3-Sample 5") == ["Sample 3", "Sample 4", "Sample 5"]
-    assert sample_ids("A-V")[-1] == "V" and len(sample_ids("A-V")) == 22
-    assert sample_ids("If samples are attached to a shell, take pictures.\nSamples DRD, M-O") == ["DRD", "M", "N", "O"]
-    assert sample_ids("If samples are attached to a shell, take pictures as 3x12.") is None
-    assert sample_ids("Shares samples with Heat Composite. Additional Prep not needed.") is None
+def test_sample_names_after_an_instruction_and_longer_prefixes():
+    text = "If samples are attached to a shell, take pictures.\nSamples DRD, M-O"
+    assert sample_identifiers(text, 4) == ["Sample DRD", "Sample M", "Sample N", "Sample O"]
+    assert sample_identifiers("Samples OS1-OS2, TB1-TB2", 4) == ["Sample OS1", "Sample OS2", "Sample TB1", "Sample TB2"]
+    assert sample_identifiers("Shares samples with Heat Composite. Additional Prep not needed.", 1) == []
 
 
 def test_filled_job_assigns_sample_ids_drops_unordered_rows_and_reports_spares():
@@ -173,14 +237,15 @@ def test_filled_job_assigns_sample_ids_drops_unordered_rows_and_reports_spares()
     # Heat has a blank '# of samples' (tested total 0): not ordered in this job.
     assert {row["test_code"] for row in rows} == {"Flame"}
     assert [(row["preconditioning_code"], row["material_ref"]) for row in rows] == [
-        ("AR", "A"), ("AR", "B"), ("AR", "C"), ("100L", "A"), ("100L", "B"), ("100L", "C")]
+        ("AR", "Sample A"), ("AR", "Sample B"), ("AR", "Sample C"),
+        ("100L", "Sample A"), ("100L", "Sample B"), ("100L", "Sample C")]
     assert all(row["specimen_count"] == 12 for row in rows)
     meta = rows[0]["metadata"]
     assert meta["sample_released"] == "R-100 (1-A)"
     # 12 + 12 pieces cut per sample x 3 samples = 72 conditioned; 60 tested; 12 spares.
     assert (meta["test_conditioned_pieces"], meta["test_tested_total"], meta["implied_spare_pieces"]) == (72, 60, 12)
     assert not any("material/sample identifier" in w for row in rows for w in row["metadata"]["warnings"])
-    assert "were left out" in result["sheets"][0]["warnings"][0]
+    assert any("left out" in warning for warning in result["warnings"])
 
 
 def test_note_row_above_header_does_not_become_project():

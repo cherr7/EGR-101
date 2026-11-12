@@ -1,0 +1,13 @@
+[Unit]
+Description=Fabric scanner station health reporter (CPU, memory, temperature, SD card)
+PartOf=fabric-scanner.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=-/opt/fabric-scanner/station.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/fabric-scanner/bin/station-agent.py
+Restart=always
+RestartSec=10
+Nice=10

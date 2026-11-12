@@ -125,11 +125,13 @@ The Pi reaches the Mac by its Tailscale name, so a new Mac IP needs no redeploy.
 
 ## 5. Pi station: everyday
 
+> **To do once per Pi (A, B and C):** any Pi installed before Nov 12, 2026 (v2026.11.12-3) doesn't update itself yet. From the Mac, run `bash scripts/deploy-pi.sh PI-USER@name-a ROOM` once for each Pi; it asks for the Pi password. After that the Pi updates itself whenever the Mac does. If a Pi doesn't answer, check it's powered on and on Tailscale, then try again.
+
 - It starts by itself on power-up. No keyboard or mouse needed.
 - **Offline** (red) means it can't reach the Mac. Check the Mac is awake and the app is running. Nothing is recorded while offline.
 - **Connect scanner** means the Eyoyo isn't detected. Replug it.
 - **Restart the station software** over SSH: `systemctl --user restart fabric-scanner.target`, or just reboot the Pi.
-- **Update:** rerun `bash scripts/deploy-pi.sh PI-USER@name-a ROOM` from the Mac.
+- **Updates are automatic:** after the Mac updates, each Pi updates itself when nobody has used it for 2 minutes. Rerun `deploy-pi.sh` only to change the room, the Mac's address, or after re-imaging the Pi.
 
 ## 6. Daily lab use
 

@@ -4,6 +4,8 @@ Short version: [QUICKSTART.md](QUICKSTART.md#4-pi-station-first-time-setup). Thi
 
 ## One-command install from the Mac
 
+> **To do once per Pi (A, B and C):** any Pi installed before Nov 12, 2026 (v2026.11.12-3) doesn't update itself yet. From the Mac, run `bash scripts/deploy-pi.sh PI-USER@name-a ROOM` once for each Pi; it asks for the Pi password. After that the Pi updates itself whenever the Mac does. If a Pi doesn't answer, check it's powered on and on Tailscale, then try again.
+
 From the Mac, with the app running and Tailscale up on the Mac and the Pi (see [DEVICE_DISCOVERY.md](DEVICE_DISCOVERY.md)):
 
 ```sh

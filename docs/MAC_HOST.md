@@ -1,4 +1,6 @@
-# MacBook host and app launcher
+# Mac host
+
+Short version: [QUICKSTART.md](QUICKSTART.md#1-mac-first-time-setup). This page has the details.
 
 The MacBook Neo hosts PostgreSQL, the HTTP API, the staff web app, and print jobs. The three Pi kiosks and staff browsers use this same host. Each Pi additionally runs local nginx and a USB/NFC input service for its own hardware; these do not add another database or a different central API. The packaged Mac app opens the staff interface and starts the local services when necessary.
 
@@ -39,7 +41,7 @@ For a launcher check that opens no browser and changes no service state:
 
     "output/macOS/Fabric Conditioning.app/Contents/MacOS/Fabric Conditioning" --check
 
-The --no-open option starts or checks services without opening a browser. Startup errors are logged in ~/Library/Logs/Fabric Conditioning/launcher-error.log; detailed service output is in the state directory's logs folder.
+The --no-open option starts or checks services without opening a browser. If PostgreSQL refuses to start with "postmaster became multithreaded during startup", set a locale first (`export LC_ALL=en_US.UTF-8`). Startup errors are logged in ~/Library/Logs/Fabric Conditioning/launcher-error.log; detailed service output is in the state directory's logs folder.
 
 ## Start automatically before interactive login
 
@@ -85,9 +87,9 @@ The API/web server listens on port 8120; PostgreSQL listens only on localhost po
     http://MACBOOK-HOSTNAME.local:8120
     http://MACBOOK-HOSTNAME.local:8120/kiosk?station=shared-door
 
-For the Pi's nginx API proxy, use a reserved LAN IP or a hostname resolved by the configured LAN DNS. A .local name is suitable only if that resolver actually resolves it; nginx's DNS resolver is not browser-side mDNS. See the [scanner guide](../../docs/SCANNER_IMPLEMENTATION_GUIDE.md).
+For the Pi's nginx API proxy, use a reserved LAN IP or a hostname resolved by the configured LAN DNS. A .local name is suitable only if that resolver actually resolves it; nginx's DNS resolver is not browser-side mDNS. See the [scanner guide](PI_STATION.md).
 
-Allow the app's Python process through the Mac firewall for the trusted lab network when macOS prompts. Set a stable hostname or DHCP reservation with lab IT. The MacBook and printer must be reachable on the selected network. Add the Brother printer as a macOS printer queue, then select that queue in the app; Wi-Fi support does not create the queue automatically.
+Allow the app's Python process through the Mac firewall for the trusted lab network when macOS prompts. Set a stable hostname or DHCP reservation with lab IT. The MacBook and printer must be reachable on the selected network. Add the Brother printer as a macOS printer queue, then select that queue in the app; Wi-Fi support does not create the queue automatically. See [PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md).
 
 This is a lab-network prototype. No Cloudflare tunnel or public Internet exposure is configured by these scripts.
 
@@ -95,4 +97,4 @@ This is a lab-network prototype. No Cloudflare tunnel or public Internet exposur
 
 Use the app's checkpoint export/import interface for database records. Host credentials/configuration, printer queues, and backup settings are configured separately on a fresh host. Automatic daily checkpoints default to 2 a.m. America/New_York with retention of 30 days; choose the destination in the app. A lab share or an existing locally synchronized SharePoint folder can be used when available to the service account.
 
-SharePoint/Microsoft 365 account setup is separate. OneDrive synchronization normally depends on its user session, so pre-login checkpoints must be written to an accessible local destination and synchronized later. Keep the live PostgreSQL directory on the Mac's local disk; synchronize exported checkpoints, not live database files. The native host.py backup command downloads the same checked ZIP and requires a running host; it refuses to replace an existing destination. See [the backup guide](../../docs/BACKUPS.md) for staged validation, RESTORE confirmation, and retained previous databases. Restoring a checkpoint should be tested on a separate fresh installation before relying on unattended recovery.
+SharePoint/Microsoft 365 account setup is separate. OneDrive synchronization normally depends on its user session, so pre-login checkpoints must be written to an accessible local destination and synchronized later. Keep the live PostgreSQL directory on the Mac's local disk; synchronize exported checkpoints, not live database files. The native host.py backup command downloads the same checked ZIP and requires a running host; it refuses to replace an existing destination. See [the backup guide](BACKUPS.md) for staged validation, RESTORE confirmation, and retained previous databases. Restoring a checkpoint should be tested on a separate fresh installation before relying on unattended recovery.

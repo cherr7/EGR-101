@@ -1,4 +1,6 @@
-# Excel intake through registered labels
+# Excel prep-sheet import
+
+How prep-sheet workbooks become stacks and labels, and the verification run against the real workbooks.
 
 The working pipeline has been exercised against all four supplied Excel workbooks, using the real import/review/registration APIs and PostgreSQL. Every worksheet was inspected. The supplied PDF email and Word results template were checked as reference inputs and rejected as Excel orders.
 

@@ -1,4 +1,40 @@
-# Dedicated live scanner station
+# Pi room station
+
+Short version: [QUICKSTART.md](QUICKSTART.md#4-pi-station-first-time-setup). This page has the details.
+
+## One-command install from the Mac
+
+`scripts/deploy-pi.sh` does the build, copy and install steps below in one go:
+
+```sh
+bash scripts/deploy-pi.sh PI-USER@PI-ADDRESS shared-door
+```
+
+It builds the frontend and station package, copies `output/station-ui/` and `deploy/scanner-kiosk/` to the Pi over one SSH connection, installs the apt prerequisites, runs `install.sh --nfc` with this Mac's `en0` address as the API (`http://MAC:8120`) and the Pi's own DNS resolver, adds `KIOSK_DIRECT_START=true` (see "Startup, focus, and recovery"), checks the Pi can reach `/api/health`, and reboots. Use it for updates too. The manual steps follow.
+
+## Architecture and components
+
+The target is a Raspberry Pi 5, Touch Display 2 in 1280 × 720 landscape, and an Eyoyo EYH2 USB keyboard scanner. The default labels carry a specimen's label code (its number plus a check digit) in a 16 × 16 ECC200 Data Matrix. The supported physical unit already emits Enter, Down Arrow, and Num Lock; the local reader handles that observed sequence without reprogramming the scanner. Keep scanned codes as strings; the server parses and verifies them.
+
+On an installed Pi, a local Python service reads the USB scanner directly through Linux evdev and an exclusive device grab. Completed frames travel through local nginx to the React page over a server-sent event stream. Chromium remains the display and the page uses the same lookup/movement API as hosted scanner pages. Reading the hardware directly removes the normal dependency on Chromium having OS keyboard focus. A visible, healthy scanner page is still required, and only a database-confirmed commit produces green success.
+
+Optional PN532 NFC input uses the same service. It reads the app specimen ID from an NDEF text record, rather than treating the tag's hardware UID as the specimen ID. NFC is enabled only by installing with `--nfc`; Data Matrix labels and the USB workflow remain unchanged.
+
+| Component | Source |
+| --- | --- |
+| Scanner UI, persistent preferences, pending movement/Undo recovery | frontend/src/Kiosk.tsx |
+| Browser adapter for direct input and freshness checks | frontend/src/inputBridge.ts |
+| Shared code validation and keyboard capture | frontend/src/scannerCapture.ts |
+| Direct USB reader, discovery/recovery, status, event stream | deploy/scanner-kiosk/input-bridge.py |
+| NFC normalization, tag read/write, bounded NDEF parsing | deploy/scanner-kiosk/nfc_tags.py |
+| Local startup page and browser launcher | deploy/scanner-kiosk/startup.html and browser.sh |
+| Local page heartbeat and browser recovery | deploy/scanner-kiosk/runtime.js and watchdog.py |
+| Station package and integrity validation | scripts/build-station.py and deploy/scanner-kiosk/validate-package.py |
+| Database transactions and history | backend/app/movements.py, corrections.py, services.py |
+
+The superseded deploy/pi implementation and old prototype galleries are no longer deployment sources. Use only deploy/scanner-kiosk. Stop any old installation occupying port 8080 before installing this one.
+
+The exact endpoint, ownership, timing, and failure contract is in [SCANNER_INPUT_PROTOCOL.md](SCANNER_INPUT_PROTOCOL.md). What operators see and do is in [STAFF_GUIDE.md](STAFF_GUIDE.md#room-scanner-pi-station).
 
 This is the supported Pi deployment for the React scanner and shared Mac-hosted API. Use Raspberry Pi OS Desktop (64-bit, labwc/Wayland), a Pi 5, and a Touch Display 2 in landscape at 1280 × 720. Chromium still runs in kiosk mode. Changing to Raspberry Pi OS Lite is unnecessary for this deployment; Lite would need a graphical session installed and configured separately.
 
@@ -155,3 +191,51 @@ node deploy/scanner-kiosk/check-package.mjs
 The package check serves real compiled assets on an ephemeral loopback port and opens headless Chromium. Its fixtures cover all three rooms; it asserts a confirmed movement uses the selected **PPE** station rather than silently falling back to Shared. It also checks remembered room selection, offline screen/reload, zero offline movements, bridge delivery/readiness, heartbeat, single-owner behavior, and the standalone starting screen through local-unavailable → local-ready. It requires the frontend's installed Playwright dependency. These are software simulations, not hardware acceptance.
 
 Physical acceptance remains: repeated cold boots including Mac-unavailable boot; observed desktop-to-Chromium and total boot time; touch/display rotation; actual USB Data Matrix+Enter decoding; stable scanner device selection; unplug/replug and permissions; optional NFC taps; focus loss, hidden/frozen/closed browser recovery; popup scan rejection; lost movement/Undo responses; real stock/printed-code readability; and scan-to-confirmation latency. These provisioning scripts have not been installed on a physical Pi in this session.
+
+## Input safety and recovery
+
+One active event-stream page owns direct scanner delivery. A second page is refused while that connection is alive; it must not compete using a different room/direction. Closing the first page releases ownership. This is a simple connection safeguard, not an operator account or permissions system.
+
+Device discovery/open/grab failures are retried and exposed as input status. Worker failures must not leave a healthy-looking service with no reader. A full or stale subscriber is closed rather than silently removed while its stream continues. There is no persistent/offline scan queue or replay to a later page. If no page is available, a frame is stale, or a popup/request blocks scanning, rescan after readiness returns. A scanner's own beep does not establish that a movement was recorded.
+
+The reader requests Linux CLOCK_MONOTONIC event timestamps before grabbing the device. It rejects stale/future kernel-buffered frames and lost-key notifications instead of re-dating them as fresh when the process resumes. If the kernel timestamp setup fails, reader readiness stays false and the service reports/retries the failure. The stream has a process session ID, sequence IDs, and monotonic timestamps. The browser calibrates against the Pi's status endpoint using its own monotonic clock and bounded request timing; it rejects unsupported, duplicate, stale, wrong-session, and implausibly future frames. Wall-clock changes used to display laboratory timestamps do not determine transport freshness. Reconnects establish current stream/clock state without replaying old frames.
+
+Database availability and usable input are separate states. A connected HTTP stream alone is insufficient to show reader readiness or bypass focus recovery. A background/hidden station page does not submit bridged scans. Hosted scanner pages on staff computers continue using keyboard capture. Operators see Connect scanner, Scanner in use, or Tap to resume only when action is needed. Transport details remain in the local status endpoint and service logs. A page refused ownership cannot use fallback to compete with the owning page.
+
+Keyboard capture uses a capture-phase document listener, so no visible input field or focused text box is needed. Touching an IN/OUT button or checkbox does not lose capture. It consumes Enter/Space before controls can activate, rejects incomplete/malformed frames, and clears buffered input on focus/visibility changes. It accepts 2–20 digit label codes with an optional AIM Data Matrix prefix; anything else is rejected, and the server verifies the check digit. OS keyboard capture still requires Chromium focus when used without the direct service. See [MDN key events](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event) and [document.hasFocus](https://developer.mozilla.org/en-US/docs/Web/API/Document/hasFocus).
+
+Before submitting a movement, the page saves its request UUID and exact payload in persistent browser storage. A lost response blocks another scan until the page queries/retries that same request. Changed selections or early-OUT acknowledgment use a new UUID. Pending Undo is also saved and reconciled after reload using the exact transaction status endpoint, independent of log pagination. Keep the dedicated Chromium profile; never clear storage while an outcome is unresolved.
+
+An unreachable API/database shows Offline in red and accepts no offline transactions. Reconnection reconciles previously submitted requests; it does not upload scans taken during an outage. Printer submission, staff corrections, imports, and backups continue using the same central backend.
+
+## Startup and upgrades
+
+The intended chain is:
+
+    Pi power on
+      → Raspberry Pi OS graphical autologin
+      → labwc imports the graphical environment and starts fabric-scanner.target
+      → Chromium immediately opens the local Starting station page
+      → local station service becomes ready; page navigates to the React scanner
+      → input ownership/reader health and database health establish readiness
+
+The launcher no longer silently polls the local web server before opening Chromium. Its self-contained startup page shows progress while waiting for that server. The startup page does not wait for the Mac API; the scanner UI can show Offline after a backend-unavailable cold boot. The initial OS/graphical/Chromium startup time still requires measurement on hardware. This does not claim zero desktop visibility before Chromium itself appears or establish the cause of the reported 20–30-second delay.
+
+Systemd restarts a crashed browser/input process. A local heartbeat every two seconds reports visibility, focus, capture attachment, and usable bridge state. The watchdog allows 45 seconds at startup, then restarts a browser after more than 15 seconds without healthy page state, with restart-loop limiting. Usable direct input can allow a visible page to work without OS keyboard focus. Connection alone or a failed reader cannot grant that exemption. Database outage alone does not trigger a browser restart.
+
+For an upgrade, stop the station target before replacing files. The installer migrates the old standalone NFC service into the shared input service, reloads user service definitions, and preserves the operator-owned scanner.env. Use the documented restart/reboot path; do not delete an old running NFC runtime manually. Reboot is the normal completion step, particularly after device-group changes. Preserve the Chromium profile and unresolved request identity throughout.
+
+## Hardware acceptance checklist
+
+When hardware testing resumes, verify:
+
+- Cold boot: visible startup feedback, automatic fullscreen scanner, measured boot-to-first-paint and boot-to-ready timing.
+- Mac unavailable at boot: local UI loads, Offline, no writes/queued scans; later reconnect recovers.
+- Actual Eyoyo stable path, exact label-code digits, Enter suffix, first-read performance, and unplug/replug without a manual restart.
+- Visible but unfocused browser, hidden/closed/frozen page, competing second page, service crash, and fallback recovery without duplicate movements.
+- Partial three-of-ten OUT followed by remaining-seven OUT; repeated scans preserve times; early override and one-tap Undo behave correctly.
+- Lost movement/Undo responses and reboot/reload preserve pending identity and reconcile once.
+- Fixed controls/log scrolling and popup action visibility at the target screen size; optional audio on the actual display/speaker arrangement.
+- Printed Data Matrix readability, scale, cutter behavior, and adhesion using the actual Brother stock.
+
+Initial physical testing subsequently verified one 12-specimen IN transaction and eight exact Data Matrix payloads, including leading zeros and consistent Enter/Down/Num-Lock trailers. The captured sequence is a regression fixture. The remaining physical checks above still require acceptance; see [SCANNER_INPUT_PROTOCOL.md](SCANNER_INPUT_PROTOCOL.md#supported-eyoyo-keyboard-sequence).

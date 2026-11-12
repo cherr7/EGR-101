@@ -22,15 +22,15 @@ kiosk_user=$3
 dns_resolver=$4
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 station_id=$(python3 "$source_dir/validate-package.py" "$ui_source" "$api_origin" "$dns_resolver" "${5:-}")
-for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html; do
-    [ -f "$source_dir/$name" ] || { echo "Missing input bridge file: $source_dir/$name" >&2; exit 1; }
+for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html station-agent.py fabric-scanner-agent.service; do
+    [ -f "$source_dir/$name" ] || { echo "Missing station file: $source_dir/$name" >&2; exit 1; }
 done
 if [ "$with_nfc" = true ]; then
     for name in nfc-requirements.txt; do
         [ -f "$source_dir/$name" ] || { echo "Missing NFC bridge file: $source_dir/$name" >&2; exit 1; }
     done
 fi
-python3 - "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" "$source_dir/watchdog.py" <<'PY'
+python3 - "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" "$source_dir/watchdog.py" "$source_dir/station-agent.py" <<'PY'
 import ast
 from pathlib import Path
 import sys
@@ -78,23 +78,25 @@ rm -f /opt/fabric-scanner/bin/nfc-bridge.py
 rm -rf /opt/fabric-scanner/nfc-env
 install -d /opt/fabric-scanner/ui /opt/fabric-scanner/bin
 cp -R "$ui_source/." /opt/fabric-scanner/ui/
-install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" /opt/fabric-scanner/bin/
+install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" \
+    "$source_dir/station-agent.py" /opt/fabric-scanner/bin/
 install -m 0644 "$source_dir/startup.html" /opt/fabric-scanner/bin/startup.html
-python3 - "$station_id" <<'PY'
+python3 - "$station_id" "$api_origin" <<'PY'
 from pathlib import Path
 import json
 import sys
-station = sys.argv[1]
+station, api_origin = sys.argv[1], sys.argv[2]
 rooms = {"shared-door": ("shared", "Shared conditioning room"),
          "ppe-door": ("ppe", "PPE conditioning room"),
          "footwear-door": ("footwear", "Footwear conditioning room")}
 room_id, room_name = rooms.get(station, (station, "Conditioning station " + station))
 Path("/opt/fabric-scanner/ui/station-config.js").write_text(
     "window.fabricStationConfig = " + json.dumps({"stationId": station, "stationName": room_name + " door",
-                                               "roomId": room_id, "roomName": room_name, "fixed": False, "inputBridge": True,
+                                               "roomId": room_id, "roomName": room_name, "fixed": False, "inputBridge": True, "apiOrigin": api_origin,
                                                "targetWidth": 1280, "targetHeight": 720}) + ";\n")
 Path("/opt/fabric-scanner/station.env").write_text(
-    "KIOSK_URL=http://127.0.0.1:8080/station.html?station=" + station + "#kiosk\n")
+    "KIOSK_URL=http://127.0.0.1:8080/station.html?station=" + station + "#kiosk\n"
+    "STATION_ID=" + station + "\n")
 PY
 chmod -R a+rX /opt/fabric-scanner/ui
 sed -e "s|__API_ORIGIN__|$api_origin|g" -e "s|__DNS_RESOLVER__|$dns_resolver|g" \
@@ -105,7 +107,8 @@ systemctl enable nginx
 systemctl restart nginx
 install -d -o "$kiosk_user" -g "$kiosk_group" \
     "$kiosk_home/.config/systemd/user" "$kiosk_home/.config/labwc"
-for name in fabric-scanner.target fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service; do
+for name in fabric-scanner.target fabric-scanner-browser.service fabric-scanner-watchdog.service fabric-scanner-input.service \
+    fabric-scanner-agent.service; do
     install -m 0644 -o "$kiosk_user" -g "$kiosk_group" "$source_dir/$name" "$kiosk_home/.config/systemd/user/$name"
 done
 # apt's python3-evdev is available in this environment without building a wheel.

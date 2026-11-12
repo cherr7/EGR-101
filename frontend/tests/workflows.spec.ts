@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 async function createStack(request: APIRequestContext, count = 10) {
   const project = `00-DEMO-E2E-${randomUUID().slice(0, 8)}`
   const response = await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: `DEMO fabric ${project}`, test_code: 'D5034', preconditioning_code: 'AR → 5L', specimen_count: count }] } }); expect(response.ok(), await response.text()).toBeTruthy(); const draft = await response.json()
-  const registered = await request.post(`/api/prep-drafts/${draft.id}/commit`, { data: {} }); expect(registered.ok(), await registered.text()).toBeTruthy(); const value = await registered.json(); return (await request.get(`/api/stacks/${value.stack_ids[0]}`)).json()
+  const registered = await request.post(`/api/prep-drafts/${draft.id}/commit`, { data: {} }); expect(registered.ok(), await registered.text()).toBeTruthy(); const value = await registered.json(); return { ...(await (await request.get(`/api/stacks/${value.stack_ids[0]}`)).json()), draft_id: draft.id }
 }
 async function openKiosk(page: Page) { await page.goto('/#kiosk'); await expect(page.getByText('Online', { exact: true })).toBeVisible(); await expect.poll(() => page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true) }
 async function scan(page: Page, value: string) { await page.keyboard.type(value); await page.keyboard.press('Enter') }
@@ -17,22 +17,23 @@ function eastern(value: Date) { return new Intl.DateTimeFormat('sv-SE', { timeZo
 test('Excel review preserves source cells, conditioning extras, unresolved material and permanent reprints', async ({ page, request }) => {
   const previews: { selected_specimen_ids: string[] }[] = []
   page.on('request', value => { if (value.method() === 'POST' && value.url().endsWith('/api/labels/preview')) previews.push(value.postDataJSON()) })
-  await page.goto('/#prep'); await expect(page.getByText('Database connected')).toBeVisible()
+  await page.goto('/#batch/new'); await expect(page.getByText('Database connected')).toBeVisible()
   await page.getByLabel('Import prep workbook').setInputFiles({ name: 'DEMO-prep.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.concat([await readFile(fileURLToPath(new URL('./fixtures/DEMO-prep.xlsx', import.meta.url))), Buffer.from(randomUUID())]) })
   await expect(page.getByLabel('specimen_count row 1')).toHaveValue('12'); await expect(page.getByLabel('specimen_count row 2')).toHaveValue('8')
-  await expect(page.getByLabel('material_ref row 1')).toHaveValue(''); await expect(page.getByRole('button', { name: 'Register & preview labels →' })).toBeDisabled()
+  await expect(page.getByLabel('material_ref row 1')).toHaveValue(''); await expect(page.getByRole('button', { name: 'Register 2 stacks & continue →' })).toBeDisabled()
   await page.getByRole('button', { name: 'Source row 1' }).click(); const source = page.getByRole('dialog', { name: 'Workbook source · Stack 1' }); await expect(source).toContainText('D5'); await expect(source).toContainText('6 Warp, 6 Fill'); await source.getByRole('button', { name: 'Back to review' }).click()
   const project = `0007-DEMO-XLSX-${randomUUID().slice(0, 6)}`
   for (const i of [1, 2]) { await page.getByLabel(`project_number row ${i}`).fill(project); await page.getByLabel(`material_ref row ${i}`).fill('DEMO reviewed material') }
-  await page.getByRole('button', { name: 'Register & preview labels →' }).click(); await expect(page.getByRole('dialog', { name: 'Preview & print labels' })).toBeVisible()
+  await page.getByRole('button', { name: 'Register 2 stacks & continue →' }).click(); await expect(page.getByRole('heading', { name: '3 · Print labels' })).toBeVisible()
   const labels = page.locator('iframe[title="Actual label PDF preview"]')
   await expect(labels).toHaveAttribute('src', /^blob:/)
   const before = previews.at(-1)!
   expect(before.selected_specimen_ids).toHaveLength(20)
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('button', { name: 'Print later' }).click()
+  await expect(page.getByRole('heading', { name: /4 · Track this batch/ })).toBeVisible()
+  await expect(page.getByText('20 pieces still need labels.')).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Preview / reprint labels →' })).toBeVisible()
-  await page.getByRole('button', { name: 'Preview / reprint labels →' }).click()
+  await page.getByRole('link', { name: 'Print labels' }).click()  // a permanent reprint keeps the same specimen IDs
   await expect(labels).toHaveAttribute('src', /^blob:/)
   expect(previews.at(-1)!.selected_specimen_ids).toEqual(before.selected_specimen_ids)
 
@@ -96,19 +97,23 @@ test('popup transaction editor reduces an OUT from ten to three and preserves or
   await page.getByRole('button', { name: `Edit transaction ${out.event_id}` }).click(); await editor.getByRole('button', { name: 'Undo entire transaction' }).click(); const undo = page.getByRole('dialog', { name: 'Undo the entire transaction?' }); await undo.getByRole('button', { name: 'Undo transaction', exact: true }).click(); await expect(undo).toBeHidden(); expect((await current(request, stack.id)).inside_count).toBe(10)
 })
 
-test('missed-entry time is distinct from recording time and overview surfaces the ready specimens', async ({ page, request }) => {
-  const stack = await createStack(request, 4); await page.goto('/#transactions'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByRole('button', { name: 'Record missed scan' }).click(); const dialog = page.getByRole('dialog', { name: 'Record a missed scan' }); await dialog.getByLabel('Missed stack').selectOption(String(stack.id)); await dialog.getByLabel('Missed movement time').fill(eastern(new Date(Date.now() - 26 * 3600000))); await dialog.getByRole('checkbox', { name: /^01/ }).check(); await dialog.getByRole('checkbox', { name: /^02/ }).check(); await dialog.getByRole('button', { name: 'Record missed IN' }).click(); await expect(dialog).toBeHidden(); const result = await current(request, stack.id); expect(result.ready_count).toBe(2); expect(Date.parse(result.specimens[0].sessions[0].recorded_at)).toBeGreaterThan(Date.parse(result.specimens[0].ENTRY)); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Stacks', exact: true }).click(); await page.getByLabel('Search stacks').fill(stack.project_number); await expect(page.getByText('2 ready', { exact: true })).toBeVisible(); await expect(page.getByText('26h 0m', { exact: true })).toBeVisible(); await page.getByRole('button', { name: `View ${stack.material_ref}` }).click(); await expect(page.getByRole('dialog', { name: 'Stack & specimen details' })).toContainText('Ready')
+test('missed-entry time is distinct from recording time and the dashboard surfaces the ready specimens', async ({ page, request }) => {
+  const stack = await createStack(request, 4); await page.goto('/#transactions'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByRole('button', { name: 'Record missed scan' }).click(); const dialog = page.getByRole('dialog', { name: 'Record a missed scan' }); await dialog.getByLabel('Missed stack').selectOption(String(stack.id)); await dialog.getByLabel('Missed movement time').fill(eastern(new Date(Date.now() - 26 * 3600000))); await dialog.getByRole('checkbox', { name: /^01/ }).check(); await dialog.getByRole('checkbox', { name: /^02/ }).check(); await dialog.getByRole('button', { name: 'Record missed IN' }).click(); await expect(dialog).toBeHidden(); const result = await current(request, stack.id); expect(result.ready_count).toBe(2); expect(Date.parse(result.specimens[0].sessions[0].recorded_at)).toBeGreaterThan(Date.parse(result.specimens[0].ENTRY)); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Dashboard', exact: true }).click(); await page.getByLabel('Search dashboard').fill(stack.project_number); const room = page.getByTestId('ready-shared'); await expect(room).toContainText('1 stack · 2 pieces ready'); await expect(room).toContainText('oldest waiting 2 h'); await room.locator('summary').click(); await expect(room.getByText('2 of 2 inside')).toBeVisible(); await expect(page.getByTestId('needs-labels-' + stack.id)).toContainText('2 of 4'); await room.getByRole('button', { name: 'Details' }).click(); await expect(page.getByRole('dialog', { name: 'Stack & specimen details' })).toContainText('Ready')
 })
 
 test('server readiness and elapsed time remain correct when a staff computer clock is two days ahead', async ({ page, request }) => {
   const stack = await createStack(request, 2); const entered = await request.post('/api/movements', { data: { request_id: randomUUID(), station_id: 'shared-door', code: stack.specimens[0].barcode_value, direction: 'IN', scope: 'stack' } }); expect(entered.ok()).toBeTruthy()
   await page.addInitScript(() => { const realNow = Date.now.bind(Date); Date.now = () => realNow() + 48 * 3600000 })
-  await page.goto('/#overview'); await expect(page.getByText('Database connected')).toBeVisible(); await page.getByLabel('Search stacks').fill(stack.project_number); await expect(page.locator('.overview-table').getByText('Conditioning', { exact: true })).toBeVisible(); await expect(page.locator('.overview-table').getByText('2 ready', { exact: true })).toHaveCount(0); await expect(page.locator('.overview-table').getByText('0h 0m', { exact: true })).toBeVisible()
+  const waiting = await createStack(request, 1)
+  await page.goto('/#dashboard?q=' + stack.project_number); await expect(page.getByText('Database connected')).toBeVisible()
+  await expect(page.getByTestId('ready-shared')).toHaveCount(0); await expect(page.locator('.ready-room.empty').filter({ hasText: 'Shared' })).toContainText('nothing ready')
+  await expect(page.getByTestId('batch-' + stack.draft_id)).toBeVisible()
+  await page.goto('/#dashboard?q=' + waiting.project_number); await expect(page.getByTestId('needs-labels-' + waiting.id).locator('td').nth(2)).toContainText(/^[0-9] min ago/)
 })
 
 test('a locally packaged Pi names its default room even when the Mac is unreachable after cold start', async ({ page }) => {
   await page.addInitScript(() => { (window as unknown as { fabricStationConfig: unknown }).fabricStationConfig = { stationId: 'shared-door', stationName: 'Shared conditioning room door', roomName: 'Shared conditioning room', fixed: true } })
-  await page.route('**/api/health', route => route.abort('failed')); await page.goto('/#kiosk'); await expect(page.getByRole('heading', { name: 'Offline', exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Shared', exact: true })).toHaveAttribute('aria-pressed', 'true'); await expect(page.getByRole('navigation', { name: 'Conditioning room' }).getByRole('button')).toHaveCount(3); expect(await page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true)
+  await page.route('**/api/health', route => route.abort('failed')); await page.goto('/#kiosk'); await expect(page.getByRole('heading', { name: 'Offline', exact: true })).toBeVisible(); await expect(page.getByTestId('current-room')).toContainText('Shared'); await page.getByRole('button', { name: 'Station settings' }).click(); await expect(page.getByRole('group', { name: 'Conditioning room' }).getByRole('button')).toHaveCount(3); await expect(page.getByRole('button', { name: 'Shared', exact: true })).toHaveAttribute('aria-pressed', 'true'); await page.getByRole('button', { name: 'Done', exact: true }).click(); expect(await page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true)
 })
 
 test('portable backup is created, downloaded and validated before restore becomes available', async ({ page, request }) => {
@@ -116,19 +121,22 @@ test('portable backup is created, downloaded and validated before restore become
 })
 
 
-test('room buttons persist configuration and recent activity belongs to the selected room', async ({ page, request }) => {
+test('room chosen in Station settings persists configuration and recent activity belongs to the selected room', async ({ page, request }) => {
   const shared = await createStack(request, 2), ppe = await createStack(request, 3)
   await request.post('/api/movements', { data: { request_id: randomUUID(), station_id: 'shared-door', code: shared.specimens[0].barcode_value, direction: 'IN', scope: 'stack' } })
   await openKiosk(page)
+  await page.getByRole('button', { name: 'Station settings' }).click()
   await page.getByRole('button', { name: 'PPE', exact: true }).click()
   await expect(page.getByRole('button', { name: 'PPE', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.getByTestId('current-room')).toContainText('PPE')
   await expect(page.locator('.recent-scroll')).not.toContainText(shared.project_number)
   await scan(page, ppe.specimens[1].barcode_value)
   await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
   expect((await current(request, ppe.id)).specimens.every((s: { room_id: string }) => s.room_id === 'ppe')).toBe(true)
   await expect(page.locator('.recent-scroll')).toContainText(ppe.project_number)
   await page.reload()
-  await expect(page.getByRole('button', { name: 'PPE', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('current-room')).toContainText('PPE')
   await expect(page.locator('.recent-scroll')).not.toContainText(shared.project_number)
   await expect(page.locator('.recent-scroll')).toContainText(ppe.project_number)
 })

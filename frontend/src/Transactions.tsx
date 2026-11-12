@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, localTimeInput, post, serverNow, specimenNumber, specimenNumbers } from './api'
-import type { AuditEvent, Config, Specimen, Stack } from './types'
+import type { AuditEvent, BatchSummary, Config, Specimen, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 
 type Editor = { event: AuditEvent; stack: Stack; ids: number[]; time: string; room: string; note: string }
 type Missed = { stackId: number; ids: number[]; direction: 'IN' | 'OUT'; time: string; room: string; note: string }
-type Context = { stackId: string; eventId: string }
+type Context = { stackId: string; eventId: string; batchId: string }
 function readContext(): Context {
   const parameters = new URLSearchParams(location.hash.split('?')[1] || '')
-  return { stackId: parameters.get('stack') || '', eventId: parameters.get('event') || '' }
+  return { stackId: parameters.get('stack') || '', eventId: parameters.get('event') || '', batchId: parameters.get('batch') || '' }
 }
 function idsFor(event: AuditEvent) { return event.effective_specimen_ids || event.specimen_ids }
 function timeFor(event: AuditEvent) { return event.effective_occurred_at || event.occurred_at || event.recorded_at }
@@ -67,6 +67,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       if (kind) query.set('kind', kind)
       if (roomFilter) query.set('room_id', roomFilter)
       if (context.stackId) query.set('stack_id', context.stackId)
+      if (context.batchId) query.set('batch_id', context.batchId)
       void Promise.all([
         api<{ items: AuditEvent[]; has_more?: boolean }>('/transactions?' + query),
         api<{ items: Stack[] }>('/stacks'),
@@ -76,7 +77,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         .finally(() => { if (current) setLoading(false) })
     }, 160)
     return () => { current = false; clearTimeout(timer) }
-  }, [healthy, search, kind, roomFilter, context.stackId, limit, refresh])
+  }, [healthy, search, kind, roomFilter, context.stackId, context.batchId, limit, refresh])
 
   async function openEvent(eventId: string, stackId: number | string) {
     if (mutation.current || !healthy) return
@@ -178,6 +179,14 @@ export default function Transactions({ config, healthy }: { config: Config; heal
   const visible = items.filter(event => !kind || event.kind === kind)
   const missedStack = stacks.find(stack => stack.id === missed?.stackId)
   const scopedStack = stacks.find(stack => String(stack.id) === context.stackId)
+  const [batchLabel, setBatchLabel] = useState('')
+  useEffect(() => {
+    if (!context.batchId || !healthy) { setBatchLabel(''); return }
+    let alive = true
+    void api<BatchSummary>('/batches/' + context.batchId).then(value => { if (alive) setBatchLabel(`${value.label} · ${value.stacks.length} stacks`) })
+      .catch(() => { if (alive) setBatchLabel(context.batchId) })
+    return () => { alive = false }
+  }, [context.batchId, healthy])
   const roomName = (id?: string) => config.rooms.find(room => room.id === id)?.name || id || '—'
   const projection = editor ? projectedCounts(editor) : null
   const originalIds = editor ? idsFor(editor.event) : []
@@ -197,6 +206,11 @@ export default function Transactions({ config, healthy }: { config: Config; heal
     {message && <div className="notice success" role="status">{message}</div>}
     {context.stackId && <div className="context-strip">
       <span>Stack activity: <b>{scopedStack ? scopedStack.project_number + ' / ' + scopedStack.material_ref + ' / ' + scopedStack.preconditioning_code : context.stackId}</b></span>
+      <a className="button text" href="#transactions">Show all activity</a>
+    </div>}
+    {context.batchId && !context.stackId && <div className="context-strip">
+      <span>Batch activity: <b>{batchLabel || 'Loading batch…'}</b></span>
+      <a className="button text" href={'#batch/' + context.batchId + '/done'}>Batch summary</a>
       <a className="button text" href="#transactions">Show all activity</a>
     </div>}
     <section className="card">

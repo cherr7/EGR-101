@@ -12,3 +12,23 @@ export type MovementResult = { status: 'committed' | 'already_recorded' | 'selec
 export type PrinterInfo = { available: boolean; enabled: boolean; configured_queue?: string; printers: { name: string; is_default?: boolean }[]; message: string }
 export type PrintJob = { request_id: string; status: string; message?: string; job_id?: string; printer_queue?: string; affected_count?: number; label_count?: number; stack_ids?: number[]; selected_specimen_ids?: number[]; error?: string | null }
 export type SpecimenRecord = Specimen & { stack_id: number; project_number: string; material_ref: string; test_code: string; preconditioning_code: string; metadata?: Record<string, unknown>; server_time?: string }
+export type Stages = { total: number; labeled: number; entered: number; inside: number; ready: number; finished: number }
+export type BatchRef = { id: string; label: string; created_at?: string }
+export type PipelineStack = Stages & {
+  id: number; project_number: string; material_ref: string; test_code: string; preconditioning_code: string
+  registered_at: string; is_demo?: boolean; unlabeled_waiting: number; labeled_waiting: number
+  labeled_at: string | null; print_attempt: string | null; batch?: BatchRef
+}
+export type AgeBucket = 'under_1d' | '1_to_3d' | 'over_3d'
+export type ReadyItem = PipelineStack & { room_ready: number; room_inside: number; ready_since: string; waiting_seconds: number; age_bucket: AgeBucket }
+export type ReadyRoom = { room_id: string; room_name: string; stacks: number; pieces: number; oldest_ready_since: string | null; buckets: Record<AgeBucket, number>; items: ReadyItem[] }
+export type BatchCard = { id: string; label: string; created_at: string; open: boolean; stacks: number; stages: Stages }
+export type DashboardData = {
+  server_time: string
+  rooms: { id: string; name: string; inside: number; ready: number }[]
+  facets: { projects: string[]; tests: string[]; treatments: string[]; batches: BatchRef[] }
+  gaps: { needs_labels: PipelineStack[]; not_scanned_in: PipelineStack[] }
+  ready: ReadyRoom[]
+  batches: BatchCard[]
+}
+export type BatchSummary = { id: string; label: string; created_at: string; open: boolean; stages: Stages; stacks: PipelineStack[]; server_time: string }

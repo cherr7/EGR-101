@@ -25,14 +25,26 @@ See [Mac installation and startup](deploy/macos/README.md) for the prepared Laun
 
 ## Staff workflow
 
-1. **Specimens → Prepare / import:** upload an Excel .xlsx or .xlsm workbook, inspect the detected worksheets and source warnings, and review the proposed rows. CSV and manual entry are also available.
-2. **Review physical groups:** each registration row represents one material/sample, test, and exact treatment text. Include every physical piece sent to conditioning, including extras. Split combined groups before registration. The importer retains source metadata and leaves ambiguous fields unresolved rather than inventing counts or material identities.
-3. **Register:** complete project, material, test, treatment, and specimen count. Registration creates the stack and its individually numbered specimens with permanent IDs. Repeating the same draft commit returns the existing registration. A repeated workbook upload with the same worksheet selection reuses its draft unless explicitly imported as a new batch.
-4. **Preview & print:** review the labels, then select an installed Mac printer queue. The default layout is 2 inches wide × 1 inch high, or 50.8 × 25.4 mm. Reprints preserve IDs. PDF/CSV exports remain available when the printer is unavailable.
-5. **Stacks:** see ready specimens first, sort stacks by longest current time inside, and filter by room, status, project, material, test, or treatment. A partially ready stack shows exact ready/inside/finished counts.
-6. **Specimens → Registered specimens:** inspect the single ENTRY/EXIT pair and history for each numbered specimen. Download session CSV, audit CSV, or a printable conditioning report.
-7. **Transactions:** amend a scan's selected specimen numbers, time, room, or optional notes; record a missed movement; or undo an eligible transaction. No supervisor login or mandatory reason is required. Original observations remain in the append-only audit history.
-8. **Backups:** create/download a checkpoint, configure daily snapshots and an additional copy destination, or validate a backup before explicitly restoring it.
+The staff app opens on the **Dashboard**. New work enters through **New batch**, a four-step flow that closes the loop back to the dashboard. One prep sheet makes one **batch**.
+
+1. **Upload prep sheet:** drop an Excel .xlsx/.xlsm or CSV file, or enter stacks manually. The importer inspects every worksheet, keeps source metadata and warnings, and never runs macros. Nothing is registered yet.
+2. **Confirm stacks:** each row is one physical group: one material/sample, test, and exact treatment text. Include every piece sent to conditioning, extras too, and split combined groups first. Fill any missing values (the "rows need values" filter jumps to them). **Register** creates the stacks and their permanently numbered specimens. Repeating the same registration returns the existing batch, and registered rows can't be edited afterward. Extra pieces become a new batch.
+3. **Print labels:** preview the actual labels and print to an installed Mac printer queue. The default is 2 × 1 inch / 50.8 × 25.4 mm; reprints keep the same IDs. Without a printer, open the PDF, print it, and choose **I printed these from the PDF** so the dashboard knows the labels exist. **Print later** leaves the stacks on the dashboard as *Needs labels*.
+4. **Track:** a live summary of the batch's pieces: labeled → in room → ready → finished. It links to the batch's view on the dashboard and its transaction history. A batch closes when every piece has been scanned out.
+
+The **Dashboard** refreshes every 15 seconds and can be filtered by room, project, test, treatment, batch, or free text. Filters live in the URL, so a filtered view can be bookmarked or shared. Its sections, most urgent first:
+
+- **Needs attention (pipeline gaps):** pieces registered but never labeled, and pieces labeled but never scanned IN, with how long they've waited. A scan IN proves a label exists. Pieces never scanned in have no room yet, so the room filter doesn't hide them.
+- **Batches in progress:** one card per open batch with a stage bar, plus recently completed batches.
+- **Ready to remove:** one collapsed list per room ("Shared · 14 stacks · 212 pieces ready · oldest waiting 3 d 4 h") with a breakdown of how long ready pieces have waited (< 1 day, 1–3 days, > 3 days). That shows when finished pieces are piling up. Expanded, it lists stacks longest-waiting first.
+
+Other pages:
+
+- **Specimens:** inspect each numbered specimen's single ENTRY/EXIT pair and history. Download session CSV, audit CSV, or a printable conditioning report.
+- **Transactions:** amend a scan's selected specimen numbers, time, room, or optional notes; record a missed movement; or undo an eligible transaction. Filter to one stack (`#transactions?stack=ID`) or one batch (`#transactions?batch=ID`). Original observations remain in the append-only audit history.
+- **Backups** and **System health:** see [the backup guide](docs/BACKUPS.md) and [the system health guide](docs/SYSTEM_HEALTH.md).
+
+Older links still work: `#overview` opens the dashboard and `#prep` opens New batch.
 
 Project numbers remain strings, preserving letters and leading zeroes. They are separate from generated specimen/stack IDs. Treatment wording is copied from the prep sheet; AR, 5L, UV, CH, or other wording describes separate groups of physical pieces, not repeated conditioning cycles for the same specimen.
 

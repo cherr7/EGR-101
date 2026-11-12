@@ -108,6 +108,11 @@ def specimen_time_log(db, specimen_id):
              "after": event.payload.get("after", {}).get(str(specimen_id))} for event in events]
 
 
+def conditioning_due(entered_at, required_hours):
+    """When a piece entered at `entered_at` reaches its room's required residence (the one rule for 'ready')."""
+    return entered_at + timedelta(hours=required_hours)
+
+
 def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
     now = utcnow()
     specimens = []
@@ -121,7 +126,7 @@ def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
         sessions = by_specimen[specimen.id]
         active = next((s for s in sessions if s.exited_at is None), None)
         period = sessions[0] if sessions else None
-        due = active.entered_at + timedelta(hours=active.room.required_hours) if active else None
+        due = conditioning_due(active.entered_at, active.room.required_hours) if active else None
         specimens.append({"id": specimen.id, "number": specimen.number,
                           "state": "IN" if active else "OUT", "room_id": active.room_id if active else None,
                           "entered_at": iso(period.entered_at) if period else None, "due_at": iso(due),

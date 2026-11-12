@@ -10,7 +10,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../');
 const folder = resolve(process.argv[2] || resolve(root, 'output/station-ui'));
 const manifest = JSON.parse(await readFile(resolve(folder, 'station-package.json'), 'utf8'));
 assert.equal(manifest.format, 'fabric-conditioning-station');
-const heartbeats = [], apiCalls = [], failures = [], errors = [], streams = new Set();
+const heartbeats = [], apiCalls = [], failures = [], errors = [], streams = new Set(), exits = [];
 let bridgeMode = false, apiUp = false;
 const movements = [];
 const sessionId = 'package-check-session';
@@ -39,6 +39,10 @@ const server = createServer(async (request, response) => {
       for await (const chunk of request) body += chunk;
       heartbeats.push(JSON.parse(body));
       response.writeHead(204); response.end(); return;
+    }
+    if (url.pathname === '/station/exit') {
+      exits.push(request.method);
+      response.writeHead(202); response.end(); return;
     }
     if (url.pathname === '/station/input/status') {
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -96,9 +100,22 @@ try {
   assert.equal(new URL(page.url()).hash, '#kiosk');
   assert.equal(new URL(page.url()).searchParams.get('station'), station.stationId);
   assert.equal(station.fixed, false);
-  assert.equal(await page.getByRole('navigation', { name: 'Conditioning room' }).getByRole('button').count(), 3);
+  // The header only shows the room; it is chosen in Station settings.
+  assert.equal(await page.getByRole('navigation', { name: 'Conditioning room' }).count(), 0);
+  await page.getByRole('button', { name: 'Station settings' }).click();
+  assert.equal(await page.getByRole('group', { name: 'Conditioning room' }).getByRole('button').count(), 3);
   await page.getByRole('button', { name: 'PPE', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
+  // Exit kiosk mode takes three confirmations and a countdown, then asks the local watchdog.
+  await page.getByRole('button', { name: 'Exit kiosk mode…' }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: 'Yes, I’m sure', exact: true }).click();
+  assert.equal(exits.length, 0);
+  await page.getByRole('button', { name: 'Exit kiosk mode', exact: true }).click({ timeout: 6000 });
+  await page.getByText('Exiting kiosk mode…').waitFor();
+  assert.deepEqual(exits, ['POST']);
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  assert.match(await page.getByTestId('current-room').textContent(), /^PPE/);
   assert.equal(await page.locator('.sidebar').count(), 0);
   assert.ok(await page.locator('.kiosk-dock').isVisible());
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.kiosk-shell').scrollHeight <= innerHeight));
@@ -115,7 +132,7 @@ try {
   await page.reload();
   await page.waitForFunction(() => window.fabricScannerCaptureReady === true && document.querySelector('.readiness-area')?.textContent?.includes('Offline'));
   assert.equal(new URL(page.url()).searchParams.get('station'), 'ppe-door');
-  assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.match(await page.getByTestId('current-room').textContent(), /^PPE/);
   assert.equal(await page.locator('.readiness-area.confirmed').count(), 0);
   // Installed Pi: scans arrive from input-bridge.py over SSE, with the same gating as keyboard capture.
   bridgeMode = true;
@@ -144,7 +161,8 @@ try {
   await page.waitForFunction(() => window.fabricInputBridgeReady === false);
   await page.waitForTimeout(2200);
   assert.ok(heartbeats.slice(-1).every(value => value.input_bridge === false && value.capture_ready === true));
-  assert.equal(apiCalls.filter(call => call.method === 'POST').length, 0);
+  // Presence heartbeats are not records; no movement, lookup or other write may be sent.
+  assert.deepEqual(apiCalls.filter(call => call.method === 'POST' && !/^\/api\/stations\/[^/]+\/heartbeat$/.test(call.path)).map(call => call.path), []);
   assert.equal(await page.locator('.readiness-area.confirmed').count(), 0);
   // With the API reachable, a bridge scan follows the normal lookup -> movement -> green path.
   apiUp = true;
@@ -167,7 +185,7 @@ try {
   assert.equal(movements.length, 1);
   assert.equal(movements[0].code, '000000000000000000000000000000000000042');
   assert.equal(movements[0].station_id, 'ppe-door');
-  assert.equal(await page.getByRole('button', { name:'PPE', exact:true }).getAttribute('aria-pressed'), 'true');
+  assert.match(await page.getByTestId('current-room').textContent(), /^PPE/);
   assert.equal(movements[0].direction, 'IN');
   assert.equal(await page.locator('.readiness-area.confirmed').count(), 1);
   // Exercise the self-contained file:// screen while the local UI is unavailable.

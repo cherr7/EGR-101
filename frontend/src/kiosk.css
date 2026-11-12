@@ -167,3 +167,30 @@
 .scanner-v2 .recent-scroll,.scanner-v2 .expanded-activity-list,.scanner-v2 .inventory-list,.scanner-v2 .modal-body{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .scanner-v2 *{scrollbar-width:none}.scanner-v2 *::-webkit-scrollbar{display:none}
 .scanner-v2 .scanner-ip.missing{color:#b3312b;font-weight:600}
+/* Header: current room (changed in Station settings) */
+.scanner-v2 .scanner-room-current{justify-self:start;display:flex;align-items:baseline;gap:8px;min-height:54px;padding:10px 20px;border-radius:11px;border:1px solid #cadbd2;background:#f8fbf5;color:#244c49;font-size:22px;font-weight:750;line-height:1.5}
+.scanner-v2 .scanner-room-current small{font-size:15px;font-weight:500;opacity:.8}
+/* Station settings */
+.scanner-v2 .kiosk-settings{display:grid;grid-template-columns:1fr 1fr;gap:18px 28px;padding:18px 22px;max-height:calc(100dvh - 190px)}
+.scanner-v2 .kiosk-settings section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.scanner-v2 .kiosk-settings h3{font-size:17px;color:#244c49;margin:0}
+.scanner-v2 .kiosk-settings-rooms,.scanner-v2 .kiosk-settings-choices{display:flex;gap:6px;padding:4px;border:1px solid #cadbd2;border-radius:11px;background:#eaf1ed;align-self:flex-start;flex-wrap:wrap}
+.scanner-v2 .kiosk-settings-rooms button,.scanner-v2 .kiosk-settings-choices button{min-height:54px;padding:10px 20px;border-radius:7px;border:1px solid transparent;background:transparent;color:#36564f;font:inherit;font-size:19px;font-weight:650}
+.scanner-v2 .kiosk-settings-rooms button.selected,.scanner-v2 .kiosk-settings-choices button[aria-pressed=true]{background:#244c49;color:#fff;border-color:#244c49}
+.scanner-v2 .kiosk-settings-rooms button:disabled{opacity:.45}
+.scanner-v2 .kiosk-settings-help{margin:0;font-size:14px;color:#5b7167;line-height:1.4}
+.scanner-v2 .kiosk-settings .button{min-height:48px;font-size:16px;align-self:flex-start;padding:10px 18px}
+.scanner-v2 .kiosk-settings-info{grid-row:span 2}
+.scanner-v2 .kiosk-settings-info dl{margin:0;display:flex;flex-direction:column}
+.scanner-v2 .kiosk-settings-info dl>div{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border-top:1px solid #e1eae4;font-size:15px}
+.scanner-v2 .kiosk-settings-info dt{color:#5b7167;white-space:nowrap}
+.scanner-v2 .kiosk-settings-info dd{margin:0;text-align:right;color:#233b42;overflow-wrap:anywhere}
+.scanner-v2 .kiosk-settings-info dd small{color:#6d8379}
+.scanner-v2 .kiosk-settings-bad{color:#b3312b;font-weight:650}
+.scanner-v2 .kiosk-settings-exit{border-top:1px solid #efd7cd;padding-top:14px}
+.scanner-v2 .kiosk-exit{padding:22px 24px;font-size:17px;line-height:1.5}
+.scanner-v2 .kiosk-exit h3{font-size:24px;margin:6px 0 10px}
+.scanner-v2 .kiosk-exit-step{margin:0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#a8473a;font-weight:700}
+.scanner-v2 .modal-actions .button{min-height:52px;font-size:17px;padding:12px 22px}
+@media(max-width:800px){.scanner-v2 .kiosk-settings{grid-template-columns:1fr}.scanner-v2 .kiosk-settings-info{grid-row:auto}.scanner-v2 .scanner-room-current{min-height:45px;font-size:18px;padding:8px 14px}}
+@media(max-width:600px){.scanner-v2 .scanner-room-current{grid-column:1 / -1}}

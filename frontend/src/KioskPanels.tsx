@@ -114,3 +114,104 @@ export function KioskScannerSetup({ onClose }: { onClose: () => void }) {
       <button type="button" className="button secondary" onClick={onClose}>Done</button></div>
   </section>
 }
+
+export type RoomChoice = { stationId: string; roomId: string; label: string; name: string }
+export type StationInfo = {
+  stationId: string; roomName: string; stationIps: string[]; server: string; reportedServer: string | null; online: boolean
+  scanner: string; onPi: boolean
+}
+export const IDLE_CHOICES = [0, 2, 5, 10]
+
+/** Station settings: room, scanner setup, idle reset, station info, and (on a Pi) exit kiosk mode. */
+export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScannerSetup, idleMinutes, onIdleMinutes, info, onClose }: {
+  rooms: RoomChoice[]; station: string; roomLocked: boolean; onChooseRoom: (stationId: string) => void; onScannerSetup: () => void
+  idleMinutes: number; onIdleMinutes: (minutes: number) => void; info: StationInfo; onClose: () => void
+}) {
+  const [packageBuilt, setPackageBuilt] = useState<string | null>(null)
+  const [exitStep, setExitStep] = useState(0), [countdown, setCountdown] = useState(0), [exitState, setExitState] = useState<'' | 'sending' | 'sent' | 'failed'>('')
+  useEffect(() => {
+    let alive = true
+    fetch('/station-package.json', { cache: 'no-store' }).then(response => response.ok ? response.json() : null)
+      .then(value => { if (alive && typeof value?.built_at === 'string') setPackageBuilt(value.built_at) }).catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+  useEffect(() => {
+    if (exitStep !== 3) return
+    const timer = setInterval(() => setCountdown(value => Math.max(0, value - 1)), 1000)
+    return () => clearInterval(timer)
+  }, [exitStep])
+  async function exitKiosk() {
+    setExitState('sending')
+    try {
+      const response = await fetch('/station/exit', { method: 'POST' })
+      setExitState(response.ok ? 'sent' : 'failed')
+    } catch { setExitState('failed') }
+  }
+  if (exitStep > 0) {
+    const steps = [
+      null,
+      { title: 'Exit kiosk mode?', text: 'The scanner page closes and the Raspberry Pi desktop appears. Use this only for maintenance.', action: 'Continue' },
+      { title: 'Are you sure?', text: `${info.roomName} cannot record any scans until this Pi is rebooted.`, action: 'Yes, I’m sure' },
+      { title: 'Last step', text: 'Restart the Pi (or run systemctl --user start fabric-scanner.target) to return to the scanner.', action: 'Exit kiosk mode' },
+    ]
+    const step = steps[exitStep]!
+    return <Modal title="Exit kiosk mode" onClose={onClose}>
+      <div className="modal-body kiosk-exit" data-testid="exit-step" data-step={exitStep}>
+        <p className="kiosk-exit-step">Step {exitStep} of 3</p>
+        <h3>{exitState === 'sent' ? 'Exiting kiosk mode…' : step.title}</h3>
+        <p>{exitState === 'sent' ? 'The scanner page is closing. Reboot the Pi to return to kiosk mode.' : step.text}</p>
+        {exitState === 'failed' && <div className="notice error" role="alert">The station did not respond. Kiosk mode is still on; reboot the Pi or try again.</div>}
+      </div>
+      {exitState !== 'sent' && <div className="modal-actions">
+        <button type="button" className="button secondary" disabled={exitState === 'sending'} onClick={() => { setExitStep(0); setExitState('') }}>Cancel</button>
+        {exitStep < 3
+          ? <button type="button" className="button danger" onClick={() => { if (exitStep === 2) setCountdown(3); setExitStep(exitStep + 1) }}>{step.action}</button>
+          : <button type="button" className="button danger" disabled={countdown > 0 || exitState === 'sending'} onClick={() => void exitKiosk()}>
+              {countdown > 0 ? `${step.action} (${countdown})` : exitState === 'sending' ? 'Exiting…' : step.action}</button>}
+      </div>}
+    </Modal>
+  }
+  const rows: [string, React.ReactNode][] = [
+    ['Station', <>{info.stationId}<small> · {info.roomName}</small></>],
+    ['Station IP', info.stationIps.length ? info.stationIps.join(' · ') : 'Unknown'],
+    ['Server', <>{info.server}{info.reportedServer && info.reportedServer !== info.server && <small> · {info.reportedServer}</small>}</>],
+    ['Connection', info.online ? 'Online' : <span className="kiosk-settings-bad">Offline</span>],
+    ['Scanner', info.scanner],
+    ['Station package', packageBuilt ? formatTime(packageBuilt) : '—'],
+    ['Screen', `${window.innerWidth} × ${window.innerHeight}`],
+  ]
+  return <Modal title="Station settings" onClose={onClose} wide>
+    <div className="modal-body kiosk-settings">
+      <section aria-label="Conditioning room">
+        <h3>Room</h3>
+        <div className="kiosk-settings-rooms" role="group" aria-label="Conditioning room">
+          {rooms.map(choice => <button key={choice.stationId} type="button" className={station === choice.stationId ? 'selected' : ''}
+            aria-pressed={station === choice.stationId} disabled={roomLocked} onClick={() => onChooseRoom(choice.stationId)}>{choice.label}</button>)}
+        </div>
+        <p className="kiosk-settings-help">{roomLocked ? 'Finish the current scan or undo before changing the room.' : 'Scans from this station are recorded in the selected room.'}</p>
+      </section>
+      <section aria-label="After idle">
+        <h3>After idle, return to IN + Stack</h3>
+        <div className="kiosk-settings-choices" role="group" aria-label="Idle reset">
+          {IDLE_CHOICES.map(minutes => <button key={minutes} type="button" aria-pressed={idleMinutes === minutes} onClick={() => onIdleMinutes(minutes)}>{minutes ? `${minutes} min` : 'Off'}</button>)}
+        </div>
+        <p className="kiosk-settings-help">The next person starts from IN and Stack. The room never changes.</p>
+      </section>
+      <section aria-label="Scanner setup">
+        <h3>Scanner setup</h3>
+        <button type="button" className="button secondary" onClick={onScannerSetup}>Show scanner setup codes</button>
+      </section>
+      <section aria-label="Station info" className="kiosk-settings-info">
+        <h3>Station info</h3>
+        <dl>{rows.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>
+        <button type="button" className="button secondary" disabled={roomLocked} onClick={() => location.reload()}>Reload page</button>
+      </section>
+      {info.onPi && <section aria-label="Exit kiosk mode" className="kiosk-settings-exit">
+        <h3>Exit kiosk mode</h3>
+        <p className="kiosk-settings-help">Shows the Pi desktop for maintenance. A reboot returns to kiosk mode.</p>
+        <button type="button" className="button danger-quiet" disabled={roomLocked} onClick={() => setExitStep(1)}>Exit kiosk mode…</button>
+      </section>}
+    </div>
+    <div className="modal-actions"><button type="button" className="button primary" onClick={onClose}>Done</button></div>
+  </Modal>
+}

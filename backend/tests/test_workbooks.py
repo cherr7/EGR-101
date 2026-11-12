@@ -6,10 +6,10 @@ from html import escape
 import pytest
 from fastapi import HTTPException
 
-from app.workbooks import conditioning_count, inspect_workbook
+from app.workbooks import conditioning_count, inspect_workbook, sample_ids
 
 
-def workbook_bytes(cells, *, sheet="Preparation", merges=(), extra_sheets=()):
+def workbook_bytes(cells, *, sheet="Preparation", merges=(), extra_sheets=(), sheet_cells=None):
     """Minimal OOXML input fixture; values are either text or (number, style)."""
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -21,7 +21,8 @@ def workbook_bytes(cells, *, sheet="Preparation", merges=(), extra_sheets=()):
         archive.writestr("xl/styles.xml", '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="000000"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Arial"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>')
         for index, _ in enumerate(names, 1):
             grouped = {}
-            for coordinate, value in cells.items() if index == 1 else []:
+            content = cells if index == 1 else (sheet_cells or {}).get(names[index - 1], {})
+            for coordinate, value in content.items():
                 row = int("".join(c for c in coordinate if c.isdecimal()))
                 if isinstance(value, tuple):
                     val, style = value
@@ -138,3 +139,80 @@ def test_import_draft_roundtrip_and_duplicate_upload_reuses_ids(client):
     assert repeat.json()["stack_ids"] == committed.json()["stack_ids"]
     new = client.post("/api/prep-drafts/workbook", files={"file": ("example.xlsx", content)}, data={"new_batch": "true"})
     assert new.json()["id"] != draft["id"]
+
+
+# Layouts below mirror filled-in job prep sheets (synthetic values only).
+
+def filled_cells(**overrides):
+    cells = {"C2": "LabWareDx", "D2": "Oracle", "G2": "Standard", "H2": "NW/AR", "K2": "Sample Released",
+             "C3": "LW-0001D1", "D3": "00042-LAB", "G3": "2112", "H3": "NW", "K3": "R-100 (1-A)",
+             "A4": "Test", "B4": "Total Number of Specimens to be Tested", "C4": "Conditions",
+             "D4": "Specimens per sample for Conditioning", "E4": "# of samples", "F4": "Sample Type",
+             "K4": "Comments",
+             "A5": "Flame", "B5": {"formula": "E5*20", "cached": 60}, "C5": "AR", "D5": "6 Warp, 6 Fill",
+             "E5": (3, 0), "F5": "Shell", "K5": "Sample A-C",
+             "C6": "100L", "D6": "6 Warp, 6 Fill",
+             "A7": "Heat", "B7": {"formula": "E7*D7", "cached": 0}, "C7": "AR", "D7": (3, 0)}
+    cells.update(overrides)
+    return cells
+
+
+def test_sample_ids_expand_ranges_and_ignore_instructions():
+    assert sample_ids("Sample A-C") == ["A", "B", "C"]
+    assert sample_ids("Samples OS1-OS2, TB1-TB2") == ["OS1", "OS2", "TB1", "TB2"]
+    assert sample_ids("Sample 3-Sample 5") == ["Sample 3", "Sample 4", "Sample 5"]
+    assert sample_ids("A-V")[-1] == "V" and len(sample_ids("A-V")) == 22
+    assert sample_ids("If samples are attached to a shell, take pictures.\nSamples DRD, M-O") == ["DRD", "M", "N", "O"]
+    assert sample_ids("If samples are attached to a shell, take pictures as 3x12.") is None
+    assert sample_ids("Shares samples with Heat Composite. Additional Prep not needed.") is None
+
+
+def test_filled_job_assigns_sample_ids_drops_unordered_rows_and_reports_spares():
+    result = inspect_workbook(workbook_bytes(filled_cells(), merges=("A5:A6", "B5:B6", "E5:E6", "K5:K6")), "job.xlsm")
+    rows = result["rows"]
+    # Heat has a blank '# of samples' (tested total 0): not ordered in this job.
+    assert {row["test_code"] for row in rows} == {"Flame"}
+    assert [(row["preconditioning_code"], row["material_ref"]) for row in rows] == [
+        ("AR", "A"), ("AR", "B"), ("AR", "C"), ("100L", "A"), ("100L", "B"), ("100L", "C")]
+    assert all(row["specimen_count"] == 12 for row in rows)
+    meta = rows[0]["metadata"]
+    assert meta["sample_released"] == "R-100 (1-A)"
+    # 12 + 12 pieces cut per sample x 3 samples = 72 conditioned; 60 tested; 12 spares.
+    assert (meta["test_conditioned_pieces"], meta["test_tested_total"], meta["implied_spare_pieces"]) == (72, 60, 12)
+    assert not any("material/sample identifier" in w for row in rows for w in row["metadata"]["warnings"])
+    assert "were left out" in result["sheets"][0]["warnings"][0]
+
+
+def test_note_row_above_header_does_not_become_project():
+    shifted = {}
+    for key, value in filled_cells().items():
+        row = int(key[1:])
+        shifted[f"{key[0]}{row + 1 if row >= 4 else row}"] = value
+    shifted["A4"] = "Note to Lab: this standard is part of the pilot program."
+    shifted["B6"] = {"formula": "E6*20", "cached": 60}
+    shifted["B8"] = {"formula": "E8*D8", "cached": 0}
+    rows = inspect_workbook(workbook_bytes(shifted, merges=("A6:A7", "E6:E7")), "noted.xlsm")["rows"]
+    assert rows and all(row["project_number"] == "00042-LAB" for row in rows)
+
+
+def test_seam_template_without_samples_heading_and_merged_instruction_row():
+    cells = filled_cells(E4="", F4="", A5="Water Pen", B5={"formula": "((D5-1)*E5)", "cached": 6},
+                         C5="5L", D5=(4, 0), E5=(2, 0), K5="Sample 3-Sample 4",
+                         C6="", D6="", A7="ARC Prep", B7="", C7="Please cut 7 yards of Sample A-F and return to shipping.",
+                         D7="Please cut 7 yards of Sample A-F and return to shipping.")
+    rows = inspect_workbook(workbook_bytes(cells, merges=("C7:F7",)), "seams.xlsm")["rows"]
+    assert [(row["test_code"], row["material_ref"], row["specimen_count"]) for row in rows] == [
+        ("Water Pen", "Sample 3", 4), ("Water Pen", "Sample 4", 4)]
+    assert rows[0]["metadata"]["implied_spare_pieces"] == 2
+
+
+def test_ordered_sheet_is_selected_even_when_not_first_and_versioned_formula_map_is_reference():
+    template = filled_cells(E5="", K5="", C3="", D3="")
+    ordered = filled_cells(A5="Weight - Heats", I5="Shares samples with Heat Composite. Additional Prep not needed.")
+    result = inspect_workbook(workbook_bytes(template, sheet="Garments", extra_sheets=("Moisture Barriers", "Formula Map 2025"),
+                                             sheet_cells={"Moisture Barriers": ordered, "Formula Map 2025": filled_cells()}),
+                              "multi.xlsm")
+    assert result["source"]["selected_sheets"] == ["Moisture Barriers"]
+    assert {sheet["name"]: sheet["kind"] for sheet in result["sheets"]}["Formula Map 2025"] == "reference"
+    assert all(row["metadata"]["shares_samples"] for row in result["rows"])
+    assert any("shares samples" in w for w in result["rows"][0]["metadata"]["warnings"])

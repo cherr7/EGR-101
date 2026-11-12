@@ -33,7 +33,9 @@ QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
 
 
 class LabelPreviewBody(BaseModel):
-    stack_ids: list[int] = Field(min_length=1, max_length=100)
+    # One registered prep draft (up to 1,000 rows) is one stack per row; a filled 1970
+    # job sheet alone registers 120+ stacks. The 5,000-label cap still bounds the job.
+    stack_ids: list[int] = Field(min_length=1, max_length=1000)
     selected_specimen_ids: list[int] | None = Field(default=None, min_length=1, max_length=5000)
     width_mm: float = Field(default=62, ge=40, le=150)      # Brother DK-1209 die-cut labels, 62 x 29 mm
 

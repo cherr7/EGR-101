@@ -138,3 +138,9 @@ def test_print_requires_available_explicit_queue_and_rejects_command_options(cli
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "-h attacker"}).status_code == 422
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "Unknown"}).status_code == 409
     assert not any(call[0].endswith("/lp") for call in calls)
+
+
+def test_label_job_accepts_every_stack_of_a_large_registered_job():
+    # A filled 1970 job prep sheet registers 120+ stacks; previewing them is one job.
+    from app.printing import LabelPreviewBody
+    assert len(LabelPreviewBody(stack_ids=list(range(1, 151))).stack_ids) == 150

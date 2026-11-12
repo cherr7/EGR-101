@@ -33,6 +33,27 @@ These counts come from a run before the switch to sequential label codes; rerun 
 
 The 709 specimens are verification data, not a proposed inventory for the real projects.
 
+## Filled-in job prep sheets
+
+Nine filled-in job prep sheets (2112, 1506, 1850 Seams/Water Pen and 1970 families) were then run through the same script with `--job-sheets`. Together with the four files above: 64 worksheets, 491 prep rows compared with their source cells, 516 registered verification stacks, and 2,697 label pages decoded twice with unchanged IDs.
+
+Those sheets exposed layouts the blank templates did not have. The importer now handles them:
+
+| Layout in a filled job sheet | Importer behavior |
+| --- | --- |
+| A "Note to Lab" row between the job details and the Test header | Job details are read from the row under the `LabWareDx`/`Oracle` labels, never from the note. |
+| 1850 Seams template with a blank "# of samples" heading | Recognized by its Test, Conditions and conditioning columns. |
+| The ordered work is on a later worksheet (e.g. Moisture Barriers) | Every worksheet with ordered tests is selected by default; a blank template still selects its first worksheet. |
+| Tests with a blank "# of samples" (tested total 0) | Left out of a sheet that orders other tests, with a sheet note. They are kept for blank templates. |
+| `Formula Map 2025` and other versioned reference sheets | Treated as reference sheets. |
+| An instruction merged across Conditions and count, e.g. "cut 7 yards… for AITEX" | Not a specimen row. |
+| Comments such as `Sample A-C`, `Samples OS1-OS2, TB1-TB2`, `Sample 3-Sample 20`, `A-V` | Expanded into one material reference per sample when the number of IDs equals "# of samples". Otherwise the IDs are listed in a review warning (e.g. `I, J, K, L` for 2 samples). Bare numbers become `Sample 3`. |
+| "Shares samples with … Additional Prep not needed." | Warning plus `shares_samples`, so the same pieces are not labelled twice. |
+| A treatment that is only a number (e.g. `1`) | Warning to confirm the condition. |
+| "Sample Released" (K3) | Kept as `sample_released` source metadata. |
+
+A registered job can exceed 100 stacks (the 1970 example registers 122), so a label preview or print job now accepts up to 1,000 stacks. The 5,000-label cap is unchanged.
+
 ## How the supplied prep sheets map
 
 The FPA/NFPA templates use these preparation fields:
@@ -51,7 +72,19 @@ For example, `6 Warp, 6 Fill` produces 12 conditioning pieces and retains the su
 
 This verification found that panel-size notation needed that targeted parser improvement. Ambiguous inputs such as `3 or 6`, `24 hours`, an uncached formula, or an aggregate board quantity still require an explicit reviewed count.
 
-The conditioning-count column is intentionally used so additional pieces specified for conditioning are not dropped merely because a different number will eventually be tested. The supplied prep examples do not contain completed project/material orders with positive tested totals; they therefore cannot independently establish which extra physical pieces were cut in a real job. The existing synthetic regression also checks a tested total of ten against a conditioning total of twelve.
+The conditioning-count column is intentionally used so additional pieces specified for conditioning are not dropped merely because a different number will eventually be tested. The existing synthetic regression also checks a tested total of ten against a conditioning total of twelve.
+
+Nine filled-in job prep sheets (2112, 1506, 1850 and 1970 families) confirm this reading. Across 42 active test blocks, column B is the number *tested*, computed from D and E with a spare allowance:
+
+| Column B formula shape | Meaning |
+| --- | --- |
+| `D*E`, `E*(D+D_next)` | No spares; every conditioned piece is tested. The second D is the next treatment row of the same test block (for example AR and 5L). |
+| `(D-1)*E`, `E*(D-1)` (operand order varies; it is always D-1, never E-1) | One spare piece per sample. |
+| `(D-2)*E` | Two spares per sample (ASTM 1506 colorfastness: 7 cut, 5 tested). |
+| `IF($H$3="NW",10*E,4*E)` and similar constants | Standard-mandated tested count, independent of D (for example flame NW: 6 warp + 6 fill cut, 10 tested). |
+| `0` | Column E is blank, so the test is not ordered in this job. It is a template row, not an unmultiplied count. |
+
+Spares are never written as a number in these sheets. When B is a formula, the importer records `test_conditioned_pieces`, `test_tested_total` and `implied_spare_pieces` on each row for review. B was never larger than conditioned pieces (sum of D for the block × E), with one expected exception: Trap Tear D lists panels (`1 24x18`, `3 15x15`) that are cut into several test specimens after conditioning. Because B spans every treatment row in the block and subtracts spares, it is never a per-stack count. Conditioned pieces per stack are therefore D for that treatment row, once per sample in E.
 
 ## What still requires review
 
@@ -69,9 +102,12 @@ The native local PostgreSQL host must already be running, and the project's Pyth
 
     .venv/bin/python scripts/verify-real-workbooks.py --run
 
-By default it reads the six named files from the current user's Downloads directory. Another directory and aggregate-report location can be supplied:
+By default it reads the six named files from the current user's Downloads directory. Another directory and aggregate-report location can be supplied. Filled-in job prep sheets carry real job numbers in their filenames, so they are passed as a private folder instead of being listed in this repository:
 
     .venv/bin/python scripts/verify-real-workbooks.py --run --downloads /path/to/private/source-files --report /path/to/private/summary.json
+    .venv/bin/python scripts/verify-real-workbooks.py --run --job-sheets /path/to/private/job-prep-sheets
+
+If PostgreSQL refuses to start with "postmaster became multithreaded during startup", set a locale first, e.g. `export LC_ALL=en_US.UTF-8`.
 
 `--run` is required because the script resets its dedicated verification database. It permits only local PostgreSQL and the exact name `fabric_pipeline_test`. An existing nonempty database must carry the script's ownership marker before it can be reset; an unmarked nonempty database is refused. The normal app database and the ordinary backend test database are never selected.
 

@@ -58,6 +58,9 @@ def source_count(value):
     if normalized.isascii() and normalized.isdecimal():
         number = int(normalized)
         return number if 1 <= number <= 500 else None
+    panel = re.fullmatch(r"(\d+) \d+x\d+", normalized)  # e.g. '3 15x15': three panels
+    if panel:
+        return int(panel.group(1))
     return None
 
 
@@ -77,12 +80,18 @@ def successful(response, operation):
     return response.json()
 
 
-def run(downloads: Path, report_path: Path):
+def run(downloads: Path, report_path: Path, job_sheets: Path | None = None):
     from sqlalchemy import create_engine, text
     from sqlalchemy.engine import make_url
 
-    sources = [downloads / name for name in (*WORKBOOKS, *REFERENCES)]
-    require(all(path.is_file() for path in sources), "One or more of the six supplied source files are missing.")
+    # Filled-in job prep sheets carry real job numbers in their names, so they are
+    # passed as a folder rather than listed in this public repository.
+    extra = sorted(path for path in job_sheets.iterdir()
+                   if path.suffix.lower() in {".xlsm", ".xlsx"} and path.is_file()) if job_sheets else []
+    workbook_paths = [downloads / name for name in WORKBOOKS] + extra
+    sources = [*workbook_paths, *(downloads / name for name in REFERENCES)]
+    require(all(path.is_file() for path in sources), "One or more of the supplied source files are missing.")
+    require(len({path.name for path in sources}) == len(sources), "Two source files share a filename.")
     hashes_before = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
     environment = native_environment()
     url = make_url(environment["DATABASE_URL"])
@@ -219,8 +228,9 @@ def run(downloads: Path, report_path: Path):
                 require(decoded_ids == expected, "Decoded PDF identities do not match the registered specimens.")
                 return decoded_ids
 
-            for workbook_index, filename in enumerate(WORKBOOKS, 1):
-                data = (downloads / filename).read_bytes()
+            for workbook_index, path in enumerate(workbook_paths, 1):
+                filename = path.name
+                data = path.read_bytes()
                 workbook = openpyxl.load_workbook(io.BytesIO(data), data_only=True, keep_links=False, keep_vba=False)
                 formulas = openpyxl.load_workbook(io.BytesIO(data), data_only=False, keep_links=False, keep_vba=False)
                 source_formula_workbooks.append(formulas)
@@ -357,11 +367,13 @@ def main():
     parser.add_argument("--run", action="store_true", help="Explicitly reset and use only fabric_pipeline_test.")
     parser.add_argument("--downloads", type=Path, default=Path.home() / "Downloads")
     parser.add_argument("--report", type=Path, default=ROOT / "output/qa/excel-pipeline-verification.json")
+    parser.add_argument("--job-sheets", type=Path, help="Folder of additional filled-in job prep sheets to verify.")
     args = parser.parse_args()
     if not args.run:
         parser.error("Add --run to opt in. This resets only the owned fabric_pipeline_test database.")
     try:
-        run(args.downloads.resolve(), args.report.resolve())
+        run(args.downloads.resolve(), args.report.resolve(),
+            args.job_sheets.resolve() if args.job_sheets else None)
     except (AssertionError, ValueError, OSError) as error:
         raise SystemExit("Verification failed: " + str(error))
 

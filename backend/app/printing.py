@@ -1,9 +1,4 @@
-"""Explicit, idempotent label submission to the Mac's existing CUPS queues.
-
-The application never discovers a printer and prints automatically. A person
-previews the PDF and selects a queue. 'submitted' means accepted by CUPS, not
-proof that a physical label emerged from the printer.
-"""
+"""Send labels to a CUPS queue. 'submitted' means CUPS accepted the job, not that it printed."""
 from __future__ import annotations
 
 import hashlib

@@ -3,23 +3,14 @@
 #
 #   scripts/deploy-pi.sh USER@PI-HOST [STATION-ID]
 #
-# The Pi reaches the Mac by name, never by an IP baked in here:
-#   MAC_HOST  the Mac's name as the Pi resolves it. Default: this Mac's Tailscale name
-#             (e.g. fabric-mac.tail1234.ts.net), read from `tailscale status`.
-#   DNS       the resolver the Pi's nginx asks for MAC_HOST. Default for a *.ts.net name:
-#             100.100.100.100 (Tailscale MagicDNS). nginx cannot resolve Bonjour .local names.
-#   MAC_LAN   the Mac's local-network address, used by the Pi only while MAC_HOST cannot be
-#             reached. Default: this Mac's Wi-Fi/Ethernet IPv4 address. MAC_LAN=none turns it off.
-#             It changes when the Mac gets a new address; redeploy then (or reserve the address).
-#   DISPLAY_ROTATION  how the installer turns the Touch Display 2 (a portrait panel): 90 (default),
-#             270 if the picture is upside down, or none.
+# Options (environment):
+#   MAC_HOST  the Mac's name for the Pi (default: this Mac's Tailscale name)
+#   DNS       resolver for MAC_HOST (default for *.ts.net: 100.100.100.100)
+#   MAC_LAN   the Mac's local IP, used while MAC_HOST is unreachable (default: detected; none = off)
+#   DISPLAY_ROTATION  90 (default), 270, or none
 #
-# SSH checks the Pi's host key. A Pi seen before must present the same key; a new Pi's key
-# is recorded on first contact. If a Pi was re-imaged, remove its old key yourself:
-#   ssh-keygen -R PI-HOST
-#
-# Exit status is 0 only if the install succeeded AND the Pi came back after reboot with its
-# kiosk page served and the Mac API reachable through it.
+# A re-imaged Pi has a new host key: run ssh-keygen -R PI-HOST first.
+# Exits 0 only if the Pi comes back after reboot and reaches the Mac.
 set -euo pipefail
 die() { echo "ERROR: $*" >&2; exit 1; }
 

@@ -1,13 +1,7 @@
-"""Turn prep sheet rows into the stacks they describe.
+"""Expand prep sheet rows into stacks.
 
-A draft keeps the sheet's own layout (see schemas.PrepSheetRow): the header values once per
-worksheet, then one row per sheet row. Registration expands it here, once, on the server:
-
-- Test: a blank test continues the test above it, exactly as the sheet's merged/blank cells read.
-- Project: the worksheet header's Oracle project, or its LabWare # when that is blank.
-- Conditions: the treatment, copied as written.
-- Specimens per sample for Conditioning: '6', '5 Warp, 5 Fill', '3 15x15' -> pieces per stack.
-- Sample Number: one stack per sample. 'S-001, S-002' on one row makes two stacks.
+A blank Test repeats the one above. Project is the Oracle project, else the LabWare #.
+One stack per sample number; the Conditioning column gives pieces per stack.
 """
 from __future__ import annotations
 

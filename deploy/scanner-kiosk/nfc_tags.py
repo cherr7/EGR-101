@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Read and write specimen IDs on NTAG21x tags with a PN532 NFC hat (SPI).
 
-input-bridge.py imports this module when NFC is enabled: each tap's NDEF text record is
-validated as a specimen ID and streamed to the kiosk page like a barcode scan. Tags that
-hold anything else are reported as rejected scans, never as IDs.
-
     nfc_tags.py read          print each tapped tag's ID (stop fabric-scanner.target first)
-    nfc_tags.py write CODE    write a specimen label code (as printed on its label) to one NTAG tag
+    nfc_tags.py write CODE    write a label code to one tag
 
-Hat wiring: I1=H, I0=L, RSTPDN->D20, DIP 1-4 (SCK/MISO/MOSI/D4) ON, 5-8 (SCL/SDA/TX/RX) OFF.
+Hat wiring: I1=H, I0=L, RSTPDN->D20, DIP 1-4 ON, 5-8 OFF.
 """
 import sys
 import time

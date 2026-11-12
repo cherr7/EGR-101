@@ -37,19 +37,18 @@ export default function StackEditor({ stack, config, healthy, onSaved, onClose }
     } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
   }
   const saveFields = () => act(() => api<Stack>('/stacks/' + current.id, { method: 'PATCH', body: JSON.stringify({
-    ...Object.fromEntries(changed.map(key => [key, fields[key].trim()])), note, expected_version: current.version }) }), 'Stack details saved. Printed labels still scan to this stack.')
+    ...Object.fromEntries(changed.map(key => [key, fields[key].trim()])), note, expected_version: current.version }) }), 'Saved.')
   const addSpecimens = () => act(() => post<Stack & { added_specimen_ids: number[] }>('/stacks/' + current.id + '/specimens',
     { count: addCount, note, expected_version: current.version }), `Added ${addCount} specimen(s). Print their labels now.`)
   const removeSpecimens = () => act(async () => {
     const value = await post<Stack>('/stacks/' + current.id + '/specimens/remove', { specimen_ids: removing, note, expected_version: current.version })
     setRemoving([]); setConfirmRemove(false)
     return value
-  }, 'Removed. Their labels now scan as removed; set those pieces aside.')
+  }, 'Removed.')
 
   return <>
     <Modal title={'Edit stack ' + current.id} wide onClose={() => !busy && onClose()}>
       <div className="modal-body stack-editor">
-        <p className="modal-intro">Changes keep every printed label valid. Each change is recorded in the stack's history.</p>
         <ErrorNotice message={error} />
         {message && <div className="notice success" role="status">{message}</div>}
         <h3 className="section-title">Stack details</h3>
@@ -60,7 +59,7 @@ export default function StackEditor({ stack, config, healthy, onSaved, onClose }
           <label>Treatment<input aria-label="Stack treatment" list="stack-treatments" value={fields.preconditioning_code} disabled={busy} onChange={e => setFields({ ...fields, preconditioning_code: e.target.value })} /></label>
         </div>
         <datalist id="stack-treatments">{config.treatments.map(code => <option key={code} value={code} />)}</datalist>
-        <label>Note (optional)<input aria-label="Stack change note" value={note} disabled={busy} onChange={e => setNote(e.target.value)} placeholder="Why it changed" /></label>
+        <label>Note<input aria-label="Stack change note" value={note} disabled={busy} onChange={e => setNote(e.target.value)} /></label>
         <div className="card-actions">
           <button className="button primary" disabled={busy || !healthy || !changed.length || blank} onClick={() => void saveFields()}>Save details</button>
         </div>
@@ -76,7 +75,6 @@ export default function StackEditor({ stack, config, healthy, onSaved, onClose }
         </div>
 
         <h3 className="section-title">Remove specimens</h3>
-        <p className="input-help">Pieces still inside a room must be scanned out first.</p>
         <div className="selection-grid">{current.specimens.map(s => {
           const inside = s.state === 'IN'
           return <label key={s.id} className={['selection-tile', removing.includes(s.id) ? 'selected' : '', inside ? 'disabled' : ''].join(' ')}>

@@ -264,7 +264,7 @@ def reserve_request_numbers(db, client, count):
 def check_request_number(db, client, number):
     issued = db.scalar(select(RequestCounter.last_issued).where(RequestCounter.client == client))
     if issued is None or number > issued:
-        raise HTTPException(422, f"Request {client}-{number} was never issued. Reserve request IDs from /api/request-ids.")
+        raise HTTPException(422, f"Request {client}-{number} was never issued.")
 
 
 def draft_dict(draft):

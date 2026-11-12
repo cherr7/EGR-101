@@ -66,10 +66,10 @@ def test_thresholds_flag_full_disk_battery_sleep_and_printer():
         database={"connected": False}))
     titles = {issue["title"]: issue["level"] for issue in issues}
     assert titles["Mac storage is almost full"] == "critical"
-    assert titles["The host Mac is running on battery"] == "critical"
-    assert titles["The database is not reachable"] == "critical"
-    assert titles["Memory pressure is warning"] == "warning"
-    assert titles["The Mac is set to sleep after 10 minutes"] == "warning"
+    assert titles["Mac is on battery"] == "critical"
+    assert titles["Database not reachable"] == "critical"
+    assert titles["Memory is low"] == "warning"
+    assert titles["Mac sleeps after 10 min"] == "warning"
     assert titles["QL is paused"] == "warning"
     assert any(title.startswith("1 label job") for title in titles)
     assert [issue["level"] for issue in issues] == sorted((issue["level"] for issue in issues),
@@ -128,16 +128,16 @@ def test_pi_rules_flag_heat_power_sd_card_services_clock_and_wifi():
                         "memory": {"percent": 95.0}, "services": {"input": {"state": "failed", "restarts": 12}},
                         "clock_skew_seconds": -600, "network": {"wifi_signal_dbm": -82}, "uptime_seconds": 120})
     assert titles["PPE is overheating (83 °C)"] == "critical"
-    assert titles["PPE has low power (under-voltage)"] == "critical"
-    assert titles["PPE's SD card is read-only"] == "critical"
-    assert titles["PPE is low on memory (95% used)"] == "warning"
-    assert titles["PPE: the input service is failed"] == "warning"
-    assert titles["PPE's clock is off by 10 min"] == "warning"
-    assert titles["PPE has weak Wi-Fi (-82 dBm)"] == "warning"
+    assert titles["PPE: low power"] == "critical"
+    assert titles["PPE: SD card is read-only"] == "critical"
+    assert titles["PPE: memory 95% used"] == "warning"
+    assert titles["PPE: input is failed"] == "warning"
+    assert titles["PPE: clock off by 10 min"] == "warning"
+    assert titles["PPE: weak Wi-Fi (-82 dBm)"] == "warning"
     assert titles["PPE restarted 2 min ago"] == "info"
     assert "PPE is throttled" not in titles  # explained by the under-voltage issue
-    assert pi_titles({**PI_REPORT, "temperature_c": 72.0})["PPE is running hot (72 °C)"] == "warning"
-    assert pi_titles({**PI_REPORT, "disk": {"free_bytes": 300 * 2**20, "percent": 99.0}})["PPE's SD card is almost full"] == "critical"
+    assert pi_titles({**PI_REPORT, "temperature_c": 72.0})["PPE is hot (72 °C)"] == "warning"
+    assert pi_titles({**PI_REPORT, "disk": {"free_bytes": 300 * 2**20, "percent": 99.0}})["PPE: SD card almost full"] == "critical"
 
 
 def test_pi_reporting_states():
@@ -145,10 +145,10 @@ def test_pi_reporting_states():
     def titles(status, device):
         station = {"id": "ppe-door", "name": "PPE", "status": status, "last_seen": "earlier", "device": device}
         return {issue["title"]: issue["level"] for issue in find_issues(report_with(stations=[station]))}
-    assert titles("ready", None) == {"PPE: no Pi stats": "info"}
-    assert titles("ready", {"stale": True, "age_seconds": 300}) == {"PPE: Pi stats stopped": "warning"}
+    assert titles("ready", None) == {}
+    assert titles("ready", {"stale": True, "age_seconds": 300}) == {"PPE: no report for 5 min": "warning"}
     fresh = {**PI_REPORT, "stale": False, "age_seconds": 5, "clock_skew_seconds": 0}
-    assert titles("offline", fresh) == {"PPE: the Pi is on but the kiosk page is not running": "warning"}
+    assert titles("offline", fresh) == {"PPE: page not running": "warning"}
     assert titles("offline", None) == {"PPE is offline": "warning"}
 
 
@@ -163,5 +163,5 @@ def test_versions_are_reported_and_an_older_pi_is_flagged(client, monkeypatch):
         assert client.post(f"/api/stations/{station}/device", json=body).status_code == 200
     report = client.get("/api/system/health").json()
     assert report["application"]["version"] == "v2026.11.12-2"
-    behind = [i["title"] for i in report["issues"] if "older version" in i["title"]]
+    behind = [i["title"] for i in report["issues"] if "old version" in i["title"]]
     assert len(behind) == 1 and "v2026.11.12-1" in behind[0] and "PPE" in behind[0]

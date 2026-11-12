@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Report this Pi's health (CPU, memory, temperature, SD card, power, services) to the Mac.
-
-Every 30 seconds the agent posts one JSON report through the station's own nginx,
-which already proxies /api to the Mac host. It needs no host address of its own.
-Pushing works even when the kiosk browser has crashed, which is when the report
-matters most. Standard library only; every reading is best effort and null if
-unavailable.
-"""
+"""Report this Pi's health to the Mac every 30 seconds, through the station's nginx."""
 import json
 import logging
 import os

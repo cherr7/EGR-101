@@ -212,9 +212,9 @@ def update_draft(draft_id: int, body: PrepBody, db=Depends(get_db)):
         if not draft:
             raise HTTPException(404, "Draft not found.")
         if draft.committed:
-            raise HTTPException(409, "A registered prep sheet cannot be edited. Edit the registered stacks instead.")
+            raise HTTPException(409, "This sheet is registered. Edit its stacks instead.")
         if body.expected_revision is not None and draft.revision != body.expected_revision:
-            raise HTTPException(409, "This prep sheet changed in another browser. Reload its latest values before saving.")
+            raise HTTPException(409, "This sheet was changed in another browser.")
         draft.headers = {name: header.model_dump() for name, header in body.headers.items()}
         draft.rows = [r.model_dump() for r in body.rows]
         draft.revision += 1
@@ -229,7 +229,7 @@ def register_draft(draft_id: int, body: PrepCommitBody | None = None, db=Depends
         if not draft:
             raise HTTPException(404, "Draft not found.")
         if not draft.committed and body and body.expected_revision is not None and draft.revision != body.expected_revision:
-            raise HTTPException(409, "This prep sheet changed before registration. Reload its latest values.")
+            raise HTTPException(409, "This sheet was changed in another browser.")
         return {"stack_ids": commit_draft(db, draft)}
 
 
@@ -280,7 +280,7 @@ def movement(body: MovementBody, db=Depends(get_db)):
 def movement_status(request_id: Annotated[str, PathParam(pattern=REQUEST_ID)], db=Depends(get_db)):
     request = db.get(MovementRequest, split_request_id(request_id))
     if not request:
-        raise HTTPException(404, "Request not recorded. Retry the original request ID and unchanged details.")
+        raise HTTPException(404, "Request not recorded. Retry with the same request ID.")
     return request.result
 
 

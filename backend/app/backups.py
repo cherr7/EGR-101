@@ -505,7 +505,7 @@ def open_backup_folder(request: Request):
                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     except (OSError, subprocess.SubprocessError) as error:
         LOGGER.warning("Could not open backup folder: %s", error)
-        raise HTTPException(500, "Finder could not open the backup folder. Is someone logged in to the host Mac?")
+        raise HTTPException(500, "Finder couldn't open the folder.")
     return {"opened": str(archive_folder())}
 
 

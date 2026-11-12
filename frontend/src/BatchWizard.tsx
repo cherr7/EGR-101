@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { BatchSummary, Config, Draft, PrepHeader, PrepProblem, PrepRow, Stack } from './types'
-import { api, duration, formatTime, post } from './api'
+import { api, formatTime, post } from './api'
 import { ErrorNotice, Modal, PageHeader } from './App'
 import LabelPrinter from './LabelPrinter'
 import BatchProgress from './BatchProgress'
@@ -115,7 +115,7 @@ function SourceDetails({ row }: { row: PrepRow }) {
         <td>{name.replaceAll('_', ' ')}</td><td><b>{value.cell || '—'}</b></td>
         <td>{value.formula ? `=${value.formula} → ${value.value || 'not cached'}` : value.value || '—'}</td>
       </tr>)}</tbody>
-    </table></div> : <p className="subtle">Typed on this screen. No workbook cells.</p>}
+    </table></div> : <p className="subtle">Entered by hand.</p>}
     {warnings?.map((warning, index) => <div className="notice warning" key={index}>{warning}</div>)}
   </>
 }
@@ -164,7 +164,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
   // Every edit is kept in this browser before the next paint; nothing to save by hand.
   useLayoutEffect(() => {
     try { localStorage.setItem(REVIEW_KEY, JSON.stringify({ draft, headers, rows })) }
-    catch { setError('This browser can’t save your progress. Keep this page open until you register.') }
+    catch { setError('This browser can’t save your progress.') }
   }, [draft, headers, rows])
   function load(value: Draft) {
     setDraft(value)
@@ -183,7 +183,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
       const hasEdits = sheetOf(local) !== sheetOf(local.draft!)
       if (value.committed || !hasEdits) load(value)
       else if (value.revision !== local.draft!.revision)
-        setError('Someone changed this sheet in another browser. Your edits are kept here; load the latest saved sheet to use theirs.')
+        setError('This sheet was changed in another browser.')
     }).catch(err => { if (active && alive.current) setError('Couldn’t check this sheet with the server: ' + (err as Error).message) })
     return () => { active = false }
   }, [healthy])
@@ -251,7 +251,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
       const body = { headers: reviewed.headers, rows: reviewed.rows }
       if (latest && sheetOf(latest) === sheetOf(body)) saved = latest
       else if (latest && saved && latest.revision !== saved.revision)
-        throw new Error('This sheet changed in another browser. Load the latest saved sheet, then check it again.')
+        throw new Error('This sheet was changed in another browser.')
       else saved = saved
         ? await api<Draft>('/prep-drafts/' + saved.id, { method: 'PUT', body: JSON.stringify({ ...body, expected_revision: saved.revision }) })
         : await post<Draft>('/prep-drafts', body)
@@ -298,7 +298,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
 
   return <>
     <PageHeader title="New batch">
-      {(!blankReview({ draft, headers, rows }) || viewingOther) && <button className="button secondary" disabled={busy} onClick={startNew}>＋ Start another batch</button>}
+      {(!blankReview({ draft, headers, rows }) || viewingOther) && <button className="button secondary" disabled={busy} onClick={startNew}>New batch</button>}
     </PageHeader>
     <Stepper step={step} committed={viewingOther || committed} canConfirm={!blankReview({ draft, headers, rows }) || route.id === 'local'} id={batchId} />
     <ErrorNotice message={error} />
@@ -306,28 +306,27 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
     {message && <div className="notice success" role="status">{message}</div>}
 
     {step === 'upload' && <section className="card">
-      <div className="card-heading"><div><h2>1 · Upload the prep sheet</h2></div></div>
+      <div className="card-heading"><div><h2>Upload the prep sheet</h2></div></div>
       <div className="padded">
         <label className={'drop-zone ' + (dragging ? 'dragging ' : '') + (busy || !healthy ? 'disabled' : '')}
           onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)}
           onDrop={e => { e.preventDefault(); setDragging(false); const file = e.dataTransfer.files?.[0]; if (file && healthy && !busy) void upload(file) }}>
           <span className="drop-icon" aria-hidden="true">⇪</span>
-          <b>{busy ? 'Reading workbook…' : 'Drop the prep sheet here, or click to choose a file'}</b>
+          <b>{busy ? 'Reading workbook…' : 'Drop the prep sheet here or click to choose'}</b>
           <small>.xlsx, .xlsm or .csv</small>
           <input aria-label="Import prep workbook" type="file" accept=".xlsx,.xlsm,.csv" disabled={busy || !healthy}
             onChange={e => { if (e.target.files?.[0]) void upload(e.target.files[0]); e.target.value = '' }} />
         </label>
-        <p className="input-help">No spreadsheet? <button className="button text inline" disabled={busy} onClick={manualEntry}>Type the prep sheet →</button></p>
+        <p className="input-help"><button className="button text inline" disabled={busy} onClick={manualEntry}>Enter by hand</button></p>
       </div>
     </section>}
 
     {step === 'confirm' && <section className="card prep-card">
       <div className="card-heading">
         <div>
-          <h2>2 · Check the sheet {draft?.source && <span className="badge outline">{draft.source.filename}</span>}</h2>
-          <p>Laid out like the paper prep sheet. A blank Test means the same test as the row above.</p>
+          <h2>Check the sheet {draft?.source && <span className="badge outline">{draft.source.filename}</span>}</h2>
         </div>
-        <label className={'button secondary upload ' + (busy || !healthy ? 'disabled' : '')}>↑ Replace file
+        <label className={'button secondary upload ' + (busy || !healthy ? 'disabled' : '')}>Replace file
           <input aria-label="Replace prep workbook" type="file" accept=".xlsx,.xlsm,.csv"
             disabled={busy || !healthy} onChange={e => { if (e.target.files?.[0]) void upload(e.target.files[0]); e.target.value = '' }} />
         </label>
@@ -349,7 +348,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
       </details> : null}
       <div className="prep-exceptions">
         <span className={'badge ' + (problems.length ? 'warning' : 'good')}>{problems.length ? `${problems.length} ${problems.length === 1 ? 'cell' : 'cells'} to fill` : 'Ready to register'}</span>
-        {problems.length > 0 && <button className="button text" onClick={jumpToProblem}>Go to the first one →</button>}
+        {problems.length > 0 && <button className="button text" onClick={jumpToProblem}>Show</button>}
       </div>
       <datalist id="treatments">{config.treatments.map(treatment => <option key={treatment} value={treatment} />)}</datalist>
       {sheets.map(sheet => {
@@ -393,7 +392,7 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
               </tr>
             })}</tbody>
           </table></div>
-          <button className="button text add-row" disabled={busy} onClick={() => addRow(sheet)}>＋ Add row</button>
+          <button className="button text add-row" disabled={busy} onClick={() => addRow(sheet)}>Add row</button>
         </div>
       })}
       <div className="card-actions">
@@ -402,7 +401,6 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
           {busy ? 'Registering…' : `Register ${stacks} ${stacks === 1 ? 'stack' : 'stacks'}`}
         </button>
       </div>
-      <p className="input-help padded">Registering gives each piece its permanent number. To fix a stack or add pieces later, open it and choose Edit stack.</p>
     </section>}
 
     {step === 'print' && batchId && <PrintStep id={batchId} healthy={healthy}
@@ -410,9 +408,9 @@ export default function BatchWizard({ config, healthy }: { config: Config; healt
     {step === 'done' && batchId && <DoneStep id={batchId} healthy={healthy} onAnother={startNew}
       newPhysicalBatch={!viewingOther && uploadFile.current ? () => void upload(uploadFile.current!, selectedSheets, true) : undefined} />}
 
-    {sourceRow !== null && rows[sourceRow] && <Modal title="Workbook source for this row" wide onClose={() => setSourceRow(null)}>
+    {sourceRow !== null && rows[sourceRow] && <Modal title="Source" wide onClose={() => setSourceRow(null)}>
       <div className="modal-body"><SourceDetails row={rows[sourceRow]} /></div>
-      <div className="modal-actions"><button className="button secondary" onClick={() => setSourceRow(null)}>Back to the sheet</button></div>
+      <div className="modal-actions"><button className="button secondary" onClick={() => setSourceRow(null)}>Close</button></div>
     </Modal>}
   </>
 }
@@ -432,14 +430,14 @@ function PrintStep({ id, healthy, onContinue }: { id: string; healthy: boolean; 
   }, [id, healthy])
   const onOutcome = useCallback((value: 'printed' | 'manual') => setOutcome(value), [])
   return <section className="card">
-    <div className="card-heading"><div><h2>3 · Print labels</h2></div></div>
+    <div className="card-heading"><div><h2>Print labels</h2></div></div>
     <ErrorNotice message={error} />
     {!stacks && !error && <div className="empty-inline compact"><p>Loading stacks…</p></div>}
     {stacks && <LabelPrinter stacks={stacks} healthy={healthy} variant="inline"
       onOutcome={onOutcome}
       extraActions={outcome
-        ? <button className="button primary" onClick={onContinue}>Continue →</button>
-        : <button className="button text" onClick={onContinue} title="The stacks stay on the dashboard as 'Needs labels'">Print later</button>} />}
+        ? <button className="button primary" onClick={onContinue}>Continue</button>
+        : <button className="button text" onClick={onContinue}>Print later</button>} />}
   </section>
 }
 
@@ -463,8 +461,8 @@ function DoneStep({ id, healthy, onAnother, newPhysicalBatch }: { id: string; he
     : { text: 'Every piece is out. Batch complete.', action: null }
   return <section className="card">
     <div className="card-heading"><div>
-      <h2>4 · Track this batch <span className={'badge ' + (batch.open ? 'blue' : 'good')}>{batch.open ? 'Open' : 'Complete'}</span></h2>
-      <p><b>{batch.label}</b> · registered {formatTime(batch.created_at)} ({duration(batch.created_at)} ago) · {batch.stacks.length} stacks · {s.total} pieces</p>
+      <h2>Track this batch <span className={'badge ' + (batch.open ? 'blue' : 'good')}>{batch.open ? 'Open' : 'Complete'}</span></h2>
+      <p><b>{batch.label}</b> · {formatTime(batch.created_at)} · {batch.stacks.length} stacks · {s.total} pieces</p>
     </div></div>
     <div className="padded">
       <BatchProgress stages={s} legend />
@@ -475,15 +473,15 @@ function DoneStep({ id, healthy, onAnother, newPhysicalBatch }: { id: string; he
       <tbody>{batch.stacks.map(stack => <tr key={stack.id}>
         <td><b>Stack {stack.id} · {stack.project_number} / {stack.material_ref}</b><small>{stack.test_code} · {stack.preconditioning_code}</small></td>
         <td>{stack.labeled}/{stack.total}</td><td>{stack.inside}</td><td>{stack.ready}</td><td>{stack.finished}/{stack.total}</td>
-        <td className="row-actions"><a className="button text" href={'#records?stack=' + stack.id}>Open or edit →</a></td>
+        <td className="row-actions"><a className="button text" href={'#records?stack=' + stack.id}>Open</a></td>
       </tr>)}</tbody>
     </table></div>
     <div className="card-actions">
       <a className="button secondary" href={'#dashboard?batch=' + id}>View on dashboard</a>
       <a className="button secondary" href={'#transactions?batch=' + id}>Transaction history</a>
-      {newPhysicalBatch && <button className="button text" onClick={newPhysicalBatch}>Register this sheet again as a new batch</button>}
+      {newPhysicalBatch && <button className="button text" onClick={newPhysicalBatch}>Register again as a new batch</button>}
       <span className="grow" />
-      <button className="button primary" onClick={onAnother}>＋ Start another batch</button>
+      <button className="button primary" onClick={onAnother}>New batch</button>
     </div>
   </section>
 }

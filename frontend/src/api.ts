@@ -65,7 +65,7 @@ export async function nextRequestId(client: string): Promise<string> {
   if (!remaining(readPools()[client])) await reserve(client)
   const pools = readPools()
   const block = (pools[client] || []).find(b => b.next <= b.last)
-  if (!block) throw new Error('No request number available. Check the connection and try again.')
+  if (!block) throw new Error('Can’t reach the server. Try again.')
   const value = block.next
   block.next += 1
   localStorage.setItem(REQUEST_IDS_KEY, JSON.stringify(pools))   // claimed before it is used

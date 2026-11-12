@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
-"""Read the USB scanner (and optional NFC hat) directly and stream scans to the kiosk page.
+"""Read the USB scanner (and optional NFC hat) and stream scans to the kiosk page.
 
-Chromium only receives keyboard-wedge input while it has OS focus. This bridge instead
-reads the scanner's evdev device with an exclusive grab, so scans arrive whatever window
-has focus and never leak as keystrokes into other applications. Each scan is sent to the
-kiosk page as a server-sent event (nginx proxies /station/input/events here); the page
-applies the same validation, health gating, and movement rules as keyboard capture.
+The scanner is grabbed exclusively, so scans never leak as keystrokes. If this service
+stops, the scanner types into Chromium and the page's keyboard capture takes over.
 
-Scans go only to one active kiosk page. Disconnected scans are never replayed.
-A bounded live-delivery queue rejects delayed frames rather than applying an old movement. If this
-service stops, the grab is released and the scanner types into Chromium again, which the
-page's keyboard listener still handles.
+    input-bridge.py          run the bridge
+    input-bridge.py list     list input devices
 
-    input-bridge.py          run the bridge (fabric-scanner-input.service)
-    input-bridge.py list     list input devices, to find the scanner's stable path
-
-Environment (EnvironmentFile /opt/fabric-scanner/input.env and scanner.env):
-    SCANNER_DEVICE   evdev path, ideally /dev/input/by-id/...-event-kbd (default: auto-detect)
-    SCANNER_MATCH    comma-separated device-name fragments for auto-detect
-
-Auto-detect uses a device whose name matches SCANNER_MATCH. Failing that, if exactly one
-keyboard-type USB device is plugged in, that is the scanner (the Eyoyo calls itself
-"USB HIDKeyboard"). With two or more USB keyboards and no name match it refuses to guess.
-    ENABLE_NFC       true to also read a PN532 NFC hat through nfc_tags.py (legacy NFC=1 accepted)
+Environment: SCANNER_DEVICE (evdev path), SCANNER_MATCH (name fragments), ENABLE_NFC.
+Without either, the only USB keyboard is used; with several it refuses to guess.
 """
 import errno
 import itertools

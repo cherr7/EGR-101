@@ -89,7 +89,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       // Never pair an old list row with a newer version from a separate fetch.
       const stack = await api<Stack>('/stacks/' + stackId)
       const event = stack.events?.find(row => String(row.id) === String(eventId))
-      if (!event) throw new Error('This transaction is no longer in the stack history. Refresh the log.')
+      if (!event) throw new Error('Transaction not found. Refresh.')
       if (!alive.current || token !== serial.current) return
       if (event.kind !== 'movement' || event.undone) { setViewing({ event, stack }); setEditor(null) }
       else {
@@ -200,7 +200,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         setMissed({ stackId: Number(context.stackId), ids: [], direction: 'IN',
           time: localTimeInput(new Date(serverNow()).toISOString()),
           room: config.rooms.find(room => room.id === 'shared')?.id || config.rooms[0]?.id || '', note: '' })
-      }}>＋ Record missed scan</button>
+      }}>Add missed scan</button>
     </PageHeader>
     <ErrorNotice message={error} />
     {message && <div className="notice success" role="status">{message}</div>}
@@ -216,7 +216,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
     <section className="card">
       <div className="toolbar">
         <label className="search-label"><span>⌕</span><input aria-label="Search transactions"
-          placeholder="Project, material, test, treatment or transaction ID" value={search}
+          placeholder="Search" value={search}
           onChange={e => { setSearch(e.target.value); setLimit(100) }} /></label>
         <select aria-label="Transaction room" value={roomFilter} onChange={e => { setRoomFilter(e.target.value); setLimit(100) }}>
           <option value="">All rooms</option>{config.rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
@@ -224,7 +224,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         <select aria-label="Transaction type" value={kind} onChange={e => setKind(e.target.value)}>
           <option value="">All activity</option><option value="movement">Movements</option><option value="modification">Modifications</option><option value="undo">Undo</option><option value="label_print">Printing</option>
         </select>
-        <button className="button secondary" disabled={!healthy || busy || loading} onClick={() => setRefresh(value => value + 1)}>↻ Refresh</button>
+        <button className="button secondary" disabled={!healthy || busy || loading} onClick={() => setRefresh(value => value + 1)}>Refresh</button>
       </div>
       <div className="table-wrap"><table>
         <thead><tr><th>Entered</th><th>Activity</th><th>Project / Material</th><th>Specimens</th><th>Movement time</th><th>Room</th><th /></tr></thead>
@@ -239,7 +239,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
             <td>{formatTime(timeFor(event))}</td><td>{roomName(event.effective_room_id || event.room_id)}</td>
             <td><button className="button text" disabled={!healthy || busy}
               aria-label={(event.kind === 'movement' && !event.undone ? 'Edit' : 'View') + ' transaction ' + event.id}
-              onClick={() => void openEvent(event.id, event.stack_id)}>{event.kind === 'movement' && !event.undone ? 'Edit →' : 'View →'}</button></td>
+              onClick={() => void openEvent(event.id, event.stack_id)}>{event.kind === 'movement' && !event.undone ? 'Edit' : 'View'}</button></td>
           </tr>
         })}</tbody>
       </table></div>
@@ -296,7 +296,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
           {editor.time !== localTimeInput(timeFor(editor.event)) && <p>Movement time: {formatTime(timeFor(editor.event))} → {editor.time.replace('T', ' ')} Eastern</p>}
           {editor.room !== (editor.event.effective_room_id || editor.event.room_id) && <p>Room: {roomName(editor.event.effective_room_id || editor.event.room_id)} → {roomName(editor.room)}</p>}
         </section>
-        <label>Notes (optional)<textarea aria-label="Transaction notes" rows={2} disabled={busy} value={editor.note}
+        <label>Notes<textarea aria-label="Transaction notes" rows={2} disabled={busy} value={editor.note}
           onChange={e => setEditor(previous => previous && { ...previous, note: e.target.value })} /></label>
         <p className="input-help">Originally scanned {formatTime(editor.event.recorded_at)} with {editor.event.affected_count} specimens.</p>
         <ErrorNotice message={error} />
@@ -325,14 +325,13 @@ export default function Transactions({ config, healthy }: { config: Config; heal
           <div><span>Transaction</span><b>{viewing.event.id}</b></div>
         </div>
         {viewing.event.payload?.event_id ? <a className="button secondary"
-          href={'#transactions?stack=' + viewing.stack.id + '&event=' + String(viewing.event.payload.event_id)}>Open original transaction →</a> : null}
+          href={'#transactions?stack=' + viewing.stack.id + '&event=' + String(viewing.event.payload.event_id)}>Open original</a> : null}
         {viewing.event.undone && <div className="notice info">This scan was undone.</div>}
       </div>
       <div className="modal-actions"><button className="button secondary" onClick={() => setViewing(null)}>Close</button></div>
     </Modal>}
     {missed && <Modal title="Record a missed scan" wide onClose={() => !busy && setMissed(null)}>
       <div className="modal-body">
-        <p className="modal-intro">Enter when it actually happened.</p>
         <label>Stack<select aria-label="Missed stack" value={missed.stackId} disabled={busy}
           onChange={e => setMissed(previous => previous && { ...previous, stackId: Number(e.target.value), ids: [] })}>
           <option value="">Choose a stack</option>{stacks.map(stack => <option key={stack.id} value={stack.id}>{stack.project_number} / {stack.material_ref} / {stack.test_code} / {stack.preconditioning_code}</option>)}
@@ -363,7 +362,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
             </label>
           })}</div>
         </>}
-        <label>Notes (optional)<textarea aria-label="Missed notes" rows={2} disabled={busy} value={missed.note}
+        <label>Notes<textarea aria-label="Missed notes" rows={2} disabled={busy} value={missed.note}
           onChange={e => setMissed(previous => previous && { ...previous, note: e.target.value })} /></label>
         <ErrorNotice message={error} />
       </div>

@@ -57,7 +57,7 @@ function SpecimenHistory({
               {item.note ? <p>{String(item.note)}</p> : null}
               {item.transaction_id && (kind === 'movement' || item.original_transaction_id)
                 ? <a className="button text" href={'#transactions?stack=' + stack.id + '&event=' + String(item.original_transaction_id || item.transaction_id)}>
-                  Open transaction →
+                  Open transaction
                 </a> : null}
             </article>
           })}
@@ -115,7 +115,7 @@ export function StackDetail({ stack: given, config, healthy = true, onChanged }:
         <td>{roomName(specimen.room_id || specimen.sessions?.[0]?.room_id)}</td>
         <td>{formatTime(entryOf(specimen))}</td><td>{formatTime(exitOf(specimen))}</td>
         <td>{elapsed(entryOf(specimen), exitOf(specimen))}</td>
-        <td><button className="button text" disabled={!healthy || loading} onClick={() => void openSpecimen(specimen.id)}>History →</button></td>
+        <td><button className="button text" disabled={!healthy || loading} onClick={() => void openSpecimen(specimen.id)}>History</button></td>
       </tr>)}</tbody>
     </table></div>
     <h3 className="section-title">Stack activity</h3>
@@ -128,7 +128,7 @@ export function StackDetail({ stack: given, config, healthy = true, onChanged }:
           {(event.note || event.reason) && <p>{event.note || event.reason}</p>}
         </div>
         <a className="button text" href={'#transactions?stack=' + stack.id + '&event=' + String(event.payload?.event_id || event.id)}>
-          {event.kind === 'movement' && !event.undone ? 'Edit →' : 'View →'}
+          {event.kind === 'movement' && !event.undone ? 'Edit' : 'View'}
         </a>
       </div>)}
       {!stack.events?.length && <p className="subtle">No movement or printing history yet.</p>}
@@ -210,13 +210,13 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
   const selectedStacks = items.filter(stack => stack.specimens.some(s => selectedIds.includes(s.id)))
   return <>
     <PageHeader title="Specimens">
-      <button className="button secondary" disabled={!healthy || loading} onClick={() => setRevision(value => value + 1)}>↻ Refresh</button>
+      <button className="button secondary" disabled={!healthy || loading} onClick={() => setRevision(value => value + 1)}>Refresh</button>
     </PageHeader>
     <ErrorNotice message={error} />
     {stackFilter && <div className="context-strip"><span>Showing one stack.</span><a className="button text" href="#records">Show all</a></div>}
     <section className="card">
       <div className="toolbar">
-        <label className="search-label"><span>⌕</span><input aria-label="Search records" placeholder="Project, material, test, treatment or label ID" value={search} onChange={e => setSearch(e.target.value)} /></label>
+        <label className="search-label"><span>⌕</span><input aria-label="Search records" placeholder="Search" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <select aria-label="Specimen status" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">All statuses</option><option value="READY">Ready</option><option>Conditioning</option><option>Awaiting entry</option><option>Finished</option>
         </select>
@@ -225,12 +225,12 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
         </select>
       </div>
       <div className="card-heading compact">
-        <div><h2>Specimens <span className="count-pill">{records.length}</span></h2><p>{loading ? 'Loading records…' : 'Times are Eastern.'}</p></div>
+        <div><h2>Specimens <span className="count-pill">{records.length}</span></h2>{loading && <p>Loading…</p>}</div>
         <div className="export-actions">
-          <input aria-label="Export project number" className="small-input" placeholder="Exports: one project (optional)" value={project} onChange={e => setProject(e.target.value)} />
+          <input aria-label="Export project number" className="small-input" placeholder="Project (for export)" value={project} onChange={e => setProject(e.target.value)} />
           <a className="button secondary" href={'/api/exports/sessions.csv' + query}>Session CSV</a>
           <a className="button secondary" href={'/api/exports/history.csv' + query}>Audit CSV</a>
-          <a className="button secondary" target="_blank" rel="noreferrer" href={'/api/exports/report' + query}>Print report ↗</a>
+          <a className="button secondary" target="_blank" rel="noreferrer" href={'/api/exports/report' + query}>Print report</a>
         </div>
       </div>
       {selectedIds.length > 0 && <div className="record-selection-actions">
@@ -254,7 +254,7 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
           <td><Status specimen={specimen} /></td><td>{formatTime(entryOf(specimen))}</td><td>{formatTime(exitOf(specimen))}</td>
           <td><button className="button text" disabled={!healthy || opening}
             aria-label={'History specimen ' + specimen.number + ' ' + stack.material_ref}
-            onClick={() => void selectSpecimen(stack, specimen.id)}>History →</button></td>
+            onClick={() => void selectSpecimen(stack, specimen.id)}>History</button></td>
         </tr>)}</tbody>
       </table></div>
       {!records.length && !loading && <div className="empty-inline"><p>No matching specimens.</p></div>}

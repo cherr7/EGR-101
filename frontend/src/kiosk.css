@@ -9,7 +9,6 @@
 .scanner-v2 .scanner-connection.online{color:#287048}
 .scanner-v2 .scanner-connection.offline{color:#b3312b}
 .scanner-v2 .scanner-network{justify-self:end;display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:0}
-.scanner-v2 .scanner-ip{color:#5b7167;font-size:14px;line-height:1.2;overflow-wrap:anywhere;text-align:right}
 .scanner-v2 .kiosk-middle{min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px 20px;overflow:hidden}
 .scanner-v2 .readiness-area{min-height:0;padding:24px;display:flex;flex-direction:column;align-items:stretch;gap:0;overflow:hidden;border-radius:13px}
 .scanner-v2 .scanner-result{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:12px 0}
@@ -166,7 +165,6 @@
 .scanner-v2,.scanner-v2 *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .scanner-v2 .recent-scroll,.scanner-v2 .expanded-activity-list,.scanner-v2 .inventory-list,.scanner-v2 .modal-body{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .scanner-v2 *{scrollbar-width:none}.scanner-v2 *::-webkit-scrollbar{display:none}
-.scanner-v2 .scanner-ip.missing{color:#b3312b;font-weight:600}
 /* Header: current room (changed in Station settings) */
 .scanner-v2 .scanner-room-current{justify-self:start;display:flex;align-items:baseline;gap:8px;min-height:54px;padding:10px 20px;border-radius:11px;border:1px solid #cadbd2;background:#f8fbf5;color:#244c49;font-size:22px;font-weight:750;line-height:1.5}
 .scanner-v2 .scanner-room-current small{font-size:15px;font-weight:500;opacity:.8}

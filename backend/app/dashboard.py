@@ -1,10 +1,4 @@
-"""Staff dashboard and batch tracking.
-
-A *batch* is one committed prep draft (one prep-sheet upload or manual entry). Each
-physical piece moves registered -> labeled -> in room -> ready -> finished. The
-dashboard aggregates that pipeline in a handful of set queries instead of calling
-stack_detail per stack, so it stays fast as years of finished work accumulate.
-"""
+"""Dashboard and batch tracking. Pieces move registered -> labeled -> in room -> ready -> finished."""
 from collections import defaultdict
 from datetime import timedelta
 

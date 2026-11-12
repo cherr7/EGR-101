@@ -1,10 +1,4 @@
-"""Which release this server is running.
-
-The build writes VERSION.json at the top of the code it packages (the Mac app's Resources/app,
-and the Pi station package carries the same string). Running from a git checkout instead, the
-version is read from git. Release tags look like v2026.11.12-1; between releases the version is
-the last tag plus the commit (v2026.11.12-1-3-gabc1234), or just the commit with no tag yet.
-"""
+"""The running release: VERSION.json from the build, else git, else 'unknown'."""
 from datetime import datetime, timezone
 from functools import lru_cache
 import json

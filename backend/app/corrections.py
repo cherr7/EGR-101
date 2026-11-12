@@ -11,7 +11,7 @@ from .services import (TARGET_EVENT, conditioning_period, current_session, iso, 
 def validate_timeline(db, specimen, now):
     sessions = sessions_for(db, specimen.id)
     if len(sessions) > 1:
-        raise HTTPException(409, "Each specimen has exactly one conditioning period. Correct the existing record instead.")
+        raise HTTPException(409, "Each specimen has one conditioning period. Edit the existing record.")
     previous = None
     for session in sessions:
         if session.entered_at > now or (session.exited_at and session.exited_at > now):

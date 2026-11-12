@@ -480,6 +480,16 @@ def pi_issues(add, name, device):
         add("info", area, f"{name} restarted {uptime // 60} min ago", "Expected after an update or power cut; otherwise check its power.")
 
 
+def last_update(state):
+    """What deploy/macos/update.py last did: updated, rolled back or refused, and when."""
+    try:
+        import json
+        facts = json.loads((state / "update-status.json").read_text())
+        return facts if isinstance(facts, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 def build_report(request, db):
     state = state_dir()
     storage = [volume for volume in [disk(state if state.exists() else Path.home(), "Mac storage")] if volume]
@@ -499,7 +509,7 @@ def build_report(request, db):
         "memory": memory(),
         "storage": storage,
         "power": power(),
-        "application": {**app_version.current(), "started_at": iso_from_epoch(STARTED), "state_folder": str(state),
+        "application": {**app_version.current(), "last_update": last_update(state), "started_at": iso_from_epoch(STARTED), "state_folder": str(state),
                         "logs_bytes": folder_bytes(state / "logs"), "pid": os.getpid()},
         "database": database_facts(db),
         "backups": backup_facts(request),

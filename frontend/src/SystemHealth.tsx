@@ -26,7 +26,7 @@ export type HealthReport = {
   server_time: string; overall: 'ok' | 'warning' | 'critical'; issues: Issue[]
   host: { hostname: string; ip: string | null; network_interface: string | null; model: string | null; chip: string | null; os: string; cores: number | null; load_average: number[] | null; booted_at: string | null; python: string }
   cpu: { percent: number | null }; memory: Memory | null; storage: Volume[]; power: Power | null
-  application: { version?: string; commit?: string | null; built_at?: string | null; started_at: string; state_folder: string; logs_bytes: number | null; pid: number }
+  application: { version?: string; commit?: string | null; built_at?: string | null; last_update?: { result: string; version: string; previous?: string; at: string; reason?: string } | null; started_at: string; state_folder: string; logs_bytes: number | null; pid: number }
   database: { connected: boolean; size_bytes?: number; version?: string; started_at?: string; connections?: number; specimens?: number; audit_events?: number }
   backups: { available: boolean; count?: number; total_bytes?: number; folder?: string; latest_at?: string | null; latest_verified?: boolean | null; enabled?: boolean; overdue?: boolean; last_error?: string | null; next_run_at?: string | null }
   stations: Station[]
@@ -203,6 +203,7 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
         <div className="card-heading compact"><div><h2>Tracker app &amp; database</h2></div></div>
         <div className="padded"><Facts rows={[
           ['Version', <>{application.version ?? 'Unknown'}{application.built_at && <small> · built {formatTime(application.built_at)}</small>}</>],
+          ['Last update', application.last_update ? <>{application.last_update.result === 'updated' ? `Updated to ${application.last_update.version}` : application.last_update.result === 'rolled back' ? <span className="badge warning">Update to {application.last_update.version} failed and was rolled back</span> : <span className="badge warning">Update to {application.last_update.version} refused</span>}<small> · {formatTime(application.last_update.at)}{application.last_update.reason ? ` · ${application.last_update.reason}` : ''}</small></> : 'None yet'],
           ['Server running for', <>{since(application.started_at, now)} <small>· since {formatTime(application.started_at)}</small></>],
           ['Database', database.connected ? <>Connected <small>· PostgreSQL {database.version} · {database.connections} connections</small></> : <span className="badge critical">Not reachable</span>],
           ['Database size', bytes(database.size_bytes)],

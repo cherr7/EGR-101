@@ -1,19 +1,17 @@
 import { test, expect } from '@playwright/test'
+import { tag, sheet, reserveId } from './helpers'
 import type { APIRequestContext } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
 
-async function stack(request: APIRequestContext, count = 5, project = 'DEMO-AUDIT-' + randomUUID().slice(0, 8), material = 'DEMO reviewed fabric') {
-  const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{
-    project_number: project, material_ref: material, test_code: 'D5034', preconditioning_code: 'AR', specimen_count: count,
-  }] } })).json()
+async function stack(request: APIRequestContext, count = 5, project = 'DEMO-AUDIT-' + tag(), material = 'DEMO reviewed fabric') {
+  const draft = await (await request.post('/api/prep-drafts', { data: sheet(project, material, 'D5034', 'AR', count) })).json()
   const commit = await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} })
   expect(commit.ok()).toBe(true)
   return (await request.get('/api/stacks/' + (await commit.json()).stack_ids[0])).json()
 }
-async function move(request: APIRequestContext, value: { specimens: { id: string }[] }, direction = 'IN', station = 'shared-door') {
+async function move(request: APIRequestContext, value: { specimens: { id: number; barcode_value: string }[] }, direction = 'IN', station = 'shared-door') {
   const current = await (await request.post('/api/lookup', { data: { code: value.specimens[0].barcode_value } })).json()
   const response = await request.post('/api/movements', { data: {
-    request_id: randomUUID(), station_id: station, code: value.specimens[0].barcode_value, direction, scope: 'stack', acknowledge_early: true, expected_version: current.version,
+    request_id: await reserveId(request, station), station_id: station, code: value.specimens[0].barcode_value, direction, scope: 'stack', acknowledge_early: true, expected_version: current.version,
   } })
   expect(response.ok()).toBe(true)
   const result = await response.json()
@@ -24,25 +22,24 @@ async function move(request: APIRequestContext, value: { specimens: { id: string
 test('prep edits survive reload and navigation without an extra Save step', async ({ page }) => {
   await page.goto('/#prep')
   await expect(page.getByText('Database connected', { exact: true })).toBeVisible()
-  await page.getByLabel('project_number row 1').fill('00073-DEMO-REVIEW')
-  await page.getByLabel('material_ref row 1').fill('DEMO material edit to preserve')
-  await page.getByLabel('specimen_count row 1').fill('17')
+  await page.getByRole('button', { name: '＋ New prep sheet' }).click()
+  await page.getByLabel('Oracle project').fill('00073-DEMO-REVIEW')
+  await page.getByLabel('Sample Number, row 1').fill('DEMO material edit to preserve')
+  await page.getByLabel('Specimens per sample for Conditioning, row 1').fill('17')
   await page.reload()
-  await expect(page.getByLabel('material_ref row 1')).toHaveValue('DEMO material edit to preserve')
+  await expect(page.getByLabel('Sample Number, row 1')).toHaveValue('DEMO material edit to preserve')
   await page.getByRole('tab', { name: 'Registered specimens', exact: true }).click()
   await page.getByRole('tab', { name: 'Prepare / import', exact: true }).click()
-  await expect(page.getByLabel('project_number row 1')).toHaveValue('00073-DEMO-REVIEW')
-  await expect(page.getByLabel('specimen_count row 1')).toHaveValue('17')
+  await expect(page.getByLabel('Oracle project')).toHaveValue('00073-DEMO-REVIEW')
+  await expect(page.getByLabel('Specimens per sample for Conditioning, row 1')).toHaveValue('17')
 })
 
-test('registration recovers a saved prep review after its PUT response is lost', async ({ page, request }) => {
-  const original = { project_number: 'DEMO-LOST-REVIEW-' + randomUUID().slice(0, 8), material_ref: 'DEMO original',
-    test_code: 'D5034', preconditioning_code: 'AR', specimen_count: 5 }
-  const draftResponse = await request.post('/api/prep-drafts', { data: { rows: [original] } })
+test('registration recovers a saved prep sheet after its PUT response is lost', async ({ page, request }) => {
+  const draftResponse = await request.post('/api/prep-drafts', { data: sheet('DEMO-LOST-REVIEW-' + tag(), 'DEMO original', 'D5034', 'AR', 5) })
   expect(draftResponse.ok()).toBe(true)
   const draft = await draftResponse.json()
   await page.goto('/#overview')
-  await page.evaluate(value => localStorage.setItem('fabric-tracker.prep-review.v3', JSON.stringify({ draft: value, rows: value.rows })), draft)
+  await page.evaluate(value => localStorage.setItem('fabric-tracker.prep-sheet.v4', JSON.stringify({ draft: value, headers: value.headers, rows: value.rows })), draft)
   let lost = false
   await page.route('**/api/prep-drafts/' + draft.id, async route => {
     if (route.request().method() === 'PUT' && !lost) {
@@ -53,12 +50,13 @@ test('registration recovers a saved prep review after its PUT response is lost',
     } else await route.continue()
   })
   await page.goto('/#prep')
-  await page.getByLabel('material_ref row 1').fill('DEMO reviewed and saved')
+  await page.getByLabel('Sample Number, row 1').fill('DEMO reviewed and saved')
   await page.getByRole('button', { name: 'Register & preview labels →', exact: true }).click()
   await expect(page.getByRole('alert')).toBeVisible()
   expect(lost).toBe(true)
   await page.reload()
-  await expect(page.getByLabel('material_ref row 1')).toHaveValue('DEMO reviewed and saved')
+  await expect(page.getByLabel('Sample Number, row 1')).toHaveValue('DEMO reviewed and saved')
+  // The lost save did land; registration finds the same values on the server and uses them.
   await page.getByRole('button', { name: 'Register & preview labels →', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Preview & print labels' })).toBeVisible()
   const registered = await (await request.get('/api/prep-drafts/' + draft.id)).json()
@@ -78,7 +76,7 @@ test('correction opens fresh values and rejects a second concurrent edit', async
   const edit = page.getByRole('button', { name: 'Edit transaction ' + out.event_id })
   await expect(edit).toBeVisible()
   await request.patch('/api/transactions/' + out.event_id, { data: {
-    specimen_ids: value.specimens.slice(0, 3).map((s: { id: string }) => s.id), note: 'Other staff saved this first',
+    specimen_ids: value.specimens.slice(0, 3).map((s: { id: number }) => s.id), note: 'Other staff saved this first',
   } })
   await edit.click()
   const dialog = page.getByRole('dialog', { name: 'Edit OUT transaction' })
@@ -86,7 +84,7 @@ test('correction opens fresh values and rejects a second concurrent edit', async
   await expect(dialog.getByLabel('Transaction notes')).toHaveValue('Other staff saved this first')
   await expect(dialog.getByLabel('Correction result preview')).toContainText('3 specimens')
   await request.patch('/api/transactions/' + out.event_id, { data: {
-    specimen_ids: value.specimens.slice(0, 2).map((s: { id: string }) => s.id),
+    specimen_ids: value.specimens.slice(0, 2).map((s: { id: number }) => s.id),
   } })
   await dialog.getByRole('button', { name: 'Save change', exact: true }).click()
   await expect(dialog.getByRole('alert')).toBeVisible()
@@ -145,7 +143,7 @@ test('specimen history opens only that piece and offers its existing label', asy
 })
 
 test('overview counts and remaining time follow the selected room and project', async ({ page, request }) => {
-  const project = 'DEMO-ROOM-' + randomUUID().slice(0, 8)
+  const project = 'DEMO-ROOM-' + tag()
   const shared = await stack(request, 2, project, 'DEMO Shared pieces')
   const ppe = await stack(request, 3, project, 'DEMO PPE pieces')
   await move(request, shared)
@@ -186,7 +184,7 @@ test('a committed restore with a lost response reconciles after reload without a
     expect(response.ok()).toBe(true)
     await route.abort('failed')
   })
-  await page.route(/\/api\/backups\/imports\/[0-9a-f]{32}$/, route =>
+  await page.route(/\/api\/backups\/imports\/[0-9]{8}T[0-9]{12}$/, route =>
     holdStatus ? route.abort('failed') : route.continue())
   await page.goto('/#backups')
   await page.getByLabel('Import backup archive').setInputFiles({
@@ -202,4 +200,33 @@ test('a committed restore with a lost response reconciles after reload without a
   await expect(page.getByText('Backup restored. Refresh the other pages to load the restored records.', { exact: true })).toBeVisible()
   expect(replacements).toBe(1)
   expect(await page.evaluate(() => localStorage.getItem('fabric-tracker.pending-restore.v1'))).toBeNull()
+})
+
+test('a printed stack can be corrected, extended and trimmed without changing its existing labels', async ({ page, request }) => {
+  const value = await stack(request, 3, 'DEMO-EDIT-' + tag(), 'DEMO wrong material')
+  const labels = value.specimens.map((s: { barcode_value: string }) => s.barcode_value)
+  await page.goto('/#records?stack=' + value.id)
+  const details = page.getByRole('dialog', { name: 'Stack & specimen details' })
+  await details.getByRole('button', { name: 'Edit stack', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit stack ' + value.id })
+  await editor.getByLabel('Stack material').fill('DEMO right material')
+  await editor.getByLabel('Stack treatment').fill('5L')
+  await editor.getByRole('button', { name: 'Save details', exact: true }).click()
+  await expect(editor.getByRole('status')).toContainText('Printed labels still scan to this stack')
+  await editor.getByLabel('Specimens to add').fill('2')
+  await expect(editor).toContainText('They become #04 to #05')
+  await editor.getByRole('button', { name: 'Add & print new labels', exact: true }).click()
+  const print = page.getByRole('dialog', { name: 'Preview & print labels' })
+  await expect(print.getByTestId('label-scope')).toHaveText('2 selected')        // only the new labels
+  await print.getByRole('button', { name: 'Close', exact: true }).click()
+  await editor.getByRole('checkbox', { name: 'Remove specimen 02' }).check()
+  await editor.getByRole('button', { name: 'Remove 1 selected', exact: true }).click()
+  await editor.getByRole('button', { name: 'Yes, remove', exact: true }).click()
+  await expect(editor).toContainText('Removed: #02')
+  await editor.getByRole('button', { name: 'Done', exact: true }).click()
+  const after = await (await request.get('/api/stacks/' + value.id)).json()
+  expect([after.material_ref, after.preconditioning_code]).toEqual(['DEMO right material', '5L'])
+  expect(after.specimens.map((s: { number: number }) => s.number)).toEqual([1, 3, 4, 5])
+  expect(after.specimens.slice(0, 2).map((s: { barcode_value: string }) => s.barcode_value)).toEqual([labels[0], labels[2]])
+  expect((await request.post('/api/lookup', { data: { code: labels[1] } })).status()).toBe(409)
 })

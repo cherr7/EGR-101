@@ -48,8 +48,8 @@ def db(client):
 @pytest.fixture
 def stack_factory(client):
     def make_stack(count=20, project="000000001234", material="COTTON-A", treatment="AR", test="ASTM-D5034"):
-        response = client.post("/api/prep-drafts", json={"rows": [{"project_number": project,
-            "material_ref": material, "test_code": test, "preconditioning_code": treatment, "specimen_count": count}]})
+        from helpers import prep_sheet
+        response = client.post("/api/prep-drafts", json=prep_sheet(project, material, test, treatment, count))
         assert response.status_code == 200, response.text
         draft = response.json()
         commit = client.post(f'/api/prep-drafts/{draft["id"]}/commit')

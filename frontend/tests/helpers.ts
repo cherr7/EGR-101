@@ -1,18 +1,34 @@
 import { expect } from '@playwright/test'
 import type { APIRequestContext, Page } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
 
-export async function createStack(request: APIRequestContext, count: number, material = 'DEMO touch-screen fabric', project = 'DEMO-' + randomUUID().slice(0, 8)) {
-  const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: material, test_code: 'D5034', preconditioning_code: '5L', specimen_count: count }] } })).json()
+let serial = 0
+/** A short label that is unique within a test run, for project names (no UUIDs). */
+export const tag = () => Date.now().toString(36).slice(-6) + (++serial).toString(36)
+
+/** A one-row prep sheet in the draft's layout: header once, then the sheet's columns. */
+export const sheet = (project: string, material: string, test: string, treatment: string, count: number) => ({
+  headers: { Preparation: { project_number: project } },
+  rows: [{ sheet: 'Preparation', test, conditions: treatment, conditioning: String(count), sample: material }],
+})
+
+/** Reserve one retry ID '<client>-<n>' the way the kiosk (station id) and label dialog ('print') do. */
+export async function reserveId(request: APIRequestContext, client = 'shared-door') {
+  const response = await request.post('/api/request-ids', { data: { client, count: 1 } })
+  expect(response.ok(), await response.text()).toBe(true)
+  return `${client}-${(await response.json()).first}`
+}
+
+export async function createStack(request: APIRequestContext, count: number, material = 'DEMO touch-screen fabric', project = 'DEMO-' + tag(), treatment = '5L') {
+  const draft = await (await request.post('/api/prep-drafts', { data: sheet(project, material, 'D5034', treatment, count) })).json()
   const result = await (await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} })).json()
   return (await request.get('/api/stacks/' + result.stack_ids[0])).json()
 }
 /** Records the whole stack IN at the Shared door through the API, outside the kiosk page. */
-export async function move(request: APIRequestContext, stack: { specimens: { id: string }[] }) {
-  const response = await request.post('/api/movements', { data: { request_id: randomUUID(), station_id: 'shared-door', code: stack.specimens[0].barcode_value, direction: 'IN', scope: 'stack' } })
+export async function move(request: APIRequestContext, stack: { specimens: { barcode_value: string }[] }, direction = 'IN', station = 'shared-door', extra: Record<string, unknown> = {}) {
+  const response = await request.post('/api/movements', { data: { request_id: await reserveId(request, station), station_id: station, code: stack.specimens[0].barcode_value, direction, scope: 'stack', ...extra } })
   expect(response.ok()).toBe(true)
   const result = await response.json()
-  expect(result.status).toBe('committed')
+  expect(result.status, result.message).toBe('committed')
   return result
 }
 export async function openKiosk(page: Page) {

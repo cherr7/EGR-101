@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, elapsed, entryOf, exitOf, formatTime, isReady, post, requestId, specimenNumber } from './api'
+import { api, ApiError, elapsed, entryOf, exitOf, formatTime, isReady, nextRequestId, post, reserveAhead, specimenNumber } from './api'
 import type { AuditEvent, Config, Movement, MovementResult, Stack } from './types'
 import { Modal } from './App'
 import { attachScanner } from './scannerCapture'
@@ -9,9 +9,10 @@ import './kiosk.css'
 import { KioskActivity, KioskInventory, KioskScannerSetup } from './KioskPanels'
 import type { ActivityItem } from './KioskPanels'
 
-const PENDING_KEY = 'fabric-tracker.pending-movement.v2', UNDO_KEY = 'fabric-tracker.pending-undo.v1', LEGACY_LAST_KEY = 'fabric-tracker.last-movement.v2'
+// v3: request IDs are '<station>-<n>' and event IDs are numbers; older pending entries are ignored.
+const PENDING_KEY = 'fabric-tracker.pending-movement.v3', UNDO_KEY = 'fabric-tracker.pending-undo.v2', LEGACY_LAST_KEY = 'fabric-tracker.last-movement.v2'
 function stored<T>(key: string): T | null { try { return JSON.parse(localStorage.getItem(key) || 'null') as T | null } catch { return null } }
-type Last = { event_id: string; count: number; version?: number }
+type Last = { event_id: number; count: number; version?: number }
 type PendingUndo = Last & { body: { expected_version?: number }; submitted_at: string }
 type Selection = { stack: Stack; code: string; direction: 'IN' | 'OUT'; ids: number[] }
 type Acknowledgment = { stack: Stack; request: Movement; result: MovementResult }
@@ -89,6 +90,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   useEffect(() => { if (config.stations.length && !config.stations.some(s => s.id === station)) setStation(config.stations.find(s => s.id === 'shared-door')?.id || config.stations[0].id) }, [config.stations, station])
   useEffect(() => { localStorage.setItem('fabric-tracker.station', station) }, [station]); useEffect(() => { localStorage.setItem('fabric-tracker.direction', direction) }, [direction])
   useEffect(() => { localStorage.setItem('fabric-tracker.scope', scope) }, [scope])
+  useEffect(() => { if (healthy) void reserveAhead(station) }, [healthy, station, events])
   const refreshEvents = useCallback(async () => {
     if (!currentRoomId) return
     const revision = activityRevision.current, fetchId = ++activityFetch.current
@@ -126,7 +128,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
           test_code: loaded?.test_code, preconditioning_code: loaded?.preconditioning_code,
         }
         activityRevision.current++
-        setEvents(old => [event, ...old.filter(item => item.id !== event.id)])
+        // This station's own change moved the stack's version; its older rows stay undoable without a refresh.
+        setEvents(old => [event, ...old.filter(item => item.id !== event.id).map(item => item.stack_id === event.stack_id ? { ...item, version: value.version } : item)])
         historyRef.current?.scrollTo({ top: 0 })
       }
       if (loaded && value.recorded_at) {
@@ -176,7 +179,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     if (!healthy || blocked || inFlight.current) return
     clearTimeout(greenTimer.current); feedbackRevision.current++
     inFlight.current = true; setBusy(true); setError(''); setUndoMessage(''); setResult(null); setGreen(false)
-    try { const stack = await post<Stack>('/lookup', { code }); if (!active.current) return; setDetail(stack); if (scope === 'specimen') { const scanned = stack.specimens.find(s => s.id === stack.scanned_specimen_id); const eligible = scanned && (direction === 'IN' ? !entryOf(scanned) : scanned.state === 'IN'); setSelection({ stack, code, direction, ids: eligible ? [scanned!.id] : [] }); return } inFlight.current = false; await submit({ request_id: requestId(), station_id: station, code, direction, scope: 'stack', expected_version: stack.version }, stack) }
+    try { const stack = await post<Stack>('/lookup', { code }); if (!active.current) return; setDetail(stack); if (scope === 'specimen') { const scanned = stack.specimens.find(s => s.id === stack.scanned_specimen_id); const eligible = scanned && (direction === 'IN' ? !entryOf(scanned) : scanned.state === 'IN'); setSelection({ stack, code, direction, ids: eligible ? [scanned!.id] : [] }); return } const id = await nextRequestId(station); if (!active.current) return; inFlight.current = false; await submit({ request_id: id, station_id: station, code, direction, scope: 'stack', expected_version: stack.version }, stack) }
     catch (err) { if (active.current) reportError((err as Error).message) } finally { inFlight.current = false; if (active.current) setBusy(false) }
   }
   const panelOnly = panel !== null && !transactionBlocked
@@ -202,11 +205,15 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
     globals.fabricScannerCaptureReady = true
     return () => { disposeKeyboard(); disposeBridge(); globals.fabricScannerCaptureReady = false; globals.fabricInputBridgeConnected = false; globals.fabricInputBridgeReady = false }
   }, [bridgeConfigured, reportError])
-  const finishUndo = useCallback(async (intent: PendingUndo) => {
+  const finishUndo = useCallback(async (intent: PendingUndo, version?: number) => {
     localStorage.removeItem(UNDO_KEY); localStorage.removeItem(LEGACY_LAST_KEY)
     clearTimeout(greenTimer.current); feedbackRevision.current++; activityRevision.current++
     setPendingUndo(null); setGreen(false); setResult(null); setError(''); setDetail(null); setUndoMessage(`${intent.count} specimens restored`)
-    setEvents(old => old.map(event => event.id === intent.event_id ? { ...event, undone: true, can_undo: false } : event))
+    setEvents(old => {
+      const stackId = old.find(event => event.id === intent.event_id)?.stack_id
+      return old.map(event => event.id === intent.event_id ? { ...event, undone: true, can_undo: false, version: version ?? event.version }
+        : version !== undefined && event.stack_id === stackId ? { ...event, version } : event)
+    })
     historyRef.current?.scrollTo({ top: 0 })
     void refreshEvents()
   }, [refreshEvents])
@@ -219,8 +226,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
       const status = await undoStatus(intent)
       if (status.undone) { await finishUndo(intent); return }
       if (status.can_undo === false) { reject('Undo was not applied: a specimen has intervening activity. Review the transaction log.'); return }
-      await post(`/transactions/${intent.event_id}/undo`, intent.body)
-      if (active.current) await finishUndo(intent)
+      const result = await post<{ version?: number }>(`/transactions/${intent.event_id}/undo`, intent.body)
+      if (active.current) await finishUndo(intent, result.version)
     } catch (err) {
       if (!active.current) return
       if (err instanceof ApiError && err.status < 500) {
@@ -354,7 +361,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         <div className="modal-actions"><span>{selection.ids.length} selected</span><button className="button secondary" onClick={() => setSelection(null)}>Cancel</button>
           <button className="button primary" disabled={!healthy || busy || !!pending || !selection.ids.length} onClick={() => {
             const chosen = selection
-            void submit({ request_id: requestId(), station_id: station, code: chosen.code, direction: chosen.direction, scope: 'selection', selected_specimen_ids: chosen.ids, expected_version: chosen.stack.version }, chosen.stack)
+            void nextRequestId(station).then(id => submit({ request_id: id, station_id: station, code: chosen.code, direction: chosen.direction, scope: 'selection', selected_specimen_ids: chosen.ids, expected_version: chosen.stack.version }, chosen.stack))
+              .catch(err => reportError((err as Error).message))
           }}>Record {selection.ids.length} {selection.direction}</button>
         </div>
       </Modal>}
@@ -366,7 +374,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
         <div className="modal-actions"><button className="button secondary" onClick={() => setAcknowledge(null)}>Keep in room</button>
           <button className="button danger" disabled={!healthy || busy || !!pending} onClick={() => {
             const chosen = acknowledge
-            void submit({ ...chosen.request, request_id: requestId(), acknowledge_early: true }, chosen.stack)
+            void nextRequestId(chosen.request.station_id).then(id => submit({ ...chosen.request, request_id: id, acknowledge_early: true }, chosen.stack))
+              .catch(err => reportError((err as Error).message))
           }}>Override & record OUT</button></div>
       </Modal>}
     </div>

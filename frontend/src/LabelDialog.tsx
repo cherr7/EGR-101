@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, apiBlob, ApiError, post, requestId } from './api'
+import { api, apiBlob, ApiError, nextRequestId, post } from './api'
 import type { PrinterInfo, PrintJob, Stack } from './types'
 import { ErrorNotice, Modal } from './App'
 
-const PRINT_KEY = 'fabric-tracker.pending-print.v2'
-const OLD_PRINT_KEY = 'fabric-tracker.pending-print.v1'
+const PRINT_KEY = 'fabric-tracker.pending-print.v3'   // v3: 'print-<n>' request IDs
 // The host sizes labels for Brother DK-1209 die-cut labels (62 x 29 mm) on the QL-810W.
 type LabelSelection = {
   stack_ids: number[]
@@ -18,15 +17,12 @@ type PrintIntent = LabelSelection & {
 function readPending(): PrintIntent | null {
   try {
     const value = localStorage.getItem(PRINT_KEY)
-    if (value) return JSON.parse(value) as PrintIntent
-    const legacy = localStorage.getItem(OLD_PRINT_KEY)
-    return legacy ? { request_id: legacy } as PrintIntent : null
+    return value ? JSON.parse(value) as PrintIntent : null
   } catch { return null }
 }
 function forgetPending(identifier?: string) {
   if (identifier && readPending()?.request_id !== identifier) return
   localStorage.removeItem(PRINT_KEY)
-  localStorage.removeItem(OLD_PRINT_KEY)
 }
 export default function LabelDialog({
   stacks, initialSelectedIds, healthy, onClose,
@@ -68,9 +64,8 @@ export default function LabelDialog({
     void api<PrinterInfo>('/printers').then(value => {
       if (current) {
         setPrinters(value)
-        // Prefer the label printer over a default office printer.
-        setQueue(previous => previous || value.configured_queue || value.printers.find(p => /QL/i.test(p.name))?.name ||
-          value.printers.find(p => p.is_default)?.name || '')
+        // Never fall back to the Mac's default printer: that is usually an office printer, not the label roll.
+        setQueue(previous => previous || value.configured_queue || value.printers.find(p => /\bQL|Brother/i.test(p.name))?.name || '')
       }
     }).catch(() => { if (current) setPrinters(null) })
     return () => { current = false }
@@ -152,12 +147,12 @@ export default function LabelDialog({
 
   async function print() {
     if (!healthy || printLock.current || readPending() || !valid || !queue || previewFingerprint !== fingerprint) return
-    const intent: PrintIntent = {
-      ...selection, request_id: requestId(), printer_queue: queue, copies,
-    }
-    try { localStorage.setItem(PRINT_KEY, JSON.stringify(intent)) }
-    catch { setError('This browser cannot preserve a pending print request. Enable local storage before printing.'); return }
     printLock.current = true
+    let intent: PrintIntent
+    try { intent = { ...selection, request_id: await nextRequestId('print'), printer_queue: queue, copies } }
+    catch (err) { printLock.current = false; setError('Could not reserve a print request number. ' + (err as Error).message); return }
+    try { localStorage.setItem(PRINT_KEY, JSON.stringify(intent)) }
+    catch { printLock.current = false; setError('This browser cannot preserve a pending print request. Enable local storage before printing.'); return }
     setPending(intent)
     setBusy(true)
     setError('')

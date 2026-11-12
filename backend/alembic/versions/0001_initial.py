@@ -1,7 +1,12 @@
-"""Initial conditioning tracker schema and append-only audit guard."""
+"""The whole schema in one step (see docs/DATABASE.md).
+
+The database is created from the models, then the audit table is made append-only.
+There is no upgrade path from the UUID-keyed schema: that data was test data, so a
+deployment from before sequential IDs starts from an empty database.
+"""
 from alembic import op
 from app.db import Base
-from app import models
+from app import models  # noqa: F401  (registers every table on Base.metadata)
 
 revision = "0001_initial"
 down_revision = None

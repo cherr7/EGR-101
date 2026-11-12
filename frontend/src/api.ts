@@ -46,9 +46,32 @@ export const specimenStatus = (s: import('./types').Specimen) => exitOf(s) ? 'Fi
 export const isReady = (s: import('./types').Specimen, now = serverNow()) => typeof s.ready === 'boolean' ? s.ready : s.state === 'IN' && !!s.due_at && Date.parse(s.due_at) <= now
 export const localTimeInput = (value: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value)).replace(' ', 'T')
 export function easternToUTC(value: string) { const target = Date.parse(`${value}Z`); let guess = target; for (let i = 0; i < 4; i++) { const represented = Date.parse(`${localTimeInput(new Date(guess).toISOString())}Z`); guess += target - represented } if (localTimeInput(new Date(guess).toISOString()).slice(0, value.length) !== value) throw new Error('This Eastern Time does not exist. Check the daylight-saving change.'); return new Date(guess).toISOString() }
-export function requestId() {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  const bytes = crypto.getRandomValues(new Uint8Array(16)); bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+const REQUEST_IDS_KEY = 'fabric-tracker.request-ids.v2'
+type RequestBlock = { next: number; last: number }
+type Pools = Record<string, RequestBlock[]>
+const readPools = (): Pools => { try { return JSON.parse(localStorage.getItem(REQUEST_IDS_KEY) || '{}') as Pools } catch { return {} } }
+const remaining = (blocks: RequestBlock[] = []) => blocks.reduce((sum, b) => sum + Math.max(0, b.last - b.next + 1), 0)
+async function reserve(client: string) {
+  const reserved = await post<{ first: number; last: number }>('/request-ids', { client, count: client === 'print' ? 5 : 50 })
+  const pools = readPools()
+  pools[client] = [...(pools[client] || []).filter(b => b.next <= b.last), { next: reserved.first, last: reserved.last }]
+  localStorage.setItem(REQUEST_IDS_KEY, JSON.stringify(pools))
+}
+/** Retry IDs are '<client>-<n>': the kiosk station id or 'print', then a number the server
+ *  reserved for this browser. A request keeps its ID through every retry; the server refuses
+ *  a reused ID with different details, so a duplicate can never record twice. A lost
+ *  reservation response only skips numbers. */
+export async function nextRequestId(client: string): Promise<string> {
+  if (!remaining(readPools()[client])) await reserve(client)
+  const pools = readPools()
+  const block = (pools[client] || []).find(b => b.next <= b.last)
+  if (!block) throw new Error('No request number available. Check the connection and try again.')
+  const value = block.next
+  block.next += 1
+  localStorage.setItem(REQUEST_IDS_KEY, JSON.stringify(pools))   // claimed before it is used
+  return `${client}-${value}`
+}
+/** Top up a station's numbers in the background so a scan never waits for a reservation. */
+export async function reserveAhead(client: string) {
+  try { if (remaining(readPools()[client]) < 10) await reserve(client) } catch { /* The next scan reserves its own block. */ }
 }

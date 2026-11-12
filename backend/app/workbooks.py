@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import PrepDraft
+from .prepsheet import conditioning_count
 from .services import draft_dict
 
 router = APIRouter(prefix="/api", tags=["Workbook intake"])
@@ -50,30 +51,6 @@ def _text(value, number_format: str = "") -> str:
 
 def _key(value) -> str:
     return re.sub(r"[^a-z0-9]+", "", _text(value).lower())
-
-
-def conditioning_count(value) -> tuple[int | None, list[dict]]:
-    """Only interpret unambiguous piece counts, retaining named subgroups."""
-    source = _text(value)
-    if re.fullmatch(r"\d+(?:\.0+)?", source):
-        count = int(float(source))
-        return (count if 1 <= count <= 500 else None), []
-    # Real prep templates also write a quantity followed by panel dimensions,
-    # e.g. '6 15x15'. Dimensions describe each piece; they are not multipliers.
-    panel = re.fullmatch(r'(\d+)\s+\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?(?:\s*(?:in|inch|inches|cm|mm|["″]))?', source, re.I)
-    if panel:
-        count = int(panel.group(1))
-        return (count if 1 <= count <= 500 else None), []
-    # These are physical subdivisions, not a sequence such as '24 hours'.
-    pieces = re.split(r"\s*(?:,|\+|;|\band\b)\s*", source, flags=re.I)
-    groups = []
-    for piece in pieces:
-        match = re.fullmatch(r"(\d+)\s*(Warp|Fill|Contact|Spaced|Length|Width)\s*", piece, re.I)
-        if not match:
-            return None, []
-        groups.append({"count": int(match.group(1)), "label": match.group(2)})
-    total = sum(item["count"] for item in groups)
-    return (total if 1 <= total <= 500 else None), groups
 
 
 class SheetReader:
@@ -107,13 +84,12 @@ class SheetReader:
         return result
 
 
-def _candidate(filename, sheet, cells, *, project="", material="", test="", treatment="",
-               count=None, metadata=None, row_warnings=None):
-    details = {"source": {"filename": filename, "sheet": sheet, "cells": cells},
-               "warnings": row_warnings or [], **(metadata or {})}
-    return {"project_number": project or None, "material_ref": material or None,
-            "test_code": test or None, "preconditioning_code": treatment or None,
-            "specimen_count": count, "metadata": details}
+def _row(sheet, *, test="", tested_count="", conditions="", conditioning="", sample="", sample_type="",
+         cells=None, metadata=None, row_warnings=None):
+    """One draft row per prep sheet row, columns in the sheet's order."""
+    return {"sheet": sheet, "test": test, "tested_count": tested_count, "conditions": conditions,
+            "conditioning": conditioning, "sample": sample, "sample_type": sample_type,
+            "metadata": {"cells": cells or {}, "warnings": row_warnings or [], **(metadata or {})}}
 
 
 def _prep_header(reader):
@@ -125,64 +101,50 @@ def _prep_header(reader):
 
 
 def _prep_rows(reader, filename, header):
-    rows = []
-    # These fixed context cells belong to the supplied engineering templates.
+    # The values above the table (LabWare #, Oracle project, Standard, Regime) are stated once per sheet.
     context_row = header - 1
-    labware = reader.string(context_row, 3)
-    oracle = reader.string(context_row, 4)
-    standard = reader.string(context_row, 7)
-    regime = reader.string(context_row, 8)
+    name = reader.sheet.title
+    sheet_header = {"project_number": reader.string(context_row, 4), "labware_number": reader.string(context_row, 3),
+                    "standard": reader.string(context_row, 7), "regime": reader.string(context_row, 8)}
+    header_cells = {"labware": reader.source(context_row, 3), "oracle_project": reader.source(context_row, 4),
+                    "standard": reader.source(context_row, 7), "regime": reader.source(context_row, 8)}
     sample_number_column = _key(reader.value(header, 5)) == "samplenumber"
-    previous_test = ""
+    rows = []
     for row in range(header + 1, min(reader.sheet.max_row, 5000) + 1):
-        test = reader.string(row, 1)
-        if test:
-            previous_test = test
+        origin = reader.origins.get((row, 1), (row, 1))
+        test = reader.string(row, 1) if origin == (row, 1) else ""   # lower half of a merged Test cell reads blank, as printed
         treatment, raw_count = reader.string(row, 3), reader.value(row, 4)
         count_source = reader.source(row, 4)
         uncached_count = "formula" in count_source and not count_source.get("cached")
         if not treatment or (raw_count is None and not uncached_count):
             continue
-        count, groups = conditioning_count(raw_count)
+        count, _ = conditioning_count(raw_count)
         # Narrative rows ('Notes', schedules, references) are not specimens.
         if count is None and not uncached_count and not re.search(r"\d", _text(raw_count)):
             continue
-        test = test or previous_test
-        if not test:
-            continue
-        material = reader.string(row, 5) if sample_number_column else ""
-        sample_count, _ = conditioning_count(reader.value(row, 5)) if not sample_number_column else (1 if material else None, [])
-        tested_count = reader.value(row, 2)
-        active = bool(sample_count and sample_count > 0)
-        row_warnings = [] if material else ["Enter the actual material/sample identifier; Sample Type is not a material identifier."]
-        if not (oracle or labware):
-            row_warnings.append("Project identifier is blank in the prep workbook.")
-        if not active:
-            row_warnings.append("Template row: confirm this test/treatment is required before registering labels.")
+        row_warnings, metadata = [], {"import_kind": "ppe_prep", "excel_row": row}
+        if sample_number_column:
+            sample = reader.string(row, 5)
+        else:
+            sample = ""
+            sample_count, _ = conditioning_count(reader.value(row, 5))
+            if sample_count:
+                metadata["sample_count"] = sample_count
+                row_warnings.append(f"The sheet gives a count of {sample_count} sample(s), not their numbers. Enter the sample numbers.")
+            else:
+                row_warnings.append("Template row: delete it unless this test/treatment is needed.")
         if count is None:
-            row_warnings.append("Conditioning count is ambiguous or uncached; enter the number of physical pieces.")
-        if sample_count and sample_count > 50:
-            row_warnings.append("The sample count is unusually large; split into actual material groups during review.")
-        source = {name: reader.source(row, col) for name, col in
-                  (("test", 1), ("tested_count", 2), ("treatment", 3),
-                   ("conditioning_count", 4), ("sample_count", 5), ("sample_type", 6))}
-        source["labware"] = reader.source(context_row, 3)
-        source["oracle_project"] = reader.source(context_row, 4)
-        source["standard"] = reader.source(context_row, 7)
-        source["project_regime"] = reader.source(context_row, 8)
-        metadata = {"import_kind": "ppe_prep", "labware_number": labware,
-                    "oracle_project_number": oracle, "standard": standard,
-                    "project_regime": regime, "raw_treatment": treatment,
-                    "sample_type": reader.string(row, 6), "raw_tested_count": _text(tested_count),
-                    "raw_conditioning_count": _text(raw_count), "sample_count": sample_count,
-                    "piece_groups": groups, "template_row": not active}
-        copies = sample_count if sample_count and sample_count <= 50 else 1
-        for sample_index in range(1, copies + 1):
-            rows.append(_candidate(filename, reader.sheet.title, source, project=oracle or labware,
-                                   material=material, test=test, treatment=treatment, count=count,
-                                   metadata={**metadata, "sample_index": sample_index},
-                                   row_warnings=list(row_warnings)))
-    return rows
+            row_warnings.append("Pieces per sample is ambiguous or an uncached formula; enter the number of physical pieces.")
+        cells = {column: reader.source(row, col) for column, col in
+                 (("test", 1), ("tested_count", 2), ("conditions", 3), ("conditioning", 4), ("sample", 5), ("sample_type", 6))}
+        cells.update(header_cells)
+        rows.append(_row(name, test=test, tested_count=_text(reader.value(row, 2)), conditions=treatment,
+                         conditioning=_text(raw_count) if not uncached_count else "", sample=sample,
+                         sample_type=reader.string(row, 6), cells=cells, metadata=metadata, row_warnings=row_warnings))
+    if not (sheet_header["project_number"] or sheet_header["labware_number"]):
+        for item in rows[:1]:
+            item["metadata"]["warnings"].append("The sheet has no Oracle project or LabWare #. Enter one above the table.")
+    return {name: sheet_header}, rows
 
 
 def _board_header(reader):
@@ -194,47 +156,44 @@ def _board_header(reader):
     return None
 
 
+def _grouped(name, project, headers, labware=""):
+    sheet = name + " · " + (project or labware or "no project")
+    headers.setdefault(sheet, {"project_number": project, "labware_number": labware, "standard": "", "regime": ""})
+    return sheet
+
+
 def _board_rows(reader, filename, header):
-    rows = []
+    headers, rows = {}, []
     invalid = {"", "na", "n/a", "none", "-", "0"}
     for row in range(header + 1, min(reader.sheet.max_row, 5000) + 1):
         labware, project, test = (reader.string(row, col) for col in (3, 4, 9))
         if not test or not (labware or project):
             continue
-        raw_count = reader.string(row, 10)
         ar, laundered = reader.string(row, 11), reader.string(row, 13)
         treatments = []
         if ar.lower() not in invalid:
-            treatments.append(("AR", "K"))
+            treatments.append(("AR", 11))
         if laundered.lower() not in invalid:
-            # Retain the exact source value, including compound wash notes.
-            treatments.append((laundered, "M"))
+            treatments.append((laundered, 13))   # exact source value, including compound wash notes
         if not treatments:
-            treatments = [("", "M")]
-        row_warnings = ["Prep board quantity can aggregate materials, treatments, or tests. Enter a physical stack count.",
-                        "Enter the actual material/sample identifier.",
-                        "Existing board timestamps are source notes and are not imported as conditioning movements."]
-        for treatment, treatment_col in treatments:
-            cells = {"labware": reader.source(row, 3), "oracle_project": reader.source(row, 4),
-                     "test": reader.source(row, 9), "aggregate_count": reader.source(row, 10),
-                     "treatment": reader.source(row, 11 if treatment_col == "K" else 13)}
-            rows.append(_candidate(filename, reader.sheet.title, cells, project=project or labware,
-                                   test=test, treatment=treatment,
-                                   metadata={"import_kind": "ppe_board", "labware_number": labware,
-                                             "oracle_project_number": project,
-                                             "standard": reader.string(row, 7),
-                                             "project_regime": reader.string(row, 8),
-                                             "raw_aggregate_count": raw_count,
-                                             "raw_treatment": treatment,
-                                             "source_notes": reader.string(row, 17),
-                                             "source_box": reader.string(row, 15)},
-                                   row_warnings=list(row_warnings)))
-    return rows
+            treatments = [("", 13)]
+        sheet = _grouped(reader.sheet.title, project, headers, labware)
+        headers[sheet].update(standard=reader.string(row, 7), regime=reader.string(row, 8))
+        for treatment, col in treatments:
+            cells = {"labware": reader.source(row, 3), "oracle_project": reader.source(row, 4), "test": reader.source(row, 9),
+                     "tested_count": reader.source(row, 10), "conditions": reader.source(row, col)}
+            rows.append(_row(sheet, test=test, tested_count=reader.string(row, 10), conditions=treatment, cells=cells,
+                             metadata={"import_kind": "ppe_board", "excel_row": row, "source_notes": reader.string(row, 17),
+                                       "source_box": reader.string(row, 15)},
+                             row_warnings=["A prep board quantity can cover several materials, treatments or tests. Enter pieces per sample.",
+                                           "Enter the sample number.",
+                                           "Board timestamps are notes only; they are not imported as movements."]))
+    return headers, rows
 
 
 ALIASES = {
     "project_number": {"projectnumber", "project", "oracleproject", "oracle"},
-    "material_ref": {"materialref", "material", "sampleid", "materialid", "sampleidentifier"},
+    "material_ref": {"materialref", "material", "sampleid", "materialid", "sampleidentifier", "samplenumber"},
     "test_code": {"testcode", "test", "testname"},
     "preconditioning_code": {"preconditioningcode", "treatment", "condition", "conditions", "laundering"},
     "specimen_count": {"specimencount", "conditioningcount", "piecesforconditioning", "quantity"},
@@ -255,23 +214,17 @@ def _table_header(reader):
 
 
 def _table_rows(reader, filename, header, mapping):
-    rows = []
+    headers, rows = {}, []
     for row in range(header + 1, min(reader.sheet.max_row, 5000) + 1):
         values = {name: reader.string(row, col) for name, col in mapping.items()}
         if not any(values.values()):
             continue
-        count, groups = conditioning_count(values["specimen_count"])
-        notes = ["Enter a whole number of physical specimens."] if count is None else []
-        for name in ("project_number", "material_ref", "test_code", "preconditioning_code"):
-            if not values[name]:
-                notes.append("Missing " + name.replace("_", " ") + ".")
+        sheet = _grouped(reader.sheet.title, values["project_number"], headers)
         cells = {name: reader.source(row, col) for name, col in mapping.items()}
-        rows.append(_candidate(filename, reader.sheet.title, cells,
-                               project=values["project_number"], material=values["material_ref"],
-                               test=values["test_code"], treatment=values["preconditioning_code"],
-                               count=count, metadata={"import_kind": "table", "piece_groups": groups},
-                               row_warnings=notes))
-    return rows
+        rows.append(_row(sheet, test=values["test_code"], conditions=values["preconditioning_code"],
+                         conditioning=values["specimen_count"], sample=values["material_ref"], cells=cells,
+                         metadata={"import_kind": "table", "excel_row": row}))
+    return headers, rows
 
 
 def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | None = None) -> dict:
@@ -310,7 +263,7 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
         raise HTTPException(422, "The workbook could not be read. Check that it opens in Excel and is not encrypted.") from failure
     if sheet_names and any(name not in values.sheetnames for name in sheet_names):
         raise HTTPException(422, "A selected worksheet is not present in this workbook.")
-    all_candidates, sheets = {}, []
+    all_candidates, all_headers, sheets = {}, {}, []
     for sheet in values:
         if _key(sheet.title) in {"formulamap", "namingconventions", "zipperstrengthcalculations"}:
             sheets.append({"name": sheet.title, "kind": "reference", "candidate_count": 0,
@@ -322,24 +275,24 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
             continue
         reader = SheetReader(sheet, formulas[sheet.title])
         prep, board, table = _prep_header(reader), _board_header(reader), _table_header(reader)
-        kind, candidates = "reference", []
+        kind, found, candidates = "reference", {}, []
         if prep:
-            kind, candidates = "ppe_prep", _prep_rows(reader, filename, prep)
+            kind, (found, candidates) = "ppe_prep", _prep_rows(reader, filename, prep)
         elif board:
-            kind, candidates = "ppe_board", _board_rows(reader, filename, board)
+            kind, (found, candidates) = "ppe_board", _board_rows(reader, filename, board)
         elif table:
-            kind, candidates = "table", _table_rows(reader, filename, *table)
+            kind, (found, candidates) = "table", _table_rows(reader, filename, *table)
         all_candidates[sheet.title] = candidates
+        all_headers[sheet.title] = found
         sheets.append({"name": sheet.title, "kind": kind, "candidate_count": len(candidates),
                        "selected": False, "warnings": [] if candidates else ["No specimen preparation rows detected."]})
     recognized = [item["name"] for item in sheets if item["candidate_count"]]
     selected = sheet_names if sheet_names is not None else recognized[:1]
     rows = [row for name in selected for row in all_candidates.get(name, [])]
-    warnings = ["Review physical material groups and conditioning counts before registration. No scan times were imported."]
+    headers = {key: value for name in selected for key, value in all_headers.get(name, {}).items()}
+    warnings = ["Check each row against the paper sheet before registering. No scan times were imported."]
     if len(recognized) > 1 and sheet_names is None:
         warnings.append("Only the first preparation worksheet is selected. Choose the needed worksheets before importing other groups.")
-    if any(row["metadata"].get("template_row") for row in rows):
-        warnings.append("This workbook contains template rows. Remove unneeded tests and fill the project/material before registering.")
     if not rows:
         warnings.append("No importable preparation rows were found. Training matrices and result worksheets are reference documents, not specimen orders.")
     if len(rows) > MAX_ROWS:
@@ -350,12 +303,11 @@ def inspect_workbook(content: bytes, filename: str, sheet_names: list[str] | Non
     fingerprint = hashlib.sha256(json.dumps([sha256, selected], sort_keys=True).encode()).hexdigest()
     values.close()
     formulas.close()
-    return {"rows": rows, "source": {"filename": filename, "sha256": sha256,
-                                       "format": Path(filename).suffix.lower().lstrip("."),
-                                       "selected_sheets": selected, "import_fingerprint": fingerprint},
-            "sheets": sheets, "warnings": warnings, "review_data": {"requires_review": True,
-                         "grouping": "One material/sample, test, and exact treatment per physical stack.",
-                         "formulas_executed": False, "macros_executed": False}}
+    return {"headers": headers, "rows": rows,
+            "source": {"filename": filename, "sha256": sha256, "format": Path(filename).suffix.lower().lstrip("."),
+                       "selected_sheets": selected, "import_fingerprint": fingerprint,
+                       "formulas_executed": False, "macros_executed": False},
+            "sheets": sheets, "warnings": warnings}
 
 
 @router.post("/prep-drafts/workbook")

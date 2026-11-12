@@ -1,6 +1,5 @@
 import io
 import subprocess
-from uuid import uuid4
 
 from fastapi import HTTPException
 from PIL import Image
@@ -10,6 +9,7 @@ import zxingcpp
 
 from app.barcodes import MAX_ID, code_id, datamatrix_image, label_code
 from app import printing
+from helpers import prep_sheet, request_id
 
 
 def install_fake_cups(monkeypatch, *, timeout=False):
@@ -99,14 +99,14 @@ def test_label_preview_and_pdf_codes_are_registered_ids(client, stack_factory):
 def test_print_submission_idempotence_and_audit(client, stack_factory, monkeypatch):
     stack = stack_factory(count=2)
     calls = install_fake_cups(monkeypatch)
-    body = {"request_id": str(uuid4()), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
+    body = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
     response = client.post("/api/print-jobs", json=body)
     assert response.is_success, response.text
     assert response.json()["status"] == "submitted"
     assert response.json()["cups_job_id"] == "Brother_QL-42,Brother_QL-42"   # one CUPS job per label
     assert response.json()["physical_print_confirmed"] is False
     retry = client.post("/api/print-jobs", json=body)
-    assert retry.is_success and retry.json()["id"] == body["request_id"]
+    assert retry.is_success and retry.json()["request_id"] == body["request_id"]
     assert len([call for call in calls if call[0].endswith("/lp")]) == 2
     status = client.get(f'/api/print-jobs/{body["request_id"]}')
     assert status.json()["status"] == "submitted"
@@ -118,10 +118,10 @@ def test_print_submission_idempotence_and_audit(client, stack_factory, monkeypat
     assert all(specimen["ENTRY"] is None for specimen in after["specimens"])
 
 
-def test_print_timeout_is_unknown_and_same_uuid_never_resubmits(client, stack_factory, monkeypatch):
+def test_print_timeout_is_unknown_and_same_request_id_never_resubmits(client, stack_factory, monkeypatch):
     stack = stack_factory(count=1)
     calls = install_fake_cups(monkeypatch, timeout=True)
-    body = {"request_id": str(uuid4()), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
+    body = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
     first = client.post("/api/print-jobs", json=body)
     assert first.is_success, first.text
     assert first.json()["status"] == "unknown"
@@ -133,7 +133,7 @@ def test_print_timeout_is_unknown_and_same_uuid_never_resubmits(client, stack_fa
 def test_print_requires_available_explicit_queue_and_rejects_command_options(client, stack_factory, monkeypatch):
     stack = stack_factory(count=1)
     calls = install_fake_cups(monkeypatch)
-    base = {"request_id": str(uuid4()), "stack_ids": [stack["id"]]}
+    base = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]]}
     assert client.post("/api/print-jobs", json=base).status_code == 422
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "-h attacker"}).status_code == 422
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "Unknown"}).status_code == 409

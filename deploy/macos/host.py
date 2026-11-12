@@ -16,6 +16,10 @@ import tempfile
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+# PostgreSQL refuses to start without a valid locale ("postmaster became multithreaded during
+# startup"), and Finder, launchd and some shells start processes with none set.
+if not (os.environ.get("LC_ALL") or os.environ.get("LANG")):
+    os.environ["LC_ALL"] = "en_US.UTF-8"
 ROOT = Path(os.environ.get("FABRIC_APP_ROOT", Path(__file__).resolve().parents[2]))
 DEFAULT_STATE = Path.home() / "Library/Application Support/Fabric Conditioning"
 SYSTEM_STATE = Path("/Library/Application Support/Fabric Conditioning")

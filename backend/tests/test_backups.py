@@ -1,13 +1,13 @@
 import io
 import json
 import zipfile
-from uuid import uuid4
+from helpers import prep_sheet, request_id
 
 
 def test_snapshot_download_and_checked_staged_restore(client, stack_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FABRIC_STATE_DIR", str(tmp_path))
     stack = stack_factory(count=3)
-    payload = {"request_id": str(uuid4()), "station_id": "shared-door",
+    payload = {"request_id": request_id(client), "station_id": "shared-door",
                "code": stack["specimens"][0]["barcode_value"],
                "direction": "IN", "scope": "stack"}
     moved = client.post("/api/movements", json=payload)
@@ -20,7 +20,7 @@ def test_snapshot_download_and_checked_staged_restore(client, stack_factory, mon
     assert downloaded.status_code == 200
     with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
         assert set(archive.namelist()) == {"manifest.json", "snapshot.json"}
-    payload.update(request_id=str(uuid4()), direction="OUT", acknowledge_early=True)
+    payload.update(request_id=request_id(client), direction="OUT", acknowledge_early=True)
     assert client.post("/api/movements", json=payload).status_code == 200
     upload = client.post("/api/backups/import", files={"file": ("checkpoint.zip", downloaded.content, "application/zip")})
     assert upload.status_code == 200, upload.text
@@ -52,7 +52,7 @@ def test_snapshot_manifest_and_unknown_entries_rejected(client, monkeypatch, tmp
     monkeypatch.setenv("FABRIC_STATE_DIR", str(tmp_path))
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w") as archive:
-        archive.writestr("manifest.json", json.dumps({"format": "fabric-conditioning", "version": 1, "sha256": "incorrect"}))
+        archive.writestr("manifest.json", json.dumps({"format": "fabric-conditioning", "version": 2, "sha256": "incorrect"}))
         archive.writestr("snapshot.json", '{"tables":{}}')
     response = client.post("/api/backups/import", files={"file": ("fake.zip", data.getvalue())})
     assert response.status_code == 422

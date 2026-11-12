@@ -167,3 +167,7 @@
 .scanner-v2 .recent-scroll,.scanner-v2 .expanded-activity-list,.scanner-v2 .inventory-list,.scanner-v2 .modal-body{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .scanner-v2 *{scrollbar-width:none}.scanner-v2 *::-webkit-scrollbar{display:none}
 .scanner-v2 .scanner-ip.missing{color:#b3312b;font-weight:600}
+/* Touch targets: every kiosk control, popups included, is at least 48 x 48 px (tests/kiosk-buttons.spec.ts). */
+.scanner-v2 .modal .button,.scanner-v2 .scanner-setup-strip .button{min-height:48px;min-width:48px;padding-left:18px;padding-right:18px;font-size:16px}
+.scanner-v2 .modal>header .icon-button{min-width:52px;min-height:52px;font-size:30px;border-radius:8px}
+.scanner-v2 .modal>header .icon-button:active{background:#eef4ee}

@@ -1,14 +1,17 @@
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
-from pydantic import ValidationError
-from sqlalchemy import select, or_
+from sqlalchemy import BigInteger, select, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert
 
 from .barcodes import code_id, label_code
-from .models import (AuditEvent, ConditioningSession, Material, PrepDraft, Project,
-                     Room, Specimen, Stack, Station, Treatment, utcnow, uuid_str)
+from .models import (AuditEvent, ConditioningSession, Material, Project, RequestCounter,
+                     Room, Specimen, Stack, Station, Treatment, utcnow)
+from .prepsheet import resolve as resolve_prep
+
+# The event an undo or modification refers to; matches the events_by_target index.
+TARGET_EVENT = AuditEvent.payload["event_id"].astext.cast(BigInteger)
 
 
 def iso(value):
@@ -47,7 +50,7 @@ def conditioning_period(db, specimen_id):
 
 def transaction_effective(db, event):
     amendment = db.scalar(select(AuditEvent).where(
-        AuditEvent.kind == "modification", AuditEvent.payload["event_id"].astext == event.id
+        AuditEvent.kind == "modification", TARGET_EVENT == event.id
     ).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id.desc()).limit(1))
     effective = dict(amendment.payload["effective_movement"]) if amendment else {
         "specimen_ids": event.specimen_ids, "occurred_at": event.payload.get("occurred_at", iso(event.recorded_at)),
@@ -91,7 +94,7 @@ def snapshot(db, specimens):
 
 def event_dict(db, event):
     undone = db.scalar(select(AuditEvent.id).where(
-        AuditEvent.kind == "undo", AuditEvent.payload["event_id"].astext == event.id)) is not None
+        AuditEvent.kind == "undo", TARGET_EVENT == event.id)) is not None
     effective = transaction_effective(db, event) if event.kind == "movement" else None
     affected_ids = list(effective["specimen_ids"]) if effective else event.specimen_ids
     latest_id = effective["latest_event_id"] if effective else event.id
@@ -138,7 +141,10 @@ def specimen_time_log(db, specimen_id):
 def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
     now = utcnow()
     specimens = []
-    rows = list(db.scalars(select(Specimen).where(Specimen.stack_id == stack.id).order_by(Specimen.number)))
+    members = list(db.scalars(select(Specimen).where(Specimen.stack_id == stack.id).order_by(Specimen.number)))
+    rows = [specimen for specimen in members if specimen.removed_at is None]
+    removed = [{"id": specimen.id, "number": specimen.number, "barcode_value": label_code(specimen.id),
+                "removed_at": iso(specimen.removed_at)} for specimen in members if specimen.removed_at is not None]
     by_specimen = {specimen.id: [] for specimen in rows}
     for session in db.scalars(select(ConditioningSession).options(selectinload(ConditioningSession.room)).where(
             ConditioningSession.specimen_id.in_(by_specimen), ConditioningSession.voided.is_(False))
@@ -167,7 +173,8 @@ def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
               "preconditioning_code": stack.preconditioning_code, "version": stack.version,
               "created_at": iso(stack.created_at), "is_demo": stack.is_demo,
               "specimen_count": len(specimens), "status": status,
-              "specimens": specimens, "scanned_specimen_id": scanned_specimen_id,
+              "specimens": specimens, "removed_specimens": removed, "scanned_specimen_id": scanned_specimen_id,
+              "next_number": max((specimen.number for specimen in members), default=0) + 1,
               "metadata": stack.source_metadata, "server_time": iso(now),
               "inside_count": sum(p["state"] == "IN" for p in specimens),
               "ready_count": sum(p["ready"] for p in specimens),
@@ -228,41 +235,73 @@ def resolve_code(db, code):
     specimen = db.get(Specimen, identifier)
     if specimen is None:
         raise HTTPException(404, "This label is not registered.")
+    if specimen.removed_at is not None:
+        raise HTTPException(409, f"Specimen {specimen.number:02d} was removed from stack {specimen.stack_id}. Set it aside.")
     return db.get(Stack, specimen.stack_id), specimen
 
 
+def request_clients(db):
+    return {"print", *db.scalars(select(Station.id))}
+
+
+def reserve_request_numbers(db, client, count):
+    """Hand out the next block of retry numbers for a client; a lost response only skips numbers."""
+    if client not in request_clients(db):
+        raise HTTPException(422, "Unknown request client. Use a station id or 'print'.")
+    db.execute(insert(RequestCounter).values(client=client, last_issued=0).on_conflict_do_nothing())
+    counter = db.scalar(select(RequestCounter).where(RequestCounter.client == client).with_for_update())
+    first = counter.last_issued + 1
+    counter.last_issued += count
+    db.flush()
+    return {"client": client, "first": first, "last": counter.last_issued}
+
+
+def check_request_number(db, client, number):
+    issued = db.scalar(select(RequestCounter.last_issued).where(RequestCounter.client == client))
+    if issued is None or number > issued:
+        raise HTTPException(422, f"Request {client}-{number} was never issued. Reserve request IDs from /api/request-ids.")
+
+
 def draft_dict(draft):
-    return {"id": draft.id, "rows": draft.rows, "committed": draft.committed, "stack_ids": draft.stack_ids,
-            "source": draft.source, "warnings": draft.warnings, "sheets": draft.sheets, "review_data": draft.review_data}
+    stacks, problems = resolve_prep(draft.headers, draft.rows)
+    return {"id": draft.id, "headers": draft.headers, "rows": draft.rows, "revision": draft.revision,
+            "committed": draft.committed, "stack_ids": draft.stack_ids, "source": draft.source,
+            "warnings": draft.warnings, "sheets": draft.sheets, "problems": problems,
+            "stack_count": len(stacks), "specimen_count": sum(item["specimen_count"] for item in stacks)}
+
+
+def find_or_create(db, model, column, value):
+    db.execute(insert(model).values({column.key: value}).on_conflict_do_nothing())
+    return db.scalar(select(model).where(column == value))
+
+
+def register_stack(db, row, is_demo=False, actor="prep", payload=None):
+    from .schemas import PrepRow
+    row = PrepRow.model_validate(row).model_dump()
+    project = find_or_create(db, Project, Project.project_number, row["project_number"])
+    material = find_or_create(db, Material, Material.material_ref, row["material_ref"])
+    db.execute(insert(Treatment).values(code=row["preconditioning_code"]).on_conflict_do_nothing())
+    stack = Stack(project_id=project.id, material_id=material.id, test_code=row["test_code"],
+                  preconditioning_code=row["preconditioning_code"], is_demo=is_demo,
+                  source_metadata=row.get("metadata", {}))
+    db.add(stack)
+    db.flush()
+    specimens = [Specimen(stack_id=stack.id, number=i) for i in range(1, row["specimen_count"] + 1)]
+    db.add_all(specimens)
+    db.flush()
+    db.add(AuditEvent(stack_id=stack.id, kind="registration", actor=actor,
+                      specimen_ids=[p.id for p in specimens], payload={**(payload or {}), "row": row}))
+    return stack
 
 
 def commit_draft(db, draft, is_demo=False):
     if draft.committed:
         return draft.stack_ids
-    from .schemas import PrepRow
-    try:
-        rows = [PrepRow.model_validate(row).model_dump() for row in draft.rows]
-    except ValidationError as error:
-        raise HTTPException(422, {"message": "Complete the project, material, test, treatment, and physical specimen count for each selected row before registration.",
-                                  "errors": error.errors(include_context=False)}) from error
-    stack_ids = []
-    for row in rows:
-        db.execute(insert(Project).values(id=uuid_str(), project_number=row["project_number"]).on_conflict_do_nothing())
-        db.execute(insert(Material).values(id=uuid_str(), material_ref=row["material_ref"]).on_conflict_do_nothing())
-        db.execute(insert(Treatment).values(code=row["preconditioning_code"]).on_conflict_do_nothing())
-        project = db.scalar(select(Project).where(Project.project_number == row["project_number"]))
-        material = db.scalar(select(Material).where(Material.material_ref == row["material_ref"]))
-        stack = Stack(project_id=project.id, material_id=material.id, test_code=row["test_code"],
-                      preconditioning_code=row["preconditioning_code"], is_demo=is_demo,
-                      source_metadata=row.get("metadata", {}))
-        db.add(stack)
-        db.flush()
-        specimens = [Specimen(stack_id=stack.id, number=i) for i in range(1, row["specimen_count"] + 1)]
-        db.add_all(specimens)
-        db.flush()
-        db.add(AuditEvent(stack_id=stack.id, kind="registration", actor="prep",
-                          specimen_ids=[p.id for p in specimens], payload={"draft_id": draft.id, "row": row}))
-        stack_ids.append(stack.id)
+    stacks, problems = resolve_prep(draft.headers, draft.rows)
+    if problems or not stacks:
+        raise HTTPException(422, {"message": "Fill in the highlighted prep sheet cells before registration.",
+                                  "problems": problems})
+    stack_ids = [register_stack(db, row, is_demo, payload={"draft_id": draft.id}).id for row in stacks]
     draft.committed = True
     draft.stack_ids = stack_ids
     db.flush()

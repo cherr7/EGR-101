@@ -58,21 +58,50 @@ def test_conditioning_count_includes_extras_and_named_subdivisions():
     assert conditioning_count(0)[0] is None
 
 
-def test_ppe_count_uses_conditioning_column_and_preserves_context():
+def test_prep_rows_keep_the_sheet_layout_one_row_per_sheet_row():
     result = inspect_workbook(workbook_bytes(prep_cells(), merges=("A5:A6",)), "Example.xlsm")
-    assert len(result["rows"]) == 2
+    assert result["headers"] == {"Preparation": {"project_number": "00073-LAB", "labware_number": "LW-0009",
+                                                 "standard": "1970(71)", "regime": "NW"}}
     first, second = result["rows"]
-    assert first["specimen_count"] == 12  # B5 tested=10 must not drop two extra pieces.
-    assert first["material_ref"] is None  # 'Outer shell' is a type, not an invented material ID.
-    assert first["project_number"] == "00073-LAB"
-    assert first["metadata"]["labware_number"] == "LW-0009"
-    assert first["metadata"]["project_regime"] == "NW"
-    assert first["preconditioning_code"] == "AR"
-    assert second["test_code"] == "Flame"
-    assert second["preconditioning_code"] == "5L->CH"
-    assert second["specimen_count"] == 8
-    assert first["metadata"]["source"]["cells"]["conditioning_count"]["cell"] == "D5"
-    assert result["review_data"]["macros_executed"] is False
+    assert (first["test"], first["tested_count"], first["conditions"], first["conditioning"], first["sample_type"]) == \
+        ("Flame", "10", "AR", "6 Warp, 6 Fill", "Outer shell")
+    assert second["test"] == ""            # the lower half of the merged Test cell, as printed
+    assert second["conditions"] == "5L->CH" and second["conditioning"] == "4 Contact, 4 Spaced"
+    assert first["sample"] == ""           # '# of samples' gives a count, never an invented sample number
+    assert first["metadata"]["sample_count"] == 1
+    assert first["metadata"]["cells"]["conditioning"]["cell"] == "D5"
+    assert result["source"]["macros_executed"] is False
+
+
+def test_fake_thirty_sample_sheet_registers_one_stack_per_row(client):
+    from pathlib import Path
+    content = (Path(__file__).parents[2] / "samples/FAKE-prep-30-samples.xlsx").read_bytes()
+    draft = client.post("/api/prep-drafts/workbook", files={"file": ("FAKE.xlsx", content)}).json()
+    assert len(draft["rows"]) == 30 and draft["problems"] == []
+    assert list(draft["headers"]) == ["Preparation"] and draft["headers"]["Preparation"]["project_number"] == "00101-FAKE"
+    assert [row["test"] for row in draft["rows"][:5]] == ["Flame (ASTM D6413)", "", "", "", "Flame (ASTM D6413)"]
+    assert draft["stack_count"] == 30 and draft["specimen_count"] == 16 * 10 + 8 * 3 + 4 * 8 + 2 * 6
+    committed = client.post(f'/api/prep-drafts/{draft["id"]}/commit').json()
+    stacks = [client.get(f"/api/stacks/{identifier}").json() for identifier in committed["stack_ids"]]
+    assert [s["material_ref"] for s in stacks] == [f"S-{n:03d}" for n in range(1, 31)]
+    assert {s["test_code"] for s in stacks[:4]} == {"Flame (ASTM D6413)"}
+    assert stacks[16]["specimen_count"] == 3 and stacks[0]["specimen_count"] == 10
+
+
+def test_one_row_with_several_sample_numbers_makes_one_stack_each(client):
+    body = {"headers": {"P": {"labware_number": "LW-1"}},
+            "rows": [{"sheet": "P", "test": "Tear", "conditions": "AR", "conditioning": "3", "sample": "A-1, A-2"},
+                     {"sheet": "P", "conditions": "5L", "conditioning": "2", "sample": "A-3",
+                      "metadata": {"sample_count": 2}}]}
+    draft = client.post("/api/prep-drafts", json=body).json()
+    assert draft["problems"] == [{"row": 1, "sheet": "P", "column": "sample",
+                                  "message": "The sheet lists 2 sample(s); enter 2 sample number(s)."}]
+    body["rows"][1]["sample"] = "A-3; A-4"
+    draft = client.put(f'/api/prep-drafts/{draft["id"]}', json=body).json()
+    ids = client.post(f'/api/prep-drafts/{draft["id"]}/commit').json()["stack_ids"]
+    stacks = [client.get(f"/api/stacks/{i}").json() for i in ids]
+    assert [(s["project_number"], s["material_ref"], s["test_code"], s["preconditioning_code"], s["specimen_count"]) for s in stacks] == [
+        ("LW-1", "A-1", "Tear", "AR", 3), ("LW-1", "A-2", "Tear", "AR", 3), ("LW-1", "A-3", "Tear", "5L", 2), ("LW-1", "A-4", "Tear", "5L", 2)]
 
 
 def test_tabular_import_preserves_alphanumeric_and_formatted_leading_zero_project():
@@ -80,10 +109,10 @@ def test_tabular_import_preserves_alphanumeric_and_formatted_leading_zero_projec
              "D1": "preconditioning_code", "E1": "specimen_count",
              "A2": (73, 1), "B2": "MAT-A", "C2": "D5034", "D2": "AR", "E2": (10, 0),
              "A3": "AB-004", "B3": "MAT-B", "C3": "D2261", "D3": "5L", "E3": (4, 0)}
-    rows = inspect_workbook(workbook_bytes(cells), "table.xlsx")["rows"]
-    assert rows[0]["project_number"] == "000073"
-    assert rows[1]["project_number"] == "AB-004"
-    assert [row["specimen_count"] for row in rows] == [10, 4]
+    result = inspect_workbook(workbook_bytes(cells), "table.xlsx")
+    assert [header["project_number"] for header in result["headers"].values()] == ["000073", "AB-004"]
+    assert [row["conditioning"] for row in result["rows"]] == ["10", "4"]
+    assert [row["sample"] for row in result["rows"]] == ["MAT-A", "MAT-B"]
 
 
 def test_uncached_formula_requires_review_and_does_not_become_zero():
@@ -91,10 +120,10 @@ def test_uncached_formula_requires_review_and_does_not_become_zero():
     cells["D5"] = {"formula": "6+6"}
     result = inspect_workbook(workbook_bytes(cells), "example.xlsx")
     # A row with an uncached conditioning formula remains in review, not dropped.
-    candidate = next((row for row in result["rows"] if row["preconditioning_code"] == "AR"), None)
+    candidate = next((row for row in result["rows"] if row["conditions"] == "AR"), None)
     assert candidate is not None
-    assert candidate["specimen_count"] is None
-    assert candidate["metadata"]["source"]["cells"]["conditioning_count"]["cached"] is False
+    assert candidate["conditioning"] == ""
+    assert candidate["metadata"]["cells"]["conditioning"]["cached"] is False
 
 
 def test_board_counts_are_not_treated_as_physical_stack_or_scan_history():
@@ -103,9 +132,9 @@ def test_board_counts_are_not_treated_as_physical_stack_or_scan_history():
              "I2": "Flame", "J2": (60, 0), "K2": "x", "M2": (5, 0), "L2": "9/1 12:00PM"}
     result = inspect_workbook(workbook_bytes(cells), "board.xlsm")
     assert len(result["rows"]) == 2
-    assert all(row["specimen_count"] is None for row in result["rows"])
+    assert all(row["conditioning"] == "" for row in result["rows"])
     assert all("entered_at" not in row for row in result["rows"])
-    assert {row["preconditioning_code"] for row in result["rows"]} == {"AR", "5"}
+    assert {row["conditions"] for row in result["rows"]} == {"AR", "5"}
 
 
 def test_reference_and_invalid_workbooks_fail_clearly():
@@ -129,7 +158,7 @@ def test_import_draft_roundtrip_and_duplicate_upload_reuses_ids(client):
     assert response.is_success, response.text
     draft = response.json()
     assert draft["source"]["filename"] == "example.xlsx"
-    assert draft["rows"][0]["specimen_count"] == 2
+    assert draft["rows"][0]["conditioning"] == "2" and draft["specimen_count"] == 2
     committed = client.post(f'/api/prep-drafts/{draft["id"]}/commit')
     assert committed.is_success, committed.text
     repeat = client.post("/api/prep-drafts/workbook", files={"file": ("example.xlsx", content)})

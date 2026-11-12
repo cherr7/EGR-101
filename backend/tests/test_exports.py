@@ -1,18 +1,17 @@
 import csv
 import io
-from uuid import uuid4
 
 from pypdf import PdfReader
 from PIL import Image
 import zxingcpp
 
 from app.barcodes import code_id, label_code
+from helpers import prep_sheet, request_id
 
 
 def register(client, **overrides):
-    row = {"project_number": "000012ABC123", "material_ref": "Thermal barrier",
-           "test_code": "FLAME", "preconditioning_code": "50L", "specimen_count": 2, **overrides}
-    response = client.post("/api/prep-drafts", json={"rows": [row]})
+    row = {"project": "000012ABC123", "material": "Thermal barrier", "test": "FLAME", "treatment": "50L", "count": 2, **overrides}
+    response = client.post("/api/prep-drafts", json=prep_sheet(**row))
     assert response.is_success, response.text
     result = client.post(f'/api/prep-drafts/{response.json()["id"]}/commit')
     assert result.is_success, result.text
@@ -22,7 +21,7 @@ def register(client, **overrides):
 
 
 def move(client, stack, direction, **extra):
-    body = {"request_id": str(uuid4()), "station_id": "shared-door", "code": stack["specimens"][0]["barcode_value"],
+    body = {"request_id": request_id(client), "station_id": "shared-door", "code": stack["specimens"][0]["barcode_value"],
             "direction": direction, "scope": "stack", **extra}
     result = client.post("/api/movements", json=body)
     assert result.is_success, result.text
@@ -71,18 +70,18 @@ def test_session_report_and_audit_agree_on_early_exit(client):
     assert {row["specimen_id"] for row in sessions} == {str(p["id"]) for p in stack["specimens"]}
     assert all(row["conditioning_status"] == "INCOMPLETE" and row["early_exit_acknowledged"] == "True" for row in sessions)
     history = rows(client.get("/api/exports/history.csv?project_number=000012ABC123"))
-    assert {row["id"] for row in history} >= {checked_in["event_id"], result["event_id"]}
+    assert {row["id"] for row in history} >= {str(checked_in["event_id"]), str(result["event_id"])}
     report = client.get("/api/exports/report?project_number=000012ABC123")
     assert report.is_success
     assert "INCOMPLETE" in report.text and "early exit acknowledged" in report.text
     assert "America/New_York" in report.text
     assert all(str(p["id"]) in report.text for p in stack["specimens"])
-    assert result["event_id"] in report.text
+    assert str(result["event_id"]) in report.text
     assert rows(client.get("/api/exports/sessions.csv?project_number=other")) == []
 
 
 def test_export_escapes_untrusted_text(client):
-    stack = register(client, material_ref='=HYPERLINK("https://example.invalid")', test_code="<script>alert(1)</script>")
+    stack = register(client, material='=HYPERLINK("https://example.invalid")', test="<script>alert(1)</script>")
     exported = rows(client.get(f'/api/stacks/{stack["id"]}/labels.csv'))
     assert exported[0]["material_ref"].startswith("'=HYPERLINK")
     report = client.get("/api/exports/report").text
@@ -91,7 +90,7 @@ def test_export_escapes_untrusted_text(client):
 
 
 def test_undo_retains_observation_in_export(client):
-    stack = register(client, specimen_count=1)
+    stack = register(client, count=1)
     observation = move(client, stack, "IN")
     response = client.post("/api/auth/login", json={"username": "supervisor", "password": "classroom-demo"})
     assert response.is_success
@@ -100,4 +99,4 @@ def test_undo_retains_observation_in_export(client):
     assert rows(client.get("/api/exports/sessions.csv")) == []
     history = rows(client.get("/api/exports/history.csv"))
     assert {row["kind"] for row in history} >= {"movement", "undo"}
-    assert any(row["id"] == observation["event_id"] for row in history)
+    assert any(row["id"] == str(observation["event_id"]) for row in history)

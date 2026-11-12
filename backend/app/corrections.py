@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from .models import AuditEvent, ConditioningSession, Room, Specimen, Stack, utcnow, uuid_str
-from .services import (conditioning_period, current_session, iso, sessions_for, snapshot,
+from .models import AuditEvent, ConditioningSession, Room, Specimen, Stack, utcnow
+from .services import (TARGET_EVENT, conditioning_period, current_session, iso, sessions_for, snapshot,
                        transaction_effective, transaction_is_latest_for)
 
 
@@ -26,14 +26,14 @@ def validate_timeline(db, specimen, now):
 def process_correction(db, body, username):
     if body.kind == "undo":
         from .schemas import TransactionUndoBody
-        return undo_transaction(db, str(body.event_id), TransactionUndoBody(note=body.reason), username)
+        return undo_transaction(db, body.event_id, TransactionUndoBody(note=body.reason), username)
     now = utcnow()
     target = None
     session = None
     if body.kind == "undo":
         if not body.event_id:
             raise HTTPException(422, "An event ID is required.")
-        target = db.get(AuditEvent, str(body.event_id))
+        target = db.get(AuditEvent, body.event_id)
         if target is None or target.kind != "movement":
             raise HTTPException(404, "Select a recorded movement to undo.")
         ids = target.specimen_ids
@@ -41,7 +41,7 @@ def process_correction(db, body, username):
     elif body.kind == "edit_session":
         if not body.session_id or body.entered_at is None:
             raise HTTPException(422, "Session ID and entry time are required.")
-        session = db.get(ConditioningSession, str(body.session_id))
+        session = db.get(ConditioningSession, body.session_id)
         if session is None or session.voided:
             raise HTTPException(404, "Session not found.")
         ids = [session.specimen_id]
@@ -118,12 +118,13 @@ def process_correction(db, body, username):
             validate_timeline(db, specimen, now)
         kind = "correction"
     db.flush()
-    event = AuditEvent(id=uuid_str(), stack_id=stack_id, kind=kind, actor=username, reason=body.reason,
+    event = AuditEvent(stack_id=stack_id, kind=kind, actor=username, reason=body.reason,
                        recorded_at=now, specimen_ids=ids, room_id=room_id,
                        payload={"correction_kind": body.kind, "event_id": target.id if target else None,
                                 "room_id": room_id, "occurred_at": iso(body.entered_at),
                                 "before": before, "after": snapshot(db, specimens)})
     db.add(event)
+    db.flush()
     for specimen in specimens:
         specimen.revision += 1
         specimen.last_event_id = event.id
@@ -140,7 +141,7 @@ def _lock_transaction(db, event_id):
     stack = db.scalar(select(Stack).where(Stack.id == target.stack_id).with_for_update().execution_options(populate_existing=True))
     specimens = list(db.scalars(select(Specimen).where(Specimen.stack_id == stack.id).order_by(Specimen.id)
                                .with_for_update().execution_options(populate_existing=True)))
-    if db.scalar(select(AuditEvent.id).where(AuditEvent.kind == "undo", AuditEvent.payload["event_id"].astext == target.id)):
+    if db.scalar(select(AuditEvent.id).where(AuditEvent.kind == "undo", TARGET_EVENT == target.id)):
         raise HTTPException(409, "This transaction was already undone.")
     return target, stack, {p.id: p for p in specimens}
 
@@ -173,6 +174,7 @@ def _restore(db, specimen, values):
 
 def _finish_transaction_change(db, stack, specimens, event):
     db.add(event)
+    db.flush()
     for specimen in specimens:
         specimen.revision += 1
         specimen.last_event_id = event.id
@@ -193,7 +195,7 @@ def undo_transaction(db, event_id, body, username="project-staff"):
     for specimen in specimens:
         _restore(db, specimen, effective["base_before"][str(specimen.id)])
     now = utcnow()
-    event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="undo", direction=target.direction,
+    event = AuditEvent(stack_id=stack.id, kind="undo", direction=target.direction,
                        actor=username, reason=body.note or None, recorded_at=now, room_id=effective["room_id"],
                        specimen_ids=[p.id for p in specimens],
                        payload={"event_id": target.id, "correction_kind": "undo", "before": before,
@@ -210,6 +212,8 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     if not ids or len(ids) != len(set(ids)) or any(identifier not in by_id for identifier in ids):
         raise HTTPException(422, "Choose unique numbered specimens from this stack. Use Undo to cancel a transaction.")
     current_ids = set(effective["specimen_ids"])
+    if any(by_id[identifier].removed_at is not None for identifier in set(ids) - current_ids):
+        raise HTTPException(422, "A removed specimen cannot be added to a transaction.")
     affected_ids = current_ids | set(ids)
     for identifier in affected_ids:
         specimen = by_id[identifier]
@@ -258,7 +262,7 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     updated = {"specimen_ids": ids, "occurred_at": iso(occurred_at), "room_id": room_id, "note": body.note}
     note = body.note if "note" in body.model_fields_set else effective["note"]
     updated["note"] = note
-    event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="modification", direction=target.direction,
+    event = AuditEvent(stack_id=stack.id, kind="modification", direction=target.direction,
                        actor=username, reason=note or None, recorded_at=now, room_id=room_id,
                        specimen_ids=[p.id for p in specimens],
                        payload={"event_id": target.id, "effective_movement": updated, "base_before": base_before,
@@ -275,8 +279,9 @@ def record_missed_movement(db, body, username="project-staff"):
     ids = list(body.specimen_ids)
     specimens = list(db.scalars(select(Specimen).where(Specimen.id.in_(ids)).order_by(Specimen.id)
                                .with_for_update().execution_options(populate_existing=True)))
-    if len(ids) != len(set(ids)) or len(specimens) != len(ids) or any(p.stack_id != stack.id for p in specimens):
-        raise HTTPException(422, "Choose unique numbered specimens from this stack.")
+    if (len(ids) != len(set(ids)) or len(specimens) != len(ids)
+            or any(p.stack_id != stack.id or p.removed_at is not None for p in specimens)):
+        raise HTTPException(422, "Choose unique numbered specimens still on this stack.")
     now = utcnow()
     occurred_at = body.occurred_at.astimezone(timezone.utc)
     room = db.get(Room, body.room_id)
@@ -303,7 +308,7 @@ def record_missed_movement(db, body, username="project-staff"):
             period.corrected = True
             period.incomplete = occurred_at - period.entered_at < timedelta(hours=room.required_hours)
     db.flush()
-    event = AuditEvent(id=uuid_str(), stack_id=stack.id, kind="movement", direction=body.direction,
+    event = AuditEvent(stack_id=stack.id, kind="movement", direction=body.direction,
                        actor=username, reason=body.note or None, recorded_at=now, specimen_ids=ids, room_id=room.id,
                        payload={"source": "missed", "scope": "selection", "room_id": room.id,
                                 "occurred_at": iso(occurred_at), "before": before, "after": snapshot(db, specimens)})

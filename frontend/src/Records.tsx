@@ -3,6 +3,7 @@ import { api, elapsed, entryOf, exitOf, formatTime, isReady, specimenStatus } fr
 import type { Config, Specimen, SpecimenRecord, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 import LabelDialog from './LabelDialog'
+import StackEditor from './StackEditor'
 
 export function Status({ specimen }: { specimen: Specimen }) {
   return <span className={'badge ' + (isReady(specimen) ? 'good' : specimen.state === 'IN' ? 'warning' : 'muted')}>
@@ -72,7 +73,10 @@ function SpecimenHistory({
   </>
 }
 
-export function StackDetail({ stack, config, healthy = true }: { stack: Stack; config: Config; healthy?: boolean }) {
+export function StackDetail({ stack: given, config, healthy = true, onChanged }: { stack: Stack; config: Config; healthy?: boolean; onChanged?: (stack: Stack) => void }) {
+  const [edited, setEdited] = useState<Stack | null>(null)
+  const stack = edited && edited.id === given.id ? edited : given
+  const [editing, setEditing] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [focused, setFocused] = useState<SpecimenRecord | null>(null)
   const [loading, setLoading] = useState(false)
@@ -96,7 +100,10 @@ export function StackDetail({ stack, config, healthy = true }: { stack: Stack; c
       <div><span className="eyebrow">{stack.project_number}</span><h3>{stack.material_ref}</h3>
         <p>{stack.test_code} · {stack.preconditioning_code} · {stack.specimen_count} specimens {stack.is_demo && <span className="badge muted">DEMO</span>}</p>
       </div>
-      <button className="button secondary" disabled={!healthy} onClick={() => setPrinting(true)}>Preview / reprint labels</button>
+      <div className="detail-actions">
+        <button className="button secondary" disabled={!healthy} onClick={() => setEditing(true)}>Edit stack</button>
+        <button className="button secondary" disabled={!healthy} onClick={() => setPrinting(true)}>Preview / reprint labels</button>
+      </div>
     </div>
     <ErrorNotice message={error} />
     <div className="table-wrap"><table>
@@ -127,6 +134,8 @@ export function StackDetail({ stack, config, healthy = true }: { stack: Stack; c
       {!stack.events?.length && <p className="subtle">No movement or printing history yet.</p>}
     </div>
     {printing && <LabelDialog stacks={[stack]} healthy={healthy} onClose={() => setPrinting(false)} />}
+    {editing && <StackEditor stack={stack} config={config} healthy={healthy} onClose={() => setEditing(false)}
+      onSaved={value => { setEdited(value); onChanged?.(value) }} />}
     {focused && <SpecimenHistory record={focused} stack={stack} config={config} healthy={healthy} onClose={() => setFocused(null)} />}
   </div>
 }
@@ -194,6 +203,8 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
     } catch (err) { if (alive.current && token === openSerial.current) setError((err as Error).message) }
     finally { if (alive.current && token === openSerial.current) setOpening(false) }
   }
+  const openRef = useRef(openStack); openRef.current = openStack
+  useEffect(() => { if (healthy && /^\d+$/.test(stackFilter)) void openRef.current(Number(stackFilter)) }, [healthy, stackFilter])
   const query = project ? '?project_number=' + encodeURIComponent(project) : ''
   const visibleIds = records.map(({ specimen }) => specimen.id)
   const selectedStacks = items.filter(stack => stack.specimens.some(s => selectedIds.includes(s.id)))
@@ -250,7 +261,8 @@ export default function Records({ config, healthy }: { config: Config; healthy: 
       {!records.length && !loading && <div className="empty-inline"><h3>No matching specimens</h3><p>Import a prep workbook or adjust the filters.</p></div>}
     </section>
     {selectedStack && <Modal title="Stack & specimen details" wide onClose={() => { openSerial.current++; setSelectedStack(null) }}>
-      <div className="modal-body"><StackDetail stack={selectedStack} config={config} healthy={healthy} /></div>
+      <div className="modal-body"><StackDetail stack={selectedStack} config={config} healthy={healthy}
+        onChanged={value => { setSelectedStack(value); setRevision(old => old + 1) }} /></div>
       <div className="modal-actions"><button className="button secondary" onClick={() => setSelectedStack(null)}>Close</button></div>
     </Modal>}
     {focused && <SpecimenHistory record={focused.record} stack={focused.stack} config={config} healthy={healthy} onClose={() => setFocused(null)} />}

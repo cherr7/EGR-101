@@ -14,10 +14,10 @@ import shutil
 import subprocess
 import tempfile
 from datetime import timedelta
-from pathlib import Path
-from uuid import UUID
+from pathlib import Path as FilePath
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text
@@ -26,10 +26,12 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .exports import label_height_mm, labels_pdf
 from .models import AuditEvent, PrintJob, Stack, utcnow
-from .services import stack_detail
+from .schemas import split_request_id
+from .services import check_request_number, stack_detail
 
 router = APIRouter(prefix="/api", tags=["Label printing"])
 QUEUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
+PRINT_REQUEST = r"^print-[1-9][0-9]{0,17}$"
 
 
 class LabelPreviewBody(BaseModel):
@@ -53,7 +55,7 @@ class LabelPreviewBody(BaseModel):
 
 
 class PrintBody(LabelPreviewBody):
-    request_id: UUID
+    request_id: str = Field(pattern=PRINT_REQUEST)   # 'print-<n>', n reserved from /api/request-ids
     printer_queue: str = Field(min_length=1, max_length=200)
     copies: int = Field(default=1, ge=1, le=10)
 
@@ -119,7 +121,7 @@ def _details(db: Session, stack_ids: list[int], selected_specimen_ids: list[int]
 
 
 def _job_dict(job: PrintJob) -> dict:
-    return {"id": job.id, "request_id": job.id, "status": job.status,
+    return {"id": job.number, "request_id": f"print-{job.number}", "status": job.status,
             "printer_queue": job.printer_queue, "cups_job_id": job.cups_job_id,
             "stack_ids": job.stack_ids, "options": job.options, "error": job.error,
             "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(),
@@ -158,7 +160,7 @@ def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str
     try:
         with tempfile.NamedTemporaryFile(prefix="conditioning-label-", suffix=".pdf", delete=False) as output:
             output.write(labels_pdf([label], body.width_mm))
-            temporary = Path(output.name)
+            temporary = FilePath(output.name)
         completed = subprocess.run([
             lp, "-d", body.printer_queue, "-t", "Fabric Labels " + request_id,
             "-o", f"media=Custom.{body.width_mm:g}x{label_height_mm():g}mm",
@@ -177,7 +179,8 @@ def _submit_label(lp: str, body: PrintBody, request_id: str, label: dict) -> str
 
 
 def submit_print_job(db: Session, body: PrintBody) -> dict:
-    request_id = str(body.request_id)
+    request_id = body.request_id
+    number = split_request_id(request_id)[1]
     values = body.model_dump(mode="json")
     fingerprint = hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
     # The lock serializes the claim, then the persisted 'submitting' state keeps
@@ -185,11 +188,12 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
     key = int.from_bytes(hashlib.sha256(request_id.encode()).digest()[:8], "big", signed=True)
     with db.begin():
         db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
-        existing = db.get(PrintJob, request_id)
+        existing = db.get(PrintJob, number)
         if existing:
             if existing.fingerprint != fingerprint:
                 raise HTTPException(409, "This print request ID was already used for different labels or settings.")
             return _job_dict(existing)
+        check_request_number(db, "print", number)
         inventory = printer_inventory()
         names = {item["name"] for item in inventory["printers"]}
         if body.printer_queue not in names:
@@ -199,7 +203,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
         stack_ids = body.stack_ids
         details = _details(db, stack_ids, body.selected_specimen_ids)
         height_mm = label_height_mm(details, body.width_mm)
-        job = PrintJob(id=request_id, fingerprint=fingerprint, status="submitting",
+        job = PrintJob(number=number, fingerprint=fingerprint, status="submitting",
                        printer_queue=body.printer_queue, stack_ids=stack_ids,
                        options={"copies": body.copies, "width_mm": body.width_mm,
                                 "height_mm": height_mm, "barcode_format": "DataMatrix",
@@ -232,7 +236,7 @@ def submit_print_job(db: Session, body: PrintBody) -> dict:
         error = str(failure)[:1000] + (f" {len(cups_ids)} label(s) were already sent; check the queue." if cups_ids else "")
     cups_job_id = ",".join(cups_ids) or None
     with db.begin():
-        job = db.scalar(select(PrintJob).where(PrintJob.id == request_id).with_for_update())
+        job = db.scalar(select(PrintJob).where(PrintJob.number == number).with_for_update())
         job.status, job.cups_job_id, job.error, job.updated_at = status, cups_job_id, error, utcnow()
         for detail in details:
             db.add(AuditEvent(stack_id=detail["id"], kind="label_print", actor="staff",
@@ -250,9 +254,9 @@ def create_print_job(body: PrintBody, db: Session = Depends(get_db)):
 
 
 @router.get("/print-jobs/{request_id}")
-def print_job_status(request_id: UUID, db: Session = Depends(get_db)):
+def print_job_status(request_id: Annotated[str, Path(pattern=PRINT_REQUEST)], db: Session = Depends(get_db)):
     with db.begin():
-        job = db.scalar(select(PrintJob).where(PrintJob.id == str(request_id)).with_for_update())
+        job = db.scalar(select(PrintJob).where(PrintJob.number == split_request_id(request_id)[1]).with_for_update())
         if job is None:
             raise HTTPException(404, "Print request not found. Retry with the same request ID.")
         if job.status == "submitting" and utcnow() - job.updated_at > timedelta(seconds=60):
@@ -263,6 +267,6 @@ def print_job_status(request_id: UUID, db: Session = Depends(get_db)):
             for detail in _details(db, job.stack_ids, list(selected) if selected else None):
                 db.add(AuditEvent(stack_id=detail["id"], kind="label_print_status", actor="host",
                                   specimen_ids=[item["id"] for item in detail["specimens"]],
-                                  payload={"print_request_id": job.id, "status": "unknown", "physical_print_confirmed": False}))
+                                  payload={"print_request_id": request_id, "status": "unknown", "physical_print_confirmed": False}))
             db.flush()
         return _job_dict(job)

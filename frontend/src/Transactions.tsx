@@ -78,7 +78,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
     return () => { current = false; clearTimeout(timer) }
   }, [healthy, search, kind, roomFilter, context.stackId, limit, refresh])
 
-  async function openEvent(eventId: string, stackId: number | string) {
+  async function openEvent(eventId: number | string, stackId: number | string) {
     if (mutation.current || !healthy) return
     const token = ++serial.current
     setBusy(true)
@@ -87,7 +87,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       // A single fresh stack response supplies BOTH event values and version.
       // Never pair an old list row with a newer version from a separate fetch.
       const stack = await api<Stack>('/stacks/' + stackId)
-      const event = stack.events?.find(row => row.id === eventId)
+      const event = stack.events?.find(row => String(row.id) === String(eventId))
       if (!event) throw new Error('This transaction is no longer in the stack history. Refresh the log.')
       if (!alive.current || token !== serial.current) return
       if (event.kind !== 'movement' || event.undone) { setViewing({ event, stack }); setEditor(null) }
@@ -217,7 +217,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         <tbody>{visible.map(event => {
           const stack = stacks.find(row => row.id === event.stack_id)
           return <tr key={event.id} className={event.undone ? 'undone-row' : ''}>
-            <td>{formatTime(event.recorded_at)}<small className="id-hint">{event.id.slice(0, 8)}</small></td>
+            <td>{formatTime(event.recorded_at)}<small className="id-hint">#{event.id}</small></td>
             <td><span className={'badge ' + (event.kind === 'movement' ? event.direction === 'IN' ? 'good' : 'blue' : 'muted')}>{labelFor(event)}</span>
               {event.modified && <small>Modified</small>}{event.undone && <small>Undone</small>}</td>
             <td><b>{stack?.project_number || '—'}</b><small>{stack?.material_ref || 'Stack ' + event.stack_id}</small></td>

@@ -4,7 +4,6 @@ import io
 import json
 import threading
 from types import SimpleNamespace
-from uuid import uuid4
 
 from PIL import Image
 from pypdf import PdfReader
@@ -16,6 +15,7 @@ from app import backups, printing
 from app.barcodes import code_id
 from test_printing_labels import install_fake_cups
 from test_tracker import detail, move
+from helpers import prep_sheet, request_id
 
 
 def decode_pdf(content):
@@ -25,25 +25,18 @@ def decode_pdf(content):
 
 
 def test_prep_compare_and_swap_prevents_registration_of_another_review(client):
-    original = {"project_number": "00073-DEMO", "material_ref": "Original",
-                "test_code": "D5034", "preconditioning_code": "AR", "specimen_count": 2, "metadata": {}}
-    draft = client.post("/api/prep-drafts", json={"rows": [original]}).json()
-    first = {**original, "material_ref": "First reviewed material"}
-    second = {**original, "material_ref": "Second reviewed material"}
-    saved = client.put("/api/prep-drafts/" + draft["id"],
-                       json={"rows": [first], "expected_rows": [original]})
-    assert saved.status_code == 200
-    assert client.put("/api/prep-drafts/" + draft["id"],
-                      json={"rows": [second], "expected_rows": [original]}).status_code == 409
-    assert client.post("/api/prep-drafts/" + draft["id"] + "/commit",
-                       json={"expected_rows": [original]}).status_code == 409
-    committed = client.post("/api/prep-drafts/" + draft["id"] + "/commit",
-                            json={"expected_rows": [first]})
+    draft = client.post("/api/prep-drafts", json=prep_sheet("00073-DEMO", "Original", "D5034", "AR", 2)).json()
+    first = prep_sheet("00073-DEMO", "First reviewed material", "D5034", "AR", 2)
+    second = prep_sheet("00073-DEMO", "Second reviewed material", "D5034", "AR", 2)
+    saved = client.put(f'/api/prep-drafts/{draft["id"]}', json={**first, "expected_revision": 0})
+    assert saved.status_code == 200 and saved.json()["revision"] == 1
+    assert client.put(f'/api/prep-drafts/{draft["id"]}', json={**second, "expected_revision": 0}).status_code == 409
+    assert client.post(f'/api/prep-drafts/{draft["id"]}/commit', json={"expected_revision": 0}).status_code == 409
+    committed = client.post(f'/api/prep-drafts/{draft["id"]}/commit', json={"expected_revision": 1})
     assert committed.status_code == 200
     record = client.get("/api/stacks/" + str(committed.json()["stack_ids"][0])).json()
-    assert record["material_ref"] == first["material_ref"]
-    assert client.post("/api/prep-drafts/" + draft["id"] + "/commit",
-                       json={"expected_rows": [first]}).json() == committed.json()
+    assert record["material_ref"] == "First reviewed material"
+    assert client.post(f'/api/prep-drafts/{draft["id"]}/commit', json={"expected_revision": 1}).json() == committed.json()
 
 
 def test_selective_preview_print_and_audit_use_identical_registered_ids(client, stack_factory, monkeypatch):
@@ -64,7 +57,7 @@ def test_selective_preview_print_and_audit_use_identical_registered_ids(client, 
                 sent.extend(decode_pdf(stream.read())[1])
         return original_run(argv, **kwargs)
     monkeypatch.setattr(printing.subprocess, "run", check_job)
-    request = {**body, "request_id": str(uuid4()), "printer_queue": "Brother_QL", "copies": 2}
+    request = {**body, "request_id": request_id(client, "print"), "printer_queue": "Brother_QL", "copies": 2}
     printed = client.post("/api/print-jobs", json=request)
     assert printed.is_success, printed.text
     assert printed.json()["options"]["label_count"] == 4
@@ -86,7 +79,7 @@ def test_selective_labels_reject_empty_duplicate_and_foreign_ids(client, stack_f
     for ids in [[], [stack["specimens"][0]["id"]] * 2, [other["specimens"][0]["id"]]]:
         body = {"stack_ids": [stack["id"]], "selected_specimen_ids": ids}
         assert client.post("/api/labels/preview", json=body).status_code == 422
-        assert client.post("/api/print-jobs", json={**body, "request_id": str(uuid4()), "printer_queue": "Brother_QL"}).status_code == 422
+        assert client.post("/api/print-jobs", json={**body, "request_id": request_id(client, "print"), "printer_queue": "Brother_QL"}).status_code == 422
     assert not any(call[0].endswith("/lp") for call in calls)
 
 
@@ -100,7 +93,7 @@ def test_lost_print_completion_preserves_attempt_and_cannot_resubmit(client, sta
             raise RuntimeError("Simulated host loss after claiming print request")
         return original_run(argv, **kwargs)
     monkeypatch.setattr(printing.subprocess, "run", crash)
-    body = {"stack_ids": [stack["id"]], "request_id": str(uuid4()), "printer_queue": "Brother_QL"}
+    body = {"stack_ids": [stack["id"]], "request_id": request_id(client, "print"), "printer_queue": "Brother_QL"}
     with pytest.raises(RuntimeError):
         client.post("/api/print-jobs", json=body)
     assert client.get(f'/api/print-jobs/{body["request_id"]}').json()["status"] == "submitting"
@@ -159,7 +152,7 @@ def test_locked_movement_refreshes_stale_session_after_room_correction(client, d
     corrected = client.post("/api/corrections", json={"kind": "edit_session", "session_id": period["id"],
         "room_id": "ppe", "entered_at": period["entered_at"]})
     assert corrected.is_success
-    result = process_movement(db, MovementBody(request_id=uuid4(), station_id="shared-door",
+    result = process_movement(db, MovementBody(request_id=request_id(client), station_id="shared-door",
         code=stack["specimens"][0]["barcode_value"], direction="OUT", acknowledge_early=True,
         expected_version=corrected.json()["version"]))
     assert result["status"] == "rejected" and "another room" in result["message"]
@@ -384,8 +377,8 @@ def test_activity_row_version_rejects_undo_after_an_unseen_amendment(client, sta
     entered, _ = move(client, stack)
     row = next(e for e in client.get('/api/events', params={'stack_id': stack['id']}).json()['items'] if e['id'] == entered['event_id'])
     assert row['version'] == entered['version']
-    changed = client.patch('/api/transactions/' + row['id'], json={'note': 'Updated after row loaded', 'expected_version': row['version']})
+    changed = client.patch(f"/api/transactions/{row['id']}", json={'note': 'Updated after row loaded', 'expected_version': row['version']})
     assert changed.is_success, changed.text
-    stale = client.post('/api/transactions/' + row['id'] + '/undo', json={'expected_version': row['version']})
+    stale = client.post(f"/api/transactions/{row['id']}/undo", json={'expected_version': row['version']})
     assert stale.status_code == 409
     assert detail(client, stack)['inside_count'] == 3

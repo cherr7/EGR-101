@@ -123,3 +123,35 @@
 .prep-card .sheet-inventory { padding: 0 20px 14px; }
 .prep-card .prep-table th:first-child, .prep-card .prep-table td:first-child { padding-left: 20px; }
 .prep-card .prep-table th:last-child, .prep-card .prep-table td:last-child { padding-right: 20px; }
+
+/* Prep sheet: the header block and columns follow the paper prep sheet. */
+.prep-sheet { border-top: 1px solid #dfe9df; padding: 14px 0 6px; }
+.prep-sheet-name { margin: 0 20px 10px; font-size: 13px; color: #597651; }
+.prep-sheet-header { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 0 20px 14px; }
+.prep-sheet-header label { display: grid; gap: 5px; font-size: 11px; color: #69816f; }
+.prep-sheet-header input { min-height: 40px; font-size: 13px; }
+.prep-sheet-header input.unresolved { border-color: #dfbc7c; background: #fffaf1; }
+.prep-sheet-table { min-width: 1060px; }
+.prep-sheet-table th { font-size: 10px; line-height: 1.25; white-space: normal; vertical-align: bottom; }
+.prep-sheet-table td { vertical-align: top; }
+.prep-sheet-table input { width: 100%; }
+.prep-sheet-table .col-test { min-width: 180px; }
+.prep-sheet-table .col-tested_count { width: 110px; }
+.prep-sheet-table .col-conditions { width: 120px; }
+.prep-sheet-table .col-conditioning { min-width: 160px; }
+.prep-sheet-table .col-sample { min-width: 150px; }
+.prep-sheet-table .col-sample_type { min-width: 140px; }
+.prep-sheet-table input::placeholder { color: #b5c4ab; }
+.prep-sheet-table .row-tools { white-space: nowrap; text-align: right; }
+.cell-hint { display: block; margin-top: 4px; font-size: 10px; color: #7e9772; }
+.prep-sheet .add-row { margin: 6px 20px 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 800px) { .prep-sheet-header { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Stack editing after printing */
+.detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.stack-editor .section-title { margin-top: 22px; }
+.stack-editor .card-actions { padding: 12px 0 0; border-top: 0; }
+.stack-editor > label { display: grid; gap: 5px; font-size: 11px; }
+.inline-form { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
+.inline-form label { display: grid; gap: 5px; font-size: 11px; max-width: 120px; }

@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { tag, sheet } from './helpers'
 import type { APIRequestContext, Page } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
 
 async function createStack(request: APIRequestContext, count = 10) {
-  const project = '00-DEMO-BRIDGE-' + randomUUID().slice(0, 8)
-  const response = await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: 'DEMO bridge fabric', test_code: 'D5034', preconditioning_code: 'AR → 5L', specimen_count: count }] } })
+  const project = '00-DEMO-BRIDGE-' + tag()
+  const response = await request.post('/api/prep-drafts', { data: sheet(project, 'DEMO bridge fabric', 'D5034', 'AR → 5L', count) })
   expect(response.ok(), await response.text()).toBeTruthy()
   const draft = await response.json(), committed = await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} })
   expect(committed.ok(), await committed.text()).toBeTruthy()

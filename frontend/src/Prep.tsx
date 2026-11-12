@@ -1,321 +1,326 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Config, Draft, PrepRow, Stack } from './types'
+import type { Config, Draft, PrepHeader, PrepProblem, PrepRow, Stack } from './types'
 import { api, post } from './api'
 import { ErrorNotice, Modal, PageHeader } from './App'
 import LabelDialog from './LabelDialog'
 
-const REVIEW_KEY = 'fabric-tracker.prep-review.v3'
-const OLD_KEY = 'fabric-tracker.prep-draft.v2'
-const fields = ['project_number', 'material_ref', 'test_code', 'preconditioning_code', 'specimen_count'] as const
-const labels = {
-  project_number: 'Project number', material_ref: 'Material / sample', test_code: 'Test',
-  preconditioning_code: 'Treatment', specimen_count: 'Pieces to condition',
-}
-const emptyRow = (): PrepRow => ({
-  project_number: '', material_ref: '', test_code: '', preconditioning_code: 'AR', specimen_count: 1,
-})
-type Review = { draft: Draft | null; rows: PrepRow[] }
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
-  if (value && typeof value === 'object') {
-    const object = value as Record<string, unknown>
-    return '{' + Object.keys(object).sort().map(key => JSON.stringify(key) + ':' + canonical(object[key])).join(',') + '}'
-  }
-  return JSON.stringify(value) ?? 'null'
-}
+// The screen is the prep sheet: the header values once above each worksheet's table, then
+// one row per sheet row with the sheet's own columns in the sheet's order. Registration
+// turns each row into one stack per sample number, on the server.
+const REVIEW_KEY = 'fabric-tracker.prep-sheet.v4'
+const COLUMNS = [
+  ['test', 'Test'],
+  ['tested_count', 'Total Number of Specimens to be Tested'],
+  ['conditions', 'Conditions'],
+  ['conditioning', 'Specimens per sample for Conditioning'],
+  ['sample', 'Sample Number'],
+  ['sample_type', 'Sample Type'],
+] as const
+type Column = typeof COLUMNS[number][0]
+const HEADER_FIELDS = [
+  ['labware_number', 'LabWare #'], ['project_number', 'Oracle project'], ['standard', 'Standard'], ['regime', 'Regime'],
+] as const
+const blankHeader = (): PrepHeader => ({ project_number: '', labware_number: '', standard: '', regime: '' })
+const blankRow = (sheet = 'Preparation'): PrepRow => ({ sheet, test: '', tested_count: '', conditions: '', conditioning: '', sample: '', sample_type: '' })
+type Review = { draft: Draft | null; headers: Record<string, PrepHeader>; rows: PrepRow[] }
+const fresh = (): Review => ({ draft: null, headers: { Preparation: blankHeader() }, rows: [blankRow()] })
+
 function restoredReview(): Review {
   try {
-    const current = JSON.parse(localStorage.getItem(REVIEW_KEY) || 'null') as Review | null
-    if (current && Array.isArray(current.rows)) return current
-    const old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null') as Draft | null
-    if (old) return { draft: old, rows: old.rows }
-  } catch { /* An invalid local cache must not prevent a fresh import. */ }
-  return { draft: null, rows: [emptyRow()] }
+    const value = JSON.parse(localStorage.getItem(REVIEW_KEY) || 'null') as Review | null
+    if (value && Array.isArray(value.rows) && value.headers) return value
+  } catch { /* An unreadable local copy must not block a fresh import. */ }
+  return fresh()
 }
-function missingFields(row: PrepRow) {
-  return fields.filter(field => field === 'specimen_count'
-    ? !Number.isInteger(row.specimen_count) || row.specimen_count < 1 || row.specimen_count > 500
-    : !row[field]?.trim())
+
+/** Mirror of backend prepsheet.conditioning_count: '6', '5 Warp, 5 Fill', '3 15x15'. */
+export function piecesPerSample(value: string): number | null {
+  const text = value.trim()
+  if (/^\d+(\.0+)?$/.test(text)) { const n = Math.floor(Number(text)); return n >= 1 && n <= 500 ? n : null }
+  const panel = /^(\d+)\s+\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?(?:\s*(?:in|inch|inches|cm|mm|["″]))?$/i.exec(text)
+  if (panel) { const n = Number(panel[1]); return n >= 1 && n <= 500 ? n : null }
+  let total = 0
+  for (const piece of text.split(/\s*(?:,|\+|;|\band\b)\s*/i)) {
+    const match = /^(\d+)\s*(Warp|Fill|Contact|Spaced|Length|Width)\s*$/i.exec(piece)
+    if (!match) return null
+    total += Number(match[1])
+  }
+  return total >= 1 && total <= 500 ? total : null
 }
-function describe(value: unknown): string {
-  if (value == null) return '—'
-  if (Array.isArray(value)) return value.map(describe).join(', ')
-  if (typeof value === 'object') return Object.entries(value as Record<string, unknown>)
-    .map(([key, content]) => key.replaceAll('_', ' ') + ': ' + describe(content)).join(' · ')
-  return String(value)
+const samplesOf = (value: string) => value.split(/[,;\n]/).map(item => item.trim()).filter(Boolean)
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
+  if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical((value as Record<string, unknown>)[key])).join(',') + '}'
+  return JSON.stringify(value ?? null)
 }
+const projectOf = (header?: PrepHeader) => (header?.project_number || '').trim() || (header?.labware_number || '').trim()
+
+/** Mirror of backend prepsheet.resolve, for highlighting cells while typing. The server decides. */
+function check(headers: Record<string, PrepHeader>, rows: PrepRow[]) {
+  const problems: PrepProblem[] = []
+  const previous: Record<string, string> = {}
+  let stacks = 0, specimens = 0
+  rows.forEach((row, index) => {
+    const before = problems.length
+    const add = (column: string, message: string) => problems.push({ row: index, sheet: row.sheet, column, message })
+    if (row.test.trim()) previous[row.sheet] = row.test.trim()
+    const count = piecesPerSample(row.conditioning), samples = samplesOf(row.sample)
+    const expected = row.metadata?.sample_count
+    if (!projectOf(headers[row.sheet])) add('project_number', 'Enter the Oracle project or LabWare # for this sheet.')
+    if (!previous[row.sheet]) add('test', 'Enter the test.')
+    if (!row.conditions.trim()) add('conditions', 'Enter the conditions (treatment).')
+    if (count === null) add('conditioning', 'Enter the pieces per sample, e.g. 6 or 5 Warp, 5 Fill.')
+    if (!samples.length) add('sample', 'Enter the sample number.')
+    else if (typeof expected === 'number' && samples.length !== expected) add('sample', `The sheet lists ${expected} sample(s); enter ${expected} sample number(s).`)
+    else if (new Set(samples).size !== samples.length) add('sample', 'A sample number is repeated in this row.')
+    if (problems.length === before) { stacks += samples.length; specimens += samples.length * (count || 0) }
+  })
+  return { problems, stacks, specimens }
+}
+
 function SourceDetails({ row }: { row: PrepRow }) {
   const metadata = row.metadata || {}
-  const source = metadata.source as Record<string, unknown> | undefined
-  const cells = source?.cells as Record<string, Record<string, unknown>> | undefined
+  const cells = metadata.cells as Record<string, { cell?: string; value?: string; formula?: string }> | undefined
   const warnings = metadata.warnings as string[] | undefined
   return <>
-    <div className="source-grid">
-      {source && Object.entries(source).filter(([key]) => key !== 'cells').map(([key, value]) =>
-        <div key={key}><span>{key.replaceAll('_', ' ')}</span><b>{describe(value)}</b></div>)}
-      {Object.entries(metadata).filter(([key]) => key !== 'source' && key !== 'warnings').map(([key, value]) =>
-        <div key={key}><span>{key.replaceAll('_', ' ')}</span><b>{describe(value)}</b></div>)}
-    </div>
-    {cells && <div className="table-wrap source-cells"><table>
-      <thead><tr><th>Source field</th><th>Excel cell</th><th>Workbook value</th></tr></thead>
+    {cells && Object.keys(cells).length ? <div className="table-wrap source-cells"><table>
+      <thead><tr><th>Sheet column</th><th>Excel cell</th><th>Workbook value</th></tr></thead>
       <tbody>{Object.entries(cells).map(([name, value]) => <tr key={name}>
-        <td>{name.replaceAll('_', ' ')}</td><td><b>{describe(value.cell)}</b></td>
-        <td>{describe(value.value ?? value.raw ?? value)}</td>
+        <td>{name.replaceAll('_', ' ')}</td><td><b>{value.cell || '—'}</b></td>
+        <td>{value.formula ? `=${value.formula} → ${value.value || 'not cached'}` : value.value || '—'}</td>
       </tr>)}</tbody>
-    </table></div>}
+    </table></div> : <p className="subtle">Typed on this screen. No workbook cells.</p>}
     {warnings?.map((warning, index) => <div className="notice warning" key={index}>{warning}</div>)}
-    {!Object.keys(metadata).length && <p className="subtle">Manually entered row. No workbook source cells.</p>}
   </>
 }
 
 export default function Prep({ config, healthy }: { config: Config; healthy: boolean }) {
   const initial = useRef(restoredReview()).current
+  const [headers, setHeaders] = useState(initial.headers)
   const [rows, setRows] = useState(initial.rows)
   const [draft, setDraft] = useState<Draft | null>(initial.draft)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [onlyMissing, setOnlyMissing] = useState(false)
   const [sourceRow, setSourceRow] = useState<number | null>(null)
+  const [registeredStacks, setRegisteredStacks] = useState<Stack[]>([])
   const [labelStacks, setLabelStacks] = useState<Stack[] | null>(null)
-  const [selectedSheets, setSelectedSheets] = useState<string[]>(() =>
-    initial.draft?.sheets?.filter(sheet => (sheet as { selected?: boolean }).selected).map(sheet => sheet.name) || [])
+  const [selectedSheets, setSelectedSheets] = useState<string[]>(() => initial.draft?.sheets?.filter(sheet => sheet.selected).map(sheet => sheet.name) || [])
   const uploadFile = useRef<File | null>(null)
-  const alive = useRef(true)
-  const operation = useRef(0)
-  const workLock = useRef(false)
-  const current = useRef<Review>({ rows, draft })
-  current.current = { rows, draft }
+  const alive = useRef(true), operation = useRef(0), workLock = useRef(false)
+  const current = useRef<Review>({ draft, headers, rows }); current.current = { draft, headers, rows }
   const registered = draft?.committed ? draft.stack_ids : []
-  const unresolved = rows.map((row, index) => ({ row, index, missing: missingFields(row) })).filter(row => row.missing.length)
-  const valid = rows.length > 0 && unresolved.length === 0
-  const total = rows.reduce((sum, row) => sum + (Number.isFinite(row.specimen_count) ? row.specimen_count : 0), 0)
+  const locked = busy || registered.length > 0
+  const { problems, stacks, specimens } = check(headers, rows)
+  const problemAt = (index: number, column: string) => problems.find(p => p.row === index && p.column === column)
+  const sheets = [...new Set([...Object.keys(headers), ...rows.map(row => row.sheet)])].filter(name => rows.some(row => row.sheet === name))
 
-  useEffect(() => {
-    alive.current = true
-    return () => { alive.current = false; operation.current++ }
-  }, [])
-  // Save on every edit before a navigation paint. No extra Save step is required.
-  // The uncommitted server import is only replaced on registration, avoiding
-  // background writes over another person's review of the same source file.
+  useEffect(() => { alive.current = true; return () => { alive.current = false; operation.current++ } }, [])
+  // Every edit is kept in this browser before the next paint; nothing to save by hand.
   useLayoutEffect(() => {
-    try { localStorage.setItem(REVIEW_KEY, JSON.stringify({ rows, draft })) }
-    catch { setError('This browser cannot preserve your review. Keep this page open until registration finishes.') }
-  }, [rows, draft])
+    try { localStorage.setItem(REVIEW_KEY, JSON.stringify({ draft, headers, rows })) }
+    catch { setError('This browser cannot keep your edits. Keep this page open until registration finishes.') }
+  }, [draft, headers, rows])
   useEffect(() => {
-    const saved = current.current
-    if (!healthy || !saved.draft || workLock.current) return
-    const id = saved.draft.id
+    if (!healthy || !draft?.committed || registeredStacks.length) return
     let active = true
-    void api<Draft>('/prep-drafts/' + id).then(value => {
-      if (!active || !alive.current || current.current.draft?.id !== id || workLock.current) return
-      if (value.committed) {
-        setDraft(value)
-        setRows(value.rows)
-      } else {
-        const local = current.current
-        const hasEdits = canonical(local.rows) !== canonical(local.draft?.rows)
-        if (hasEdits && canonical(value.rows) !== canonical(local.draft?.rows)
-          && canonical(value.rows) !== canonical(local.rows)) {
-          setError('Another browser changed this preparation. Your edits are kept here; review the latest workbook before registering.')
-        } else {
-          setDraft(value)
-          if (!hasEdits) setRows(value.rows)
-        }
-      }
-    }).catch(err => {
-      if (active && alive.current) setError('The saved review is still available on this computer. Could not check its registration: ' + (err as Error).message)
-    })
+    void Promise.all(draft.stack_ids.map(id => api<Stack>('/stacks/' + id))).then(value => { if (active && alive.current) setRegisteredStacks(value) }).catch(() => {})
     return () => { active = false }
-  }, [healthy])
+  }, [healthy, draft, registeredStacks.length])
 
   async function run<T>(work: () => Promise<T>, success: (value: T) => void) {
     if (workLock.current || !healthy) return
     const id = ++operation.current
-    workLock.current = true
-    setBusy(true)
-    setError('')
-    try {
-      const value = await work()
-      if (alive.current && id === operation.current) success(value)
-    } catch (err) {
-      if (alive.current && id === operation.current) setError((err as Error).message)
-    } finally {
-      workLock.current = false
-      if (alive.current && id === operation.current) setBusy(false)
-    }
+    workLock.current = true; setBusy(true); setError('')
+    try { const value = await work(); if (alive.current && id === operation.current) success(value) }
+    catch (err) { if (alive.current && id === operation.current) setError((err as Error).message) }
+    finally { workLock.current = false; if (alive.current && id === operation.current) setBusy(false) }
   }
-  function update(index: number, field: typeof fields[number], value: string) {
-    setRows(previous => previous.map((row, at) => at === index
-      ? { ...row, [field]: field === 'specimen_count' ? Number(value) : value } : row))
+  function load(value: Draft) {
+    setDraft(value)
+    setHeaders(Object.keys(value.headers || {}).length ? value.headers : { Preparation: blankHeader() })
+    setRows(value.rows.length ? value.rows : [blankRow()])
+    setRegisteredStacks([])
+    setLabelStacks(null)
   }
-  function jumpToMissing() {
-    const first = unresolved[0]
-    if (!first) return
-    setOnlyMissing(true)
-    requestAnimationFrame(() => {
-      const input = document.getElementById('prep-' + first.index + '-' + first.missing[0])
-      input?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
-      input?.focus({ preventScroll: true })
+  const setCell = (index: number, column: Column, value: string) =>
+    setRows(previous => previous.map((row, at) => at === index ? { ...row, [column]: value } : row))
+  const setHeader = (sheet: string, field: keyof PrepHeader, value: string) =>
+    setHeaders(previous => ({ ...previous, [sheet]: { ...(previous[sheet] || blankHeader()), [field]: value } }))
+  function addRow(sheet: string) {
+    setRows(previous => {
+      const last = previous.map(row => row.sheet).lastIndexOf(sheet)
+      return [...previous.slice(0, last + 1), blankRow(sheet), ...previous.slice(last + 1)]
     })
   }
-  async function upload(file: File, sheets?: string[], newBatch = false) {
+  function jumpToProblem() {
+    const first = problems[0]
+    if (!first) return
+    const id = first.column === 'project_number' ? `prep-header-${first.sheet}-project_number` : `prep-${first.row}-${first.column}`
+    const input = document.getElementById(id)
+    input?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
+    input?.focus({ preventScroll: true })
+  }
+  async function upload(file: File, chosen?: string[], newBatch = false) {
     await run(async () => {
       const data = new FormData()
       data.append('file', file)
-      if (sheets?.length) data.append('sheet_names', JSON.stringify(sheets))
+      if (chosen?.length) data.append('sheet_names', JSON.stringify(chosen))
       if (newBatch) data.append('new_batch', 'true')
-      return api<Draft>(file.name.toLowerCase().endsWith('.csv') ? '/prep-drafts/csv' : '/prep-drafts/workbook',
-        { method: 'POST', body: data }, 30000)
+      return api<Draft>(file.name.toLowerCase().endsWith('.csv') ? '/prep-drafts/csv' : '/prep-drafts/workbook', { method: 'POST', body: data }, 30000)
     }, value => {
       uploadFile.current = file
-      setDraft(value)
-      setRows(value.rows.length ? value.rows : [emptyRow()])
-      setSelectedSheets(value.sheets?.filter(sheet => (sheet as { selected?: boolean }).selected).map(sheet => sheet.name) || [])
-      setOnlyMissing(false)
-      setLabelStacks(null)
-      setMessage(value.committed ? 'Already registered.' :
-        'Workbook imported.')
+      load(value)
+      setSelectedSheets(value.sheets?.filter(sheet => sheet.selected).map(sheet => sheet.name) || [])
+      setMessage(value.committed ? 'This sheet is already registered.' : `Imported ${value.rows.length} sheet rows. Check them against the paper sheet.`)
     })
-  }
-  async function openLabels(ids = registered) {
-    await run(() => Promise.all(ids.map(id => api<Stack>('/stacks/' + id))), value => setLabelStacks(value))
   }
   async function register() {
     const reviewed = current.current
     await run(async () => {
-      const recovered = reviewed.draft ? await api<Draft>('/prep-drafts/' + reviewed.draft.id) : null
-      let saved: Draft
-      if (recovered?.committed) saved = recovered
-      else {
-        // Refuse an unseen edit from another browser rather than replacing it
-        // with this browser's older source review.
-        if (recovered && reviewed.draft && canonical(recovered.rows) !== canonical(reviewed.draft.rows)
-          && canonical(recovered.rows) !== canonical(reviewed.rows)) {
-          throw new Error('This imported preparation changed in another browser. Import the workbook again to review the latest values before registering.')
+      let saved = reviewed.draft
+      // Check the server copy first: an earlier save whose response was lost may already hold these edits.
+      const latest = saved ? await api<Draft>('/prep-drafts/' + saved.id) : null
+      if (latest?.committed) saved = latest
+      if (!saved?.committed) {
+        const body = { headers: reviewed.headers, rows: reviewed.rows }
+        if (latest && canonical({ headers: latest.headers, rows: latest.rows }) === canonical(body)) saved = latest
+        else if (latest && saved && latest.revision !== saved.revision)
+          throw new Error('This prep sheet changed in another browser. Load the latest saved sheet, then check it again.')
+        else saved = saved
+          ? await api<Draft>('/prep-drafts/' + saved.id, { method: 'PUT', body: JSON.stringify({ ...body, expected_revision: saved.revision }) })
+          : await post<Draft>('/prep-drafts', body)
+        // Keep the server's draft id before the commit, so a lost commit response can be checked.
+        localStorage.setItem(REVIEW_KEY, JSON.stringify({ ...reviewed, draft: saved }))
+        if (alive.current) setDraft(saved)
+        try {
+          const result = await post<{ stack_ids: number[] }>('/prep-drafts/' + saved.id + '/commit', { expected_revision: saved.revision })
+          saved = { ...saved, committed: true, stack_ids: result.stack_ids }
+        } catch (err) {
+          const check = await api<Draft>('/prep-drafts/' + saved.id).catch(() => null)
+          if (!check?.committed) throw err
+          saved = check
         }
-        const value = recovered
-          ? await api<Draft>('/prep-drafts/' + recovered.id, { method: 'PUT', body: JSON.stringify({ rows: reviewed.rows, expected_rows: recovered.rows }) })
-          : await post<Draft>('/prep-drafts', { rows: reviewed.rows })
-        // Preserve the authoritative import ID before the commit can lose its response.
-        localStorage.setItem(REVIEW_KEY, JSON.stringify({ draft: value, rows: reviewed.rows }))
-        if (alive.current) setDraft(value)
-        const result = await post<{ stack_ids: number[] }>('/prep-drafts/' + value.id + '/commit', { expected_rows: value.rows })
-        saved = { ...value, committed: true, stack_ids: result.stack_ids }
-        localStorage.setItem(REVIEW_KEY, JSON.stringify({ draft: saved, rows: saved.rows }))
       }
-      const stacks = await Promise.all(saved.stack_ids.map(id => api<Stack>('/stacks/' + id)))
-      return { saved, stacks }
-    }, ({ saved, stacks }) => {
-      setDraft(saved)
-      setRows(saved.rows)
-      setLabelStacks(stacks)
-      setMessage('Registered ' + saved.stack_ids.length + ' stacks.')
+      const value = await Promise.all(saved.stack_ids.map(id => api<Stack>('/stacks/' + id)))
+      return { saved, value }
+    }, ({ saved, value }) => {
+      setDraft(saved); setRegisteredStacks(value); setLabelStacks(value)
+      setMessage(`Registered ${saved.stack_ids.length} stacks.`)
     })
   }
   function startNew() {
     operation.current++
-    setDraft(null)
-    setRows([emptyRow()])
+    const value = fresh()
+    setDraft(null); setHeaders(value.headers); setRows(value.rows)
     uploadFile.current = null
-    setSelectedSheets([])
-    setOnlyMissing(false)
-    setLabelStacks(null)
-    setMessage('')
-    setError('')
+    setSelectedSheets([]); setRegisteredStacks([]); setLabelStacks(null); setMessage(''); setError('')
   }
-  const shown = rows.map((row, index) => ({ row, index })).filter(({ row }) => !onlyMissing || missingFields(row).length)
+  async function reload() {
+    if (!draft) return
+    await run(() => api<Draft>('/prep-drafts/' + draft.id), value => { load(value); setMessage('Loaded the latest saved sheet.') })
+  }
 
   return <>
     <PageHeader title="Preparation">
-      <button className="button secondary" disabled={busy} onClick={startNew}>＋ New preparation</button>
+      <button className="button secondary" disabled={busy} onClick={startNew}>＋ New prep sheet</button>
     </PageHeader>
     <ErrorNotice message={error} />
+    {error.includes('another browser') && <button className="button secondary" disabled={busy} onClick={() => void reload()}>Load the latest saved sheet</button>}
     {message && <div className="notice success" role="status">{message}</div>}
     <section className="card prep-card">
       <div className="card-heading">
-        <div>
-          <h2>Prep review {draft?.source && <span className="badge outline">{draft.source.filename}</span>}</h2>
-        </div>
+        <div><h2>Prep sheet {draft?.source && <span className="badge outline">{draft.source.filename}</span>}</h2></div>
         <label className={'button primary upload ' + (busy || !healthy ? 'disabled' : '')}>↑ Import Excel / CSV
-          <input aria-label="Import prep workbook" type="file" accept=".xlsx,.xlsm,.csv"
-            disabled={busy || !healthy} onChange={e => {
-              if (e.target.files?.[0]) void upload(e.target.files[0])
-              e.target.value = ''
-            }} />
+          <input aria-label="Import prep workbook" type="file" accept=".xlsx,.xlsm,.csv" disabled={busy || !healthy}
+            onChange={e => { if (e.target.files?.[0]) void upload(e.target.files[0]); e.target.value = '' }} />
         </label>
       </div>
       {draft?.warnings?.length ? <details className="import-warnings">
-        <summary>Workbook review notes · {draft.warnings.length}</summary>
+        <summary>Import notes · {draft.warnings.length}</summary>
         {draft.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
       </details> : null}
-      {draft?.sheets?.length ? <details className="sheet-inventory">
-        <summary>{draft.sheets.length} workbook sheets inspected</summary>
+      {draft?.sheets && draft.sheets.length > 1 ? <details className="sheet-inventory">
+        <summary>{draft.sheets.length} worksheets in this file</summary>
         <div className="sheet-list">{draft.sheets.map(sheet => <label className="check-label" key={sheet.name}>
-          <input type="checkbox" checked={selectedSheets.includes(sheet.name)}
-            disabled={!uploadFile.current || busy || registered.length > 0}
+          <input type="checkbox" checked={selectedSheets.includes(sheet.name)} disabled={!uploadFile.current || locked}
             onChange={e => setSelectedSheets(previous => e.target.checked ? [...previous, sheet.name] : previous.filter(name => name !== sheet.name))} />
-          <span><b>{sheet.name}</b> · {sheet.kind.replaceAll('_', ' ')} · {sheet.candidate_count} candidates</span>
+          <span><b>{sheet.name}</b> · {sheet.kind.replaceAll('_', ' ')} · {sheet.candidate_count} rows</span>
         </label>)}</div>
-        {uploadFile.current && !registered.length && <button className="button secondary"
-          disabled={busy || !selectedSheets.length}
-          onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets)}>Review selected sheets</button>}
-        <p className="input-help">{uploadFile.current ? 'Only selected sheets are imported.' : 'Choose the workbook again to change the sheet selection.'}</p>
+        {uploadFile.current && !registered.length && <button className="button secondary" disabled={busy || !selectedSheets.length}
+          onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets)}>Use the selected worksheets</button>}
       </details> : null}
       {!registered.length && <div className="prep-exceptions">
-        <span className={'badge ' + (unresolved.length ? 'warning' : 'good')}>
-          {unresolved.length ? unresolved.length + ' rows need values' : 'All required values present'}
-        </span>
-        <label className="check-label"><input type="checkbox" checked={onlyMissing}
-          onChange={e => setOnlyMissing(e.target.checked)} />Only rows needing attention</label>
-        {unresolved.length > 0 && <button className="button text" onClick={jumpToMissing}>Go to first missing value →</button>}
+        <span className={'badge ' + (problems.length ? 'warning' : 'good')}>{problems.length ? problems.length + ' cells to fill' : 'Every row is complete'}</span>
+        {problems.length > 0 && <button className="button text" onClick={jumpToProblem}>Go to the first one →</button>}
       </div>}
       <datalist id="treatments">{config.treatments.map(treatment => <option key={treatment} value={treatment} />)}</datalist>
-      <div className="table-wrap"><table className="prep-table">
-        <thead><tr><th>#</th>{fields.map(field => <th key={field}>{labels[field]}</th>)}<th>Source</th><th /></tr></thead>
-        <tbody>{shown.map(({ row, index }) => <tr key={index}>
-          <td className="row-number">{String(index + 1).padStart(2, '0')}</td>
-          {fields.map(field => <td key={field}>
-            <input id={'prep-' + index + '-' + field} aria-label={field + ' row ' + (index + 1)}
-              className={missingFields(row).includes(field) ? 'unresolved' : ''}
-              list={field === 'preconditioning_code' ? 'treatments' : undefined}
-              type={field === 'specimen_count' ? 'number' : 'text'} min={1} max={field === 'specimen_count' ? 500 : undefined}
-              value={row[field] ?? ''} placeholder="Required" disabled={busy || registered.length > 0}
-              onChange={e => update(index, field, e.target.value)} />
-          </td>)}
-          <td><button className="button text" aria-label={'Source row ' + (index + 1)} onClick={() => setSourceRow(index)}>Review ↗</button></td>
-          <td><button className="icon-button" aria-label={'Remove row ' + (index + 1)}
-            disabled={busy || registered.length > 0 || rows.length === 1}
-            onClick={() => setRows(previous => previous.filter((_, at) => at !== index))}>×</button></td>
-        </tr>)}</tbody>
-      </table></div>
-      {!shown.length && <div className="empty-inline"><h3>No unresolved rows</h3><p>Turn off the attention filter to review every stack.</p></div>}
+      {sheets.map(sheet => {
+        const header = headers[sheet] || blankHeader()
+        const indexed = rows.map((row, index) => ({ row, index })).filter(item => item.row.sheet === sheet)
+        return <div className="prep-sheet" key={sheet} data-sheet={sheet}>
+          {sheets.length > 1 && <h3 className="prep-sheet-name">{sheet}</h3>}
+          <div className="prep-sheet-header" role="group" aria-label={`${sheet} header`}>
+            {HEADER_FIELDS.map(([field, label]) => <label key={field}>{label}
+              <input id={`prep-header-${sheet}-${field}`} value={header[field]} disabled={locked}
+                className={field === 'project_number' && !projectOf(header) ? 'unresolved' : ''}
+                placeholder={field === 'project_number' ? 'Oracle project or LabWare #' : ''}
+                onChange={e => setHeader(sheet, field, e.target.value)} />
+            </label>)}
+          </div>
+          <div className="table-wrap"><table className="prep-table prep-sheet-table">
+            <thead><tr>{COLUMNS.map(([column, label]) => <th key={column} className={'col-' + column}>{label}</th>)}<th><span className="visually-hidden">Row tools</span></th></tr></thead>
+            <tbody>{indexed.map(({ row, index }, position) => {
+              const pieces = piecesPerSample(row.conditioning), samples = samplesOf(row.sample)
+              return <tr key={index} data-row={index}>
+                {COLUMNS.map(([column, label]) => {
+                  const problem = problemAt(index, column)
+                  return <td key={column} className={'col-' + column}>
+                    <input id={`prep-${index}-${column}`} aria-label={`${label}, row ${position + 1}`} title={problem?.message}
+                      className={problem ? 'unresolved' : ''} value={row[column]} disabled={locked}
+                      list={column === 'conditions' ? 'treatments' : undefined}
+                      placeholder={column === 'test' && position > 0 ? '〃 same as above' : ''}
+                      onChange={e => setCell(index, column, e.target.value)} />
+                    {column === 'conditioning' && row.conditioning && pieces !== null && <small className="cell-hint">{pieces} pieces</small>}
+                    {column === 'sample' && samples.length > 1 && <small className="cell-hint">{samples.length} stacks</small>}
+                    {column === 'sample' && typeof row.metadata?.sample_count === 'number' && <small className="cell-hint">sheet: {String(row.metadata.sample_count)} sample(s)</small>}
+                  </td>
+                })}
+                <td className="row-tools">
+                  {row.metadata?.cells ? <button className="button text" aria-label={`Workbook cells, row ${position + 1}`} onClick={() => setSourceRow(index)}>Cells ↗</button> : null}
+                  <button className="icon-button" aria-label={`Remove row ${position + 1}`} disabled={locked || rows.length === 1}
+                    onClick={() => setRows(previous => previous.filter((_, at) => at !== index))}>×</button>
+                </td>
+              </tr>
+            })}</tbody>
+          </table></div>
+          {!registered.length && <button className="button text add-row" disabled={locked} onClick={() => addRow(sheet)}>＋ Add row</button>}
+        </div>
+      })}
       <div className="card-actions">
-        <button className="button text" disabled={busy || registered.length > 0}
-          onClick={() => setRows(previous => [...previous, emptyRow()])}>＋ Add stack</button>
-        <span className="summary-count">{rows.length} stacks · {total} physical specimens</span>
-        <button className="button primary" disabled={!valid || !healthy || busy}
-          onClick={() => registered.length ? void openLabels() : void register()}>
+        <span className="summary-count">{rows.length} sheet rows · {stacks} stacks · {specimens} specimens</span>
+        <button className="button primary" disabled={(!registered.length && problems.length > 0) || !healthy || busy}
+          onClick={() => registered.length ? setLabelStacks(registeredStacks) : void register()}>
           {busy ? 'Working…' : registered.length ? 'Preview / reprint labels →' : 'Register & preview labels →'}
         </button>
       </div>
     </section>
     {registered.length > 0 && <section className="card">
       <div className="card-heading">
-        <div><h2>Registered specimens</h2></div>
+        <div><h2>Registered stacks</h2></div>
         {uploadFile.current && <button className="button secondary" disabled={busy || !healthy}
-          onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets, true)}>New physical batch from this workbook</button>}
+          onClick={() => uploadFile.current && void upload(uploadFile.current, selectedSheets, true)}>Register this file again as a new batch</button>}
       </div>
-      {registered.map((id, index) => <div className="export-row" key={id}>
-        <div><b>{rows[index]?.project_number} / {rows[index]?.material_ref}</b>
-          <small>{rows[index]?.test_code} · {rows[index]?.preconditioning_code} · {rows[index]?.specimen_count} specimens</small></div>
-        <button className="button secondary" disabled={!healthy || busy} onClick={() => void openLabels([id])}>Preview / reprint</button>
-        <a className="button text" href={'#records?stack=' + id}>Open records →</a>
+      {registeredStacks.map(stack => <div className="export-row" key={stack.id}>
+        <div><b>Stack {stack.id} · {stack.project_number} / {stack.material_ref}</b>
+          <small>{stack.test_code} · {stack.preconditioning_code} · {stack.specimen_count} specimens</small></div>
+        <button className="button secondary" disabled={!healthy || busy} onClick={() => setLabelStacks([stack])}>Preview / reprint</button>
+        <a className="button text" href={'#records?stack=' + stack.id}>Open or edit stack →</a>
       </div>)}
     </section>}
-    {sourceRow !== null && <Modal title={'Workbook source · Stack ' + (sourceRow + 1)} wide onClose={() => setSourceRow(null)}>
+    {sourceRow !== null && rows[sourceRow] && <Modal title="Workbook cells for this row" wide onClose={() => setSourceRow(null)}>
       <div className="modal-body"><SourceDetails row={rows[sourceRow]} /></div>
-      <div className="modal-actions"><button className="button secondary" onClick={() => setSourceRow(null)}>Back to review</button></div>
+      <div className="modal-actions"><button className="button secondary" onClick={() => setSourceRow(null)}>Back to the sheet</button></div>
     </Modal>}
     {labelStacks && <LabelDialog stacks={labelStacks} healthy={healthy} onClose={() => setLabelStacks(null)} />}
   </>

@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import uuid
 import zipfile
 from zoneinfo import ZoneInfo
 
@@ -30,7 +29,21 @@ router = APIRouter(prefix="/api/backups", tags=["Backups"])
 LOCK = threading.RLock()
 LIMIT = 64 * 1024 * 1024
 EXPANDED_LIMIT = 256 * 1024 * 1024
-SCHEMA = 1
+SCHEMA = 2           # 2: sequential keys everywhere (no UUIDs); 1-format archives are refused
+# Tables whose keys PostgreSQL numbers. A restore never lets any of them count backwards.
+NUMBERED = ("projects", "materials", "prep_drafts", "stacks", "specimens", "conditioning_sessions", "audit_events")
+_last_identifier = ""
+
+
+def new_identifier():
+    """A sortable timestamp name for a backup or staged restore: 20261112T143000123456 (UTC)."""
+    global _last_identifier
+    with LOCK:
+        value = utcnow().strftime("%Y%m%dT%H%M%S%f")
+        while value <= _last_identifier:   # two in the same microsecond
+            value = (datetime.strptime(_last_identifier, "%Y%m%dT%H%M%S%f") + timedelta(microseconds=1)).strftime("%Y%m%dT%H%M%S%f")
+        _last_identifier = value
+        return value
 LOGGER = logging.getLogger(__name__)
 
 
@@ -73,7 +86,7 @@ def digest(path):
 
 
 def item_paths(identifier):
-    if not re.fullmatch(r"[0-9a-f]{32}", identifier):
+    if not re.fullmatch(r"[0-9]{8}T[0-9]{12}", identifier):
         raise HTTPException(404, "Backup not found.")
     return folder() / (identifier + ".zip"), folder() / (identifier + ".info.json")
 
@@ -86,7 +99,7 @@ def encode(value):
 
 def make_backup():
     with LOCK:
-        identifier = uuid.uuid4().hex
+        identifier = new_identifier()
         path, info_path = item_paths(identifier)
         created = utcnow().isoformat()
         # All tables are read at one PostgreSQL MVCC snapshot, including print and request state.
@@ -106,7 +119,7 @@ def make_backup():
         os.chmod(temporary, 0o600)
         temporary.replace(path)
         info = {"id": identifier, "created_at": created, "size": path.stat().st_size,
-                "sha256": digest(path), "filename": "fabric-" + created[:10] + "-" + identifier[:8] + ".zip",
+                "sha256": digest(path), "filename": "fabric-" + identifier + ".zip",
                 "verified": True, "verified_at": created, "counts": manifest["counts"],
                 "cloud_copy_state": "not_configured"}
         config = settings()
@@ -189,8 +202,8 @@ def drop_databases(admin, pattern, keep):
 
 def create_staging(content):
     manifest, snapshot = read_archive(content)
-    identifier = uuid.uuid4().hex
-    name = engine.url.database + "_restore_" + identifier[:20]
+    identifier = new_identifier()
+    name = engine.url.database + "_restore_" + identifier.lower()
     admin = admin_engine()
     # Staged copies are only usable for a day; keep the ones a pending or in-flight restore still needs.
     pending = [json.loads(path.read_text()) for path in folder().glob("*.staged.json")]
@@ -225,7 +238,7 @@ def create_staging(content):
                 if converted:
                     connection.execute(table.insert(), converted)
             # Restored rows keep their numbers; new registrations continue after the highest one.
-            for counted in ("stacks", "specimens"):
+            for counted in NUMBERED:
                 connection.exec_driver_sql(f"SELECT setval(pg_get_serial_sequence('{counted}', 'id'), "
                                            f"COALESCE((SELECT max(id) FROM {counted}), 0) + 1, false)")
         record = {"id": identifier, "status": "validated", "counts": manifest["counts"],
@@ -279,12 +292,17 @@ def staged_record(identifier):
 
 
 def carry_counters(stage):
-    """Never issue a stack or specimen number twice: the restored database continues after the highest number
-    the current one has issued (labels may already be printed with numbers newer than the backup)."""
+    """Never issue a number twice: the restored database continues after the highest number the current one
+    has issued. Labels may already be printed with specimen numbers newer than the backup, and kiosks and
+    browsers may hold retry IDs reserved after it."""
     target = create_engine(engine.url.set(database=stage))
     try:
         with engine.connect() as active, target.begin() as restored:
-            for table in ("stacks", "specimens"):
+            for row in active.execute(text("SELECT client, last_issued FROM request_counters")).mappings():
+                restored.execute(text("INSERT INTO request_counters (client, last_issued) VALUES (:client, :last_issued) "
+                                      "ON CONFLICT (client) DO UPDATE SET last_issued = GREATEST(request_counters.last_issued, EXCLUDED.last_issued)"),
+                                 dict(row))
+            for table in NUMBERED:
                 sequence = active.execute(text(f"SELECT pg_get_serial_sequence('{table}', 'id')")).scalar()
                 issued = active.execute(text(f"SELECT CASE WHEN is_called THEN last_value ELSE last_value - 1 END FROM {sequence}")).scalar()
                 restored.execute(text(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
@@ -303,7 +321,7 @@ def apply_staging(identifier):
         raise HTTPException(409, "Restore validation expired. Import the backup again.")
     active = engine.url.database
     stage = record["database"]
-    previous = active + "_previous_" + uuid.uuid4().hex[:20]
+    previous = active + "_previous_" + new_identifier().lower()
     if not all(re.fullmatch(r"[a-zA-Z0-9_]+", value or "") for value in [active, stage, previous]):
         raise HTTPException(409, "Database names are not supported for restore.")
     with LOCK:

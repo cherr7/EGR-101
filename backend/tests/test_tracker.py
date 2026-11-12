@@ -1,17 +1,17 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
-from uuid import uuid4
 
 from app.barcodes import label_code
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
+from helpers import prep_sheet, request_id
 
 
 def move(client, stack, direction="IN", scope="stack", **extra):
-    data = {"request_id": str(uuid4()), "station_id": "shared-door", "code": stack["specimens"][2 if len(stack["specimens"]) > 2 else 0]["barcode_value"],
+    data = {"request_id": request_id(client, extra.get("station_id", "shared-door")), "station_id": "shared-door", "code": stack["specimens"][2 if len(stack["specimens"]) > 2 else 0]["barcode_value"],
             "direction": direction, "scope": scope, **extra}
     response = client.post("/api/movements", json=data)
     assert response.status_code == 200, response.text
@@ -31,11 +31,15 @@ def test_registration_identity_and_csv_preserve_project(client, stack_factory):
     repeated = client.post(f'/api/prep-drafts/{first["draft_id"]}/commit').json()
     assert repeated["stack_ids"] == [first["id"]]
     assert client.put(f'/api/prep-drafts/{first["draft_id"]}', json={"rows": []}).status_code == 422
-    csv = b"project_number,material_ref,test_code,preconditioning_code,specimen_count\nUL-2026-001,Other,T1,3L,2\n"
+    assert client.put(f'/api/prep-drafts/{first["draft_id"]}', json=prep_sheet()).status_code == 409   # already registered
+    csv = b"project_number,material_ref,test_code,preconditioning_code,specimen_count\nUL-2026-001,Other,T1,3L,2\nUL-2026-001,Next,T1,3L,4\n"
     draft = client.post("/api/prep-drafts/csv", files={"file": ("prep.csv", csv, "text/csv")}).json()
-    assert draft["rows"][0]["project_number"] == "UL-2026-001"
+    assert draft["headers"]["CSV"]["project_number"] == "UL-2026-001"
+    assert [(r["test"], r["sample"], r["conditioning"]) for r in draft["rows"]] == [("T1", "Other", "2"), ("", "Next", "4")]
     committed = client.post(f'/api/prep-drafts/{draft["id"]}/commit').json()
     assert detail(client, {"id": committed["stack_ids"][0]})["specimen_count"] == 2
+    second_csv = detail(client, {"id": committed["stack_ids"][1]})
+    assert (second_csv["project_number"], second_csv["test_code"], second_csv["specimen_count"]) == ("UL-2026-001", "T1", 4)
     assert set(client.get("/api/config").json()["treatments"]) >= {"AR", "100L"}
     rooms = {r["id"]: r for r in client.get("/api/config").json()["rooms"]}
     assert {key: (r["temperature_c"], r["temperature_tolerance_c"], r["relative_humidity"], r["humidity_tolerance"], r["required_hours"])
@@ -57,7 +61,7 @@ def test_scan_any_member_whole_stack_repeat_and_retry(client, stack_factory):
     assert client.get("/api/movement-requests/" + request["request_id"]).json() == result
     assert all(len(p["sessions"]) == 1 for p in detail(client, stack)["specimens"])
     assert client.post("/api/movements", json={**request, "direction": "OUT"}).status_code == 409
-    assert client.get("/api/movement-requests/" + str(uuid4())).status_code == 404
+    assert client.get("/api/movement-requests/shared-door-999999").status_code == 404
 
 
 def test_partial_early_exit_remaining_stack_and_no_reentry(client, stack_factory):
@@ -88,13 +92,13 @@ def test_concurrent_and_stale_selection_are_atomic(client, stack_factory):
     from app.movements import process_movement
     from app.schemas import MovementBody
     stack = stack_factory()
-    request = {"request_id": str(uuid4()), "station_id": "shared-door", "code": stack["specimens"][0]["barcode_value"],
+    request = {"request_id": request_id(client), "station_id": "shared-door", "code": stack["specimens"][0]["barcode_value"],
                "direction": "IN", "scope": "stack", "expected_version": 0}
     def invoke(payload):
         with SessionLocal.begin() as db:
             return process_movement(db, MovementBody(**payload))
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(invoke, [request, {**request, "request_id": str(uuid4())}]))
+        results = list(pool.map(invoke, [request, {**request, "request_id": request_id(client)}]))
     assert sorted(r["status"] for r in results) == ["committed", "rejected"]
     assert all(len(p["sessions"]) == 1 for p in detail(client, stack)["specimens"])
     stale, _ = move(client, stack, "OUT", "selection", selected_specimen_ids=[p["id"] for p in stack["specimens"]], expected_version=0, acknowledge_early=True)
@@ -102,12 +106,12 @@ def test_concurrent_and_stale_selection_are_atomic(client, stack_factory):
     assert all(p["state"] == "IN" for p in detail(client, stack)["specimens"])
 
 
-def test_concurrent_same_uuid_creates_exactly_one_movement(client, stack_factory):
+def test_concurrent_same_request_id_creates_exactly_one_movement(client, stack_factory):
     from app.db import SessionLocal
     from app.movements import process_movement
     from app.schemas import MovementBody
     stack = stack_factory(count=2)
-    request = MovementBody(request_id=uuid4(), station_id="shared-door", code=stack["specimens"][0]["barcode_value"], direction="IN")
+    request = MovementBody(request_id=request_id(client), station_id="shared-door", code=stack["specimens"][0]["barcode_value"], direction="IN")
     def invoke(_):
         with SessionLocal.begin() as db:
             return process_movement(db, request)
@@ -243,11 +247,11 @@ def test_undoing_a_later_scan_reopens_undo_on_the_earlier_scan(client, stack_fac
     assert left["status"] == "committed", left
     rows = {e["id"]: e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"]}
     assert rows[entered["event_id"]]["can_undo"] is False      # the OUT really is later activity
-    undone = client.post("/api/transactions/" + left["event_id"] + "/undo", json={"expected_version": rows[left["event_id"]]["version"]})
+    undone = client.post("/api/transactions/" + str(left["event_id"]) + "/undo", json={"expected_version": rows[left["event_id"]]["version"]})
     assert undone.is_success, undone.text
     row = next(e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"] if e["id"] == entered["event_id"])
     assert row["can_undo"] is True and not row["undone"]
-    again = client.post("/api/transactions/" + entered["event_id"] + "/undo", json={"expected_version": row["version"]})
+    again = client.post("/api/transactions/" + str(entered["event_id"]) + "/undo", json={"expected_version": row["version"]})
     assert again.is_success, again.text
     assert detail(client, stack)["inside_count"] == 0
     assert all(s["state"] == "OUT" and not [p for p in s["sessions"] if not p.get("voided")] for s in detail(client, stack)["specimens"])
@@ -258,11 +262,11 @@ def test_correction_after_an_undone_scan_still_blocks_undo(client, stack_factory
     entered, _ = move(client, stack)
     left, _ = move(client, stack, "OUT", acknowledge_early=True, expected_version=entered["version"])
     version = lambda: detail(client, stack)["version"]
-    assert client.post("/api/transactions/" + left["event_id"] + "/undo", json={"expected_version": version()}).is_success
+    assert client.post("/api/transactions/" + str(left["event_id"]) + "/undo", json={"expected_version": version()}).is_success
     session_id = detail(client, stack)["specimens"][0]["sessions"][0]["id"]
     corrected = client.post("/api/corrections", json={"kind": "edit_session", "session_id": session_id, "reason": "Fix entry",
         "entered_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(), "exited_at": None})
     assert corrected.status_code == 200, corrected.text
     row = next(e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"] if e["id"] == entered["event_id"])
     assert row["can_undo"] is False
-    assert client.post("/api/transactions/" + entered["event_id"] + "/undo", json={"expected_version": version()}).status_code == 409
+    assert client.post("/api/transactions/" + str(entered["event_id"]) + "/undo", json={"expected_version": version()}).status_code == 409

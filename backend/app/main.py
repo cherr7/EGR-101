@@ -1,10 +1,12 @@
 import csv
+import hashlib
 import asyncio
 import io
 import os
+from typing import Annotated
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -20,10 +22,16 @@ from .backups import TrafficGate, daily_scheduler, router as backups_router
 from .exports import router as exports_router
 from .workbooks import router as workbooks_router
 from .printing import router as printing_router
+from .stacks import router as stacks_router
+from .stations import router as stations_router
+from .dashboard import router as dashboard_router
+from .system_health import ensure_sampler, router as system_health_router
 from .models import AuditEvent, Material, MovementRequest, PrepDraft, Project, Room, Specimen, Stack, Station, Treatment, utcnow
 from .movements import process_movement
-from .schemas import CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, PrepCommitBody, TransactionEditBody, TransactionUndoBody
-from .services import commit_draft, draft_dict, event_dict, iso, query_stacks, resolve_code, seed_config, specimen_time_log, stack_detail
+from .schemas import (REQUEST_ID, CorrectionBody, LoginBody, LookupBody, MissedMovementBody, MovementBody, PrepBody, PrepCommitBody,
+                      RequestIdsBody, TransactionEditBody, TransactionUndoBody, split_request_id)
+from .services import (TARGET_EVENT, commit_draft, draft_dict, event_dict, iso, query_stacks, reserve_request_numbers, resolve_code,
+                       seed_config, specimen_time_log, stack_detail)
 
 
 @asynccontextmanager
@@ -34,6 +42,7 @@ async def lifespan(app):
     scheduler = None
     if not (engine.url.database or "").endswith("_test"):
         scheduler = asyncio.create_task(daily_scheduler())
+        ensure_sampler()  # CPU/memory history for System health starts with the host, not the first page view
     try:
         yield
     finally:
@@ -45,7 +54,7 @@ async def lifespan(app):
                 pass
 
 
-app = FastAPI(title="Fabric Conditioning Tracker", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Fabric Conditioning Tracker", version="3.0.0", lifespan=lifespan)
 app.add_middleware(SessionMiddleware,
                    secret_key=os.getenv("SESSION_SECRET", "classroom-demo-change-this-session-secret"),
                    same_site="strict", https_only=os.getenv("COOKIE_SECURE", "false").lower() == "true",
@@ -53,7 +62,11 @@ app.add_middleware(SessionMiddleware,
 app.include_router(exports_router)
 app.include_router(workbooks_router)
 app.include_router(printing_router)
+app.include_router(stacks_router)
 app.include_router(backups_router)
+app.include_router(stations_router)
+app.include_router(dashboard_router)
+app.include_router(system_health_router)
 
 
 class RestoreMaintenanceGate:
@@ -103,17 +116,43 @@ def config(db=Depends(get_db)):
                 for s in db.scalars(select(Station).order_by(Station.name))]
     return {"rooms": rooms, "stations": stations, "treatments": list(db.scalars(select(Treatment.code).order_by(Treatment.code))),
             "display_timezone": "America/New_York", "server_time": iso(utcnow()),
-            "identity": {"bits": 128, "label_encoding": "decimal", "label_digits": 39, "symbology": "Data Matrix"},
             "conditioning_periods_per_specimen": 1}
+
+
+@app.post("/api/request-ids")
+def request_ids(body: RequestIdsBody, db=Depends(get_db)):
+    """Reserve a block of retry IDs '<client>-<n>' for a kiosk station or for printing."""
+    with db.begin():
+        return reserve_request_numbers(db, body.client, body.count)
 
 
 @app.post("/api/prep-drafts")
 def create_draft(body: PrepBody, db=Depends(get_db)):
     with db.begin():
-        draft = PrepDraft(rows=[r.model_dump() for r in body.rows])
+        draft = PrepDraft(headers={name: header.model_dump() for name, header in body.headers.items()},
+                          rows=[r.model_dump() for r in body.rows])
         db.add(draft)
         db.flush()
         return draft_dict(draft)
+
+
+def csv_draft(rows):
+    """Lay a five-column CSV out as prep sheet rows: one worksheet per project."""
+    sheets = {}
+    for row in rows:
+        project = row["project_number"].strip()
+        sheets.setdefault(project, []).append(row)
+    headers, sheet_rows = {}, []
+    for project, items in sheets.items():
+        name = "CSV" if len(sheets) == 1 else "CSV " + project
+        headers[name] = {"project_number": project}
+        previous = None
+        for row in items:
+            test = row["test_code"].strip()
+            sheet_rows.append({"sheet": name, "test": "" if test == previous else test, "conditions": row["preconditioning_code"].strip(),
+                               "conditioning": row["specimen_count"].strip(), "sample": row["material_ref"].strip()})
+            previous = test
+    return PrepBody(headers=headers, rows=sheet_rows)
 
 
 @app.post("/api/prep-drafts/csv")
@@ -133,16 +172,26 @@ async def import_csv(file: UploadFile = File(...), db=Depends(get_db)):
             if None in row or any(value is None for value in row.values()):
                 raise HTTPException(422, "Every CSV row must have all five values.")
             rows.append(row)
-        body = PrepBody(rows=rows)
+        if not rows:
+            raise HTTPException(422, "The CSV has no rows.")
+        body = csv_draft(rows)
     except UnicodeDecodeError:
         raise HTTPException(422, "CSV must use UTF-8 encoding.")
     except (ValidationError, csv.Error) as error:
         raise HTTPException(422, str(error))
-    return create_draft(body, db)
+    # Keep the file's identity so the batch is named after its prep sheet, like workbook imports.
+    with db.begin():
+        draft = PrepDraft(headers={name: header.model_dump() for name, header in body.headers.items()},
+                          rows=[r.model_dump() for r in body.rows],
+                          source={"filename": (file.filename or "prep-sheet.csv")[:255], "format": "csv",
+                                  "sha256": hashlib.sha256(content).hexdigest()})
+        db.add(draft)
+        db.flush()
+        return draft_dict(draft)
 
 
 @app.get("/api/prep-drafts/{draft_id}")
-def get_draft(draft_id: str, db=Depends(get_db)):
+def get_draft(draft_id: int, db=Depends(get_db)):
     draft = db.get(PrepDraft, draft_id)
     if not draft:
         raise HTTPException(404, "Draft not found.")
@@ -150,28 +199,30 @@ def get_draft(draft_id: str, db=Depends(get_db)):
 
 
 @app.put("/api/prep-drafts/{draft_id}")
-def update_draft(draft_id: str, body: PrepBody, db=Depends(get_db)):
+def update_draft(draft_id: int, body: PrepBody, db=Depends(get_db)):
     with db.begin():
         draft = db.scalar(select(PrepDraft).where(PrepDraft.id == draft_id).with_for_update())
         if not draft:
             raise HTTPException(404, "Draft not found.")
         if draft.committed:
-            raise HTTPException(409, "A committed registration cannot be edited. Start a new draft.")
-        if body.expected_rows is not None and draft.rows != [row.model_dump() for row in body.expected_rows]:
-            raise HTTPException(409, "This preparation changed in another browser. Reload its latest values before registering.")
+            raise HTTPException(409, "A registered prep sheet cannot be edited. Edit the registered stacks instead.")
+        if body.expected_revision is not None and draft.revision != body.expected_revision:
+            raise HTTPException(409, "This prep sheet changed in another browser. Reload its latest values before saving.")
+        draft.headers = {name: header.model_dump() for name, header in body.headers.items()}
         draft.rows = [r.model_dump() for r in body.rows]
+        draft.revision += 1
         db.flush()
         return draft_dict(draft)
 
 
 @app.post("/api/prep-drafts/{draft_id}/commit")
-def register_draft(draft_id: str, body: PrepCommitBody | None = None, db=Depends(get_db)):
+def register_draft(draft_id: int, body: PrepCommitBody | None = None, db=Depends(get_db)):
     with db.begin():
         draft = db.scalar(select(PrepDraft).where(PrepDraft.id == draft_id).with_for_update())
         if not draft:
             raise HTTPException(404, "Draft not found.")
-        if not draft.committed and body and body.expected_rows is not None and draft.rows != [row.model_dump() for row in body.expected_rows]:
-            raise HTTPException(409, "This preparation changed before registration. Reload its latest values.")
+        if not draft.committed and body and body.expected_revision is not None and draft.revision != body.expected_revision:
+            raise HTTPException(409, "This prep sheet changed before registration. Reload its latest values.")
         return {"stack_ids": commit_draft(db, draft)}
 
 
@@ -219,8 +270,8 @@ def movement(body: MovementBody, db=Depends(get_db)):
 
 
 @app.get("/api/movement-requests/{request_id}")
-def movement_status(request_id: str, db=Depends(get_db)):
-    request = db.get(MovementRequest, request_id)
+def movement_status(request_id: Annotated[str, PathParam(pattern=REQUEST_ID)], db=Depends(get_db)):
+    request = db.get(MovementRequest, split_request_id(request_id))
     if not request:
         raise HTTPException(404, "Request not recorded. Retry the original request ID and unchanged details.")
     return request.result
@@ -251,13 +302,20 @@ def logout(request: Request):
 @app.get("/api/events")
 def events(stack_id: int | None = None, room_id: str | None = None, station_id: str | None = None,
            limit: int = Query(default=100, ge=1, le=500), q: str | None = None,
-           kind: str | None = Query(default=None, max_length=32), db=Depends(get_db)):
+           kind: str | None = Query(default=None, max_length=32),
+           batch_id: int | None = Query(default=None, ge=1), db=Depends(get_db)):
     query = select(AuditEvent).order_by(AuditEvent.recorded_at.desc(), AuditEvent.id.desc())
     if stack_id:
         query = query.where(AuditEvent.stack_id == stack_id)
+    if batch_id:
+        # A batch is one committed prep draft; its history is every event on its stacks.
+        draft = db.get(PrepDraft, batch_id)
+        if draft is None:
+            raise HTTPException(404, "Batch not found.")
+        query = query.where(AuditEvent.stack_id.in_([int(i) for i in draft.stack_ids or []] or [-1]))
     if room_id:
         # Events recorded in this room, plus events a staff modification moved into it (both indexed).
-        moved_here = select(AuditEvent.payload["event_id"].astext).where(
+        moved_here = select(TARGET_EVENT).where(
             AuditEvent.kind == "modification", AuditEvent.room_id == room_id)
         query = query.where(or_(AuditEvent.room_id == room_id, AuditEvent.id.in_(moved_here)))
     if station_id:
@@ -269,7 +327,7 @@ def events(stack_id: int | None = None, room_id: str | None = None, station_id: 
         query = query.join(Stack, Stack.id == AuditEvent.stack_id).join(Project).join(Material).where(or_(
             Project.project_number.ilike(pattern, escape="\\"), Material.material_ref.ilike(pattern, escape="\\"),
             Stack.test_code.ilike(pattern, escape="\\"), Stack.preconditioning_code.ilike(pattern, escape="\\"),
-            AuditEvent.id.ilike(pattern, escape="\\")))
+            *([AuditEvent.id == int(q)] if q.strip().isdigit() and len(q.strip()) < 18 else [])))
     rows = list(db.scalars(query.limit(limit + 1)))
     items = [event_dict(db, event) for event in rows[:limit]]
     if room_id:  # a later modification may have moved an event recorded here to another room
@@ -278,7 +336,7 @@ def events(stack_id: int | None = None, room_id: str | None = None, station_id: 
 
 
 @app.get("/api/transactions/{event_id}")
-def get_transaction(event_id: str, db=Depends(get_db)):
+def get_transaction(event_id: int, db=Depends(get_db)):
     event = db.get(AuditEvent, event_id)
     if event is None:
         raise HTTPException(404, "Transaction not found.")
@@ -298,13 +356,13 @@ def missed_transaction(body: MissedMovementBody, db=Depends(get_db)):
 
 
 @app.patch("/api/transactions/{event_id}")
-def update_transaction(event_id: str, body: TransactionEditBody, db=Depends(get_db)):
+def update_transaction(event_id: int, body: TransactionEditBody, db=Depends(get_db)):
     with db.begin():
         return edit_transaction(db, event_id, body)
 
 
 @app.post("/api/transactions/{event_id}/undo")
-def undo_movement(event_id: str, body: TransactionUndoBody, db=Depends(get_db)):
+def undo_movement(event_id: int, body: TransactionUndoBody, db=Depends(get_db)):
     with db.begin():
         return undo_transaction(db, event_id, body)
 

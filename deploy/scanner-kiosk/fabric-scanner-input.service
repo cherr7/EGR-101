@@ -8,6 +8,8 @@ Type=simple
 EnvironmentFile=-/opt/fabric-scanner/input.env
 EnvironmentFile=-/opt/fabric-scanner/scanner.env
 Environment=PYTHONUNBUFFERED=1
+# ~/.local/state/fabric-scanner keeps the bridge session counter (input-bridge.py next_session_id).
+StateDirectory=fabric-scanner
 ExecStart=/opt/fabric-scanner/input-env/bin/python /opt/fabric-scanner/bin/input-bridge.py
 Restart=always
 RestartSec=3

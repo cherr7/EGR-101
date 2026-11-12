@@ -1,6 +1,5 @@
 import io
 import subprocess
-from uuid import uuid4
 
 from fastapi import HTTPException
 from PIL import Image
@@ -10,9 +9,10 @@ import zxingcpp
 
 from app.barcodes import MAX_ID, code_id, datamatrix_image, label_code
 from app import printing
+from helpers import prep_sheet, request_id
 
 
-def install_fake_cups(monkeypatch, *, timeout=False):
+def install_fake_cups(monkeypatch, *, timeout=False, alerts=None, waiting=()):
     calls = []
     monkeypatch.delenv("TRACKER_PRINTER_QUEUE", raising=False)
     monkeypatch.setattr(printing.shutil, "which", lambda command: "/usr/bin/" + command)
@@ -21,7 +21,10 @@ def install_fake_cups(monkeypatch, *, timeout=False):
         calls.append(argv)
         assert not kwargs.get("shell")
         if argv[0].endswith("lpstat"):
-            value = "Brother_QL accepting requests since today\n" if "-a" in argv else "system default destination: Brother_QL\n"
+            value = ("Brother_QL accepting requests since today\n" if "-a" in argv else
+                     "printer Brother_QL is idle.  enabled since today\n\tAlerts: " + " ".join(alerts or ["none"]) + "\n" if "-l" in argv else
+                     "".join(f"{job} staff 1024 today\n" for job in waiting) if "-o" in argv else
+                     "system default destination: Brother_QL\n")
             return subprocess.CompletedProcess(argv, 0, value, "")
         if timeout:
             raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
@@ -70,7 +73,8 @@ def test_printer_inventory_never_enables_default_without_configuration(monkeypat
     result = printing.printer_inventory()
     assert result["available"] and not result["enabled"]
     assert result["configured_queue"] is None
-    assert result["printers"] == [{"name": "Brother_QL", "is_default": True}]
+    assert result["printers"] == [{"name": "Brother_QL", "is_default": True, "label_printer": True, "state": "idle",
+                                   "alerts": [], "waiting_jobs": 0, "warnings": []}]
     assert not any(call[0].endswith("/lp") for call in calls)
     monkeypatch.setenv("TRACKER_PRINTER_QUEUE", "Brother_QL")
     assert printing.printer_inventory()["enabled"]
@@ -99,14 +103,14 @@ def test_label_preview_and_pdf_codes_are_registered_ids(client, stack_factory):
 def test_print_submission_idempotence_and_audit(client, stack_factory, monkeypatch):
     stack = stack_factory(count=2)
     calls = install_fake_cups(monkeypatch)
-    body = {"request_id": str(uuid4()), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
+    body = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
     response = client.post("/api/print-jobs", json=body)
     assert response.is_success, response.text
     assert response.json()["status"] == "submitted"
     assert response.json()["cups_job_id"] == "Brother_QL-42,Brother_QL-42"   # one CUPS job per label
     assert response.json()["physical_print_confirmed"] is False
     retry = client.post("/api/print-jobs", json=body)
-    assert retry.is_success and retry.json()["id"] == body["request_id"]
+    assert retry.is_success and retry.json()["request_id"] == body["request_id"]
     assert len([call for call in calls if call[0].endswith("/lp")]) == 2
     status = client.get(f'/api/print-jobs/{body["request_id"]}')
     assert status.json()["status"] == "submitted"
@@ -118,10 +122,10 @@ def test_print_submission_idempotence_and_audit(client, stack_factory, monkeypat
     assert all(specimen["ENTRY"] is None for specimen in after["specimens"])
 
 
-def test_print_timeout_is_unknown_and_same_uuid_never_resubmits(client, stack_factory, monkeypatch):
+def test_print_timeout_is_unknown_and_same_request_id_never_resubmits(client, stack_factory, monkeypatch):
     stack = stack_factory(count=1)
     calls = install_fake_cups(monkeypatch, timeout=True)
-    body = {"request_id": str(uuid4()), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
+    body = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
     first = client.post("/api/print-jobs", json=body)
     assert first.is_success, first.text
     assert first.json()["status"] == "unknown"
@@ -133,8 +137,42 @@ def test_print_timeout_is_unknown_and_same_uuid_never_resubmits(client, stack_fa
 def test_print_requires_available_explicit_queue_and_rejects_command_options(client, stack_factory, monkeypatch):
     stack = stack_factory(count=1)
     calls = install_fake_cups(monkeypatch)
-    base = {"request_id": str(uuid4()), "stack_ids": [stack["id"]]}
+    base = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]]}
     assert client.post("/api/print-jobs", json=base).status_code == 422
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "-h attacker"}).status_code == 422
     assert client.post("/api/print-jobs", json={**base, "printer_queue": "Unknown"}).status_code == 409
     assert not any(call[0].endswith("/lp") for call in calls)
+
+
+def test_printer_state_warns_about_offline_printer_and_waiting_jobs(monkeypatch):
+    install_fake_cups(monkeypatch, alerts=["offline-report", "media-empty-error"], waiting=["Brother_QL-7", "Brother_QL-8"])
+    printer = printing.printer_inventory()["printers"][0]
+    assert printer["alerts"] == ["offline", "media-empty"] and printer["waiting_jobs"] == 2
+    assert any("offline" in w for w in printer["warnings"]) and any("out of labels" in w for w in printer["warnings"])
+    assert any("2 job(s) are already waiting" in w for w in printer["warnings"])
+
+
+def test_print_status_reports_labels_still_waiting_in_the_mac_queue(client, stack_factory, monkeypatch):
+    stack = stack_factory(count=1)
+    install_fake_cups(monkeypatch, waiting=["Brother_QL-42"])
+    body = {"request_id": request_id(client, "print"), "stack_ids": [stack["id"]], "printer_queue": "Brother_QL"}
+    assert client.post("/api/print-jobs", json=body).json()["status"] == "submitted"
+    status = client.get(f'/api/print-jobs/{body["request_id"]}').json()
+    assert status["waiting_cups_jobs"] == 1 and "do not reprint" in status["message"]
+    install_fake_cups(monkeypatch)
+    assert client.get(f'/api/print-jobs/{body["request_id"]}').json()["waiting_cups_jobs"] == 0
+
+
+def test_image_preview_shows_the_same_codes_as_the_printed_pdf(client, stack_factory):
+    stack = stack_factory(count=14)
+    response = client.post("/api/labels/preview.png", json={"stack_ids": [stack["id"]]})
+    assert response.status_code == 200 and response.headers["content-type"] == "image/png"
+    assert response.headers["x-label-count"] == "14"
+    found = {code_id(result.text) for result in zxingcpp.read_barcodes(Image.open(io.BytesIO(response.content)))}
+    assert found == {p["id"] for p in stack["specimens"][:12]}   # the first 12, decodable as drawn
+
+
+def test_label_job_accepts_every_stack_of_a_large_registered_job():
+    # A filled 1970 job prep sheet registers 120+ stacks; previewing them is one job.
+    from app.printing import LabelPreviewBody
+    assert len(LabelPreviewBody(stack_ids=list(range(1, 151))).stack_ids) == 150

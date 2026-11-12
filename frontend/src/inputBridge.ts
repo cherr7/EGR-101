@@ -38,7 +38,7 @@ export function attachInputBridge(options: { url: string; statusUrl?: string; en
       const busy = !connected && message.pages === 1
       if (connected && open) {
         calibration = { session: message.session_id, offset: (start + end) / 2 - message.now_ms, uncertainty: (end - start) / 2 }
-        // Session IDs are process UUIDs. Keep only a few former IDs so reconnects cannot replay scans.
+        // Each bridge start has a new session ID (bridge-1, bridge-2, ...). Keep only a few former IDs so reconnects cannot replay scans.
         if (!seen.has(message.session_id)) seen.set(message.session_id, 0)
         if (seen.size > 8) seen.delete(seen.keys().next().value!)
       }

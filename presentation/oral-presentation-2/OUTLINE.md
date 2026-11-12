@@ -146,7 +146,7 @@ For section 3, I chose a **UI flowchart** over a video: it reads well on a proje
   - **v3, final PostgreSQL:**
     - A unique index allows only **one conditioning period per specimen**. A CHECK requires exit ≥ entry.
     - A **trigger refuses UPDATE/DELETE on `audit_events`** (append-only).
-    - A request UUID makes retries safe after a lost response.
+    - A retry ID (station name + counter, e.g. shared-door-118) makes retries safe after a lost response.
     - A version number blocks stale edits.
   - **Label encoding:** Round 3's scanner sent the ID as 40 binary digits. The final label is a sequential number + a Damm check digit in a fixed 16×16 Data Matrix. Digits only, so keyboard layouts can't garble the input, and the check digit catches any single-digit typo or neighbor swap.
 - **Rubric:** Technical basis for design decisions.

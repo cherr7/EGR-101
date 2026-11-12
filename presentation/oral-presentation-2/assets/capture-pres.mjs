@@ -2,7 +2,6 @@
 import { chromium } from '../frontend/node_modules/playwright/index.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
 
 const origin = 'http://127.0.0.1:8121';
 const folder = resolve(process.argv[2] || 'output/pres');
@@ -11,6 +10,14 @@ const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 const context = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 const request = context.request;
 async function json(r) { if (!r.ok()) throw new Error(r.url() + ' ' + await r.text()); return r.json(); }
+const sheetBody = rows => ({  // the prep-sheet draft layout: one worksheet per project
+  headers: Object.fromEntries(rows.map(r => [r.project_number, { project_number: r.project_number }])),
+  rows: rows.map(r => ({ sheet: r.project_number, test: r.test_code, conditions: r.preconditioning_code, conditioning: String(r.specimen_count), sample: r.material_ref })),
+});
+async function requestId(request, client = 'shared-door') {  // '<station>-<n>', reserved like the kiosk does
+  const block = await (await request.post('/api/request-ids', { data: { client, count: 1 } })).json();
+  return `${client}-${block.first}`;
+}
 const tag = String(Date.now()).slice(-4);
 const rows = [
   { project_number: '4900000' + tag + '1', material_ref: 'Outer shell fabric', test_code: 'D4966', preconditioning_code: 'AR', specimen_count: 20 },
@@ -23,14 +30,14 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 async function cap(name) { await page.screenshot({ path: resolve(folder, name), animations: 'disabled' }); files.push(name); }
 try {
-  const draft = await json(await request.post('/api/prep-drafts', { data: { rows } }));
+  const draft = await json(await request.post('/api/prep-drafts', { data: sheetBody(rows) }));
   const reg = await json(await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} }));
   const stacks = [];
   for (const id of reg.stack_ids) stacks.push(await json(await request.get('/api/stacks/' + id)));
   const [ready, fresh, waiting] = stacks;
   const code = s => s.specimens[0].barcode_value;
   // Stack 1 entered 25 h ago (backdated through the normal correction route).
-  const entered = await json(await request.post('/api/movements', { data: { station_id: 'shared-door', code: code(ready), scope: 'stack', request_id: randomUUID(), direction: 'IN' } }));
+  const entered = await json(await request.post('/api/movements', { data: { station_id: 'shared-door', code: code(ready), scope: 'stack', request_id: await requestId(request), direction: 'IN' } }));
   await json(await request.patch('/api/transactions/' + entered.event_id, { data: { occurred_at: new Date(Date.now() - 25 * 3600000).toISOString(), expected_version: entered.version } }));
   const pdf = await request.get('/api/stacks/' + fresh.id + '/labels.pdf');
   await writeFile(resolve(folder, 'labels-stack.pdf'), await pdf.body());
@@ -38,9 +45,12 @@ try {
   // Staff: preparation screen with rows typed in.
   await page.goto('/#prep');
   await page.getByText('Database connected', { exact: true }).waitFor();
-  const prepRow = { project_number: '490000000204', material_ref: 'Outer shell fabric', test_code: 'D5034', preconditioning_code: '5L' };
-  for (const [f, v] of Object.entries(prepRow)) await page.getByLabel(f + ' row 1').fill(v);
-  await page.getByLabel('specimen_count row 1').fill('15');
+  await page.getByRole('button', { name: '＋ New prep sheet' }).click();
+  await page.getByLabel('Oracle project').fill('490000000204');
+  await page.getByLabel('Test, row 1').fill('D5034');
+  await page.getByLabel('Conditions, row 1').fill('5L');
+  await page.getByLabel('Specimens per sample for Conditioning, row 1').fill('15');
+  await page.getByLabel('Sample Number, row 1').fill('Outer shell fabric');
   await cap('01-staff-prep.png');
 
   // Scanner flow at the Pi Touch Display 2 resolution.

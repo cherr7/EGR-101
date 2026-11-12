@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
-import { createStack, move, openKiosk, scan } from './helpers'
+import { createStack, move, openKiosk, scan, tag } from './helpers'
 
 async function kiosk(page: Page) {
   await page.setViewportSize({ width: 1280, height: 720 })
@@ -34,7 +33,7 @@ test('50/50 layout and expanded Activity undo the chosen older transaction despi
 })
 
 test('room inventory prioritizes ready pieces, filters project and due-soon, and blocks scans', async ({ page, request }) => {
-  const project = 'DEMO-INVENTORY-' + randomUUID().slice(0, 8)
+  const project = 'DEMO-INVENTORY-' + tag()
   const mixed = await createStack(request, 3, 'Mixed readiness', project), otherRoom = await createStack(request, 2, 'Other room', project), untouched = await createStack(request, 1, 'Not entered', project)
   async function enter(stack: any, ids: string[], hours: number, room: string) {
     const current = await (await request.get('/api/stacks/' + stack.id)).json()
@@ -65,7 +64,9 @@ test('room inventory prioritizes ready pieces, filters project and due-soon, and
   expect(actions!.y + actions!.height).toBeLessThanOrEqual(720)
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
   await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  await page.getByRole('button', { name: 'Station settings' }).click()
   await page.getByRole('button', { name: 'PPE', exact: true }).click()
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
   await page.getByRole('button', { name: 'Inventory', exact: true }).click()
   await dialog.getByLabel('Inventory project').selectOption(project)
   await expect(dialog.locator('[data-stack-id="' + otherRoom.id + '"]')).toBeVisible()

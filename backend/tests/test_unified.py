@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
-from uuid import uuid4
 
 from app.barcodes import label_code
 
@@ -11,18 +10,20 @@ import pytest
 from test_tracker import detail, move
 
 
-def test_decimal_uuid_lookup_and_draft_source_metadata(client):
-    draft = client.post("/api/prep-drafts", json={"rows": [{"project_number": "0073-AB", "material_ref": None,
-        "test_code": "ASTM D5034", "preconditioning_code": "AR → custom 5L laundering", "specimen_count": None,
-        "metadata": {"source": {"sheet": "Garment", "row": 17}, "labware": "000012"}}]}).json()
+def test_check_digit_lookup_and_draft_source_metadata(client):
+    body = {"headers": {"Garment": {"project_number": "0073-AB", "labware_number": "000012"}},
+            "rows": [{"sheet": "Garment", "test": "ASTM D5034", "conditions": "AR → custom 5L laundering",
+                      "metadata": {"excel_row": 17}}]}
+    draft = client.post("/api/prep-drafts", json=body).json()
+    assert {p["column"] for p in draft["problems"]} == {"conditioning", "sample"}
     incomplete = client.post(f'/api/prep-drafts/{draft["id"]}/commit')
     assert incomplete.status_code == 422
-    draft["rows"][0].update(material_ref="Sample A", specimen_count=25)
-    assert client.put(f'/api/prep-drafts/{draft["id"]}', json={"rows": draft["rows"]}).is_success
+    body["rows"][0].update(sample="Sample A", conditioning="25")
+    assert client.put(f'/api/prep-drafts/{draft["id"]}', json={**body, "expected_revision": 0}).is_success
     committed = client.post(f'/api/prep-drafts/{draft["id"]}/commit').json()
     stack = client.get(f'/api/stacks/{committed["stack_ids"][0]}').json()
     assert stack["specimen_count"] == 25 and stack["waiting_count"] == 25
-    assert stack["metadata"]["labware"] == "000012"
+    assert stack["metadata"]["labware_number"] == "000012" and stack["metadata"]["excel_row"] == 17
     specimen = stack["specimens"][0]
     assert specimen["barcode_value"] == label_code(specimen["id"])
     for code in [specimen["barcode_value"], "]d1" + specimen["barcode_value"]]:

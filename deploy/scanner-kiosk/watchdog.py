@@ -47,9 +47,31 @@ class Health:
             self.last_healthy = None
 
 
-def handler_for(health, clock=time.monotonic):
+EXIT_UNITS = ("fabric-scanner-browser.service", "fabric-scanner-input.service", "fabric-scanner-watchdog.service")
+
+
+def exit_kiosk():
+    """Leave kiosk mode until the next reboot (labwc autostart restarts fabric-scanner.target).
+    The watchdog stops too, so it cannot reopen Chromium; the input bridge stops so the scanner
+    types on the desktop. The health agent keeps reporting to the Mac."""
+    time.sleep(0.5)  # let the 202 reach the page first
+    logging.warning("Exit kiosk mode requested from the station page")
+    try:
+        subprocess.run(["systemctl", "--user", "stop", "--no-block", *EXIT_UNITS], check=False, timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        logging.error("Exit kiosk mode failed: %s", error)
+
+
+def handler_for(health, clock=time.monotonic, on_exit=exit_kiosk):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
+            if self.path == "/exit":
+                self.send_response(202)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                threading.Thread(target=on_exit, daemon=True).start()
+                return
             if self.path != "/heartbeat":
                 self.send_error(404)
                 return

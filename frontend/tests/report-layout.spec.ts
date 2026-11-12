@@ -1,16 +1,16 @@
 import { test, expect } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
+import { tag, sheet, reserveId } from './helpers'
 
 test('printable report preserves identity and readable before/after observations', async ({ page, request }, testInfo) => {
-  const project = `PRINT-QA-${randomUUID().slice(0, 8)}`
-  const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: 'Thermal barrier', test_code: 'FLAME', preconditioning_code: '50L', specimen_count: 3 }] } })).json()
+  const project = `PRINT-QA-${tag()}`
+  const draft = await (await request.post('/api/prep-drafts', { data: sheet(project, 'Thermal barrier', 'FLAME', '50L', 3) })).json()
   const registered = await (await request.post(`/api/prep-drafts/${draft.id}/commit`)).json()
   const id = registered.stack_ids[0]
   const stack = await (await request.get(`/api/stacks/${id}`)).json()
   const base = { station_id: 'shared-door', code: stack.specimens[0].barcode_value, scope: 'stack' }
-  const entered = await (await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'IN' } })).json()
+  const entered = await (await request.post('/api/movements', { data: { ...base, request_id: await reserveId(request), direction: 'IN' } })).json()
   expect(entered.status).toBe('committed')
-  const removed = await (await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'OUT', acknowledge_early: true, expected_version: entered.version } })).json()
+  const removed = await (await request.post('/api/movements', { data: { ...base, request_id: await reserveId(request), direction: 'OUT', acknowledge_early: true, expected_version: entered.version } })).json()
   expect(removed.status).toBe('committed')
   await page.goto(`/api/exports/report?project_number=${project}`)
   await expect(page.getByRole('heading', { name: 'Fabric conditioning audit report' })).toBeVisible()
@@ -42,16 +42,14 @@ test('station layout has no horizontal page overflow on touch and mobile display
 })
 
 test('staff records and label-preview actions fit shorter laptop browser viewports', async ({ page, request }) => {
-  const project = 'DEMO-LAPTOP-' + randomUUID().slice(0, 8)
-  const draft = await (await request.post('/api/prep-drafts', { data: { rows: [{
-    project_number: project, material_ref: 'DEMO laptop layout', test_code: 'D5034', preconditioning_code: '5L', specimen_count: 3,
-  }] } })).json()
+  const project = 'DEMO-LAPTOP-' + tag()
+  const draft = await (await request.post('/api/prep-drafts', { data: sheet(project, 'DEMO laptop layout', 'D5034', '5L', 3) })).json()
   await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} })
   // 1408×760 leaves room for browser/OS chrome below the Neo's reported 1408×881 logical desktop.
   for (const viewport of [{ width: 1204, height: 650 }, { width: 1280, height: 720 }, { width: 1408, height: 760 }, { width: 1440, height: 800 }]) {
     await page.setViewportSize(viewport)
     await page.goto('/#records')
-    await expect(page.getByText('Database connected', { exact: true })).toBeVisible()
+    await expect(page.getByText('Online', { exact: true })).toBeVisible()
     await page.getByLabel('Search records').fill(project)
     await page.getByRole('checkbox', { name: /^Select label / }).first().check()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, easternToUTC, entryOf, exitOf, formatTime, localTimeInput, post, serverNow, specimenNumber, specimenNumbers } from './api'
-import type { AuditEvent, Config, Specimen, Stack } from './types'
+import type { AuditEvent, BatchSummary, Config, Specimen, Stack } from './types'
 import { ErrorNotice, Modal, PageHeader } from './App'
 
 type Editor = { event: AuditEvent; stack: Stack; ids: number[]; time: string; room: string; note: string }
 type Missed = { stackId: number; ids: number[]; direction: 'IN' | 'OUT'; time: string; room: string; note: string }
-type Context = { stackId: string; eventId: string }
+type Context = { stackId: string; eventId: string; batchId: string }
 function readContext(): Context {
   const parameters = new URLSearchParams(location.hash.split('?')[1] || '')
-  return { stackId: parameters.get('stack') || '', eventId: parameters.get('event') || '' }
+  return { stackId: parameters.get('stack') || '', eventId: parameters.get('event') || '', batchId: parameters.get('batch') || '' }
 }
 function idsFor(event: AuditEvent) { return event.effective_specimen_ids || event.specimen_ids }
 function timeFor(event: AuditEvent) { return event.effective_occurred_at || event.occurred_at || event.recorded_at }
@@ -67,6 +67,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       if (kind) query.set('kind', kind)
       if (roomFilter) query.set('room_id', roomFilter)
       if (context.stackId) query.set('stack_id', context.stackId)
+      if (context.batchId) query.set('batch_id', context.batchId)
       void Promise.all([
         api<{ items: AuditEvent[]; has_more?: boolean }>('/transactions?' + query),
         api<{ items: Stack[] }>('/stacks'),
@@ -76,9 +77,9 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         .finally(() => { if (current) setLoading(false) })
     }, 160)
     return () => { current = false; clearTimeout(timer) }
-  }, [healthy, search, kind, roomFilter, context.stackId, limit, refresh])
+  }, [healthy, search, kind, roomFilter, context.stackId, context.batchId, limit, refresh])
 
-  async function openEvent(eventId: string, stackId: number | string) {
+  async function openEvent(eventId: number | string, stackId: number | string) {
     if (mutation.current || !healthy) return
     const token = ++serial.current
     setBusy(true)
@@ -87,7 +88,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       // A single fresh stack response supplies BOTH event values and version.
       // Never pair an old list row with a newer version from a separate fetch.
       const stack = await api<Stack>('/stacks/' + stackId)
-      const event = stack.events?.find(row => row.id === eventId)
+      const event = stack.events?.find(row => String(row.id) === String(eventId))
       if (!event) throw new Error('This transaction is no longer in the stack history. Refresh the log.')
       if (!alive.current || token !== serial.current) return
       if (event.kind !== 'movement' || event.undone) { setViewing({ event, stack }); setEditor(null) }
@@ -127,11 +128,11 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       if (alive.current) {
         setEditor(null)
         setRefresh(value => value + 1)
-        setMessage('Change saved. The original observation remains in the transaction history.')
+        setMessage('Saved. The original stays in the history.')
       }
     } catch (err) {
       if (alive.current) setError(err instanceof ApiError ? err.message :
-        'The saved result is not confirmed. Reload the latest transaction before trying another change.')
+        'No answer from the server. Reload before changing it again.')
     } finally { mutation.current = false; if (alive.current) setBusy(false) }
   }
   async function cancel() {
@@ -148,11 +149,11 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       }
       if (alive.current) {
         setUndo(null); setEditor(null); setRefresh(value => value + 1)
-        setMessage('The entire transaction was undone. The original and undo both remain in history.')
+        setMessage('Undone.')
       }
     } catch (err) {
       if (alive.current) setError(err instanceof ApiError ? err.message :
-        'Undo is not yet confirmed. Reload the latest transaction before trying again.')
+        'No answer from the server. Reload before trying again.')
     } finally { mutation.current = false; if (alive.current) setBusy(false) }
   }
   async function saveMissed() {
@@ -170,7 +171,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       })
       if (alive.current) {
         setMissed(null); setRefresh(value => value + 1)
-        setMessage('Missed movement recorded. Claimed movement time and actual recording time are stored separately.')
+        setMessage('Missed scan recorded.')
       }
     } catch (err) { if (alive.current) setError((err as Error).message) }
     finally { mutation.current = false; if (alive.current) setBusy(false) }
@@ -178,6 +179,14 @@ export default function Transactions({ config, healthy }: { config: Config; heal
   const visible = items.filter(event => !kind || event.kind === kind)
   const missedStack = stacks.find(stack => stack.id === missed?.stackId)
   const scopedStack = stacks.find(stack => String(stack.id) === context.stackId)
+  const [batchLabel, setBatchLabel] = useState('')
+  useEffect(() => {
+    if (!context.batchId || !healthy) { setBatchLabel(''); return }
+    let alive = true
+    void api<BatchSummary>('/batches/' + context.batchId).then(value => { if (alive) setBatchLabel(`${value.label} · ${value.stacks.length} stacks`) })
+      .catch(() => { if (alive) setBatchLabel(context.batchId) })
+    return () => { alive = false }
+  }, [context.batchId, healthy])
   const roomName = (id?: string) => config.rooms.find(room => room.id === id)?.name || id || '—'
   const projection = editor ? projectedCounts(editor) : null
   const originalIds = editor ? idsFor(editor.event) : []
@@ -199,6 +208,11 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       <span>Stack activity: <b>{scopedStack ? scopedStack.project_number + ' / ' + scopedStack.material_ref + ' / ' + scopedStack.preconditioning_code : context.stackId}</b></span>
       <a className="button text" href="#transactions">Show all activity</a>
     </div>}
+    {context.batchId && !context.stackId && <div className="context-strip">
+      <span>Batch activity: <b>{batchLabel || 'Loading batch…'}</b></span>
+      <a className="button text" href={'#batch/' + context.batchId + '/done'}>Batch summary</a>
+      <a className="button text" href="#transactions">Show all activity</a>
+    </div>}
     <section className="card">
       <div className="toolbar">
         <label className="search-label"><span>⌕</span><input aria-label="Search transactions"
@@ -213,11 +227,11 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         <button className="button secondary" disabled={!healthy || busy || loading} onClick={() => setRefresh(value => value + 1)}>↻ Refresh</button>
       </div>
       <div className="table-wrap"><table>
-        <thead><tr><th>Recorded time</th><th>Activity</th><th>Project / Material</th><th>Specimens</th><th>Actual movement time</th><th>Room</th><th /></tr></thead>
+        <thead><tr><th>Entered</th><th>Activity</th><th>Project / Material</th><th>Specimens</th><th>Movement time</th><th>Room</th><th /></tr></thead>
         <tbody>{visible.map(event => {
           const stack = stacks.find(row => row.id === event.stack_id)
           return <tr key={event.id} className={event.undone ? 'undone-row' : ''}>
-            <td>{formatTime(event.recorded_at)}<small className="id-hint">{event.id.slice(0, 8)}</small></td>
+            <td>{formatTime(event.recorded_at)}<small className="id-hint">#{event.id}</small></td>
             <td><span className={'badge ' + (event.kind === 'movement' ? event.direction === 'IN' ? 'good' : 'blue' : 'muted')}>{labelFor(event)}</span>
               {event.modified && <small>Modified</small>}{event.undone && <small>Undone</small>}</td>
             <td><b>{stack?.project_number || '—'}</b><small>{stack?.material_ref || 'Stack ' + event.stack_id}</small></td>
@@ -229,9 +243,9 @@ export default function Transactions({ config, healthy }: { config: Config; heal
           </tr>
         })}</tbody>
       </table></div>
-      {!visible.length && <div className="empty-inline"><h3>{loading ? 'Loading activity…' : 'No matching transactions'}</h3><p>Try a project or material reference, or return to all activity.</p></div>}
+      {!visible.length && <div className="empty-inline"><h3>{loading ? 'Loading activity…' : 'No matching transactions'}</h3></div>}
       <div className="table-foot activity-foot">
-        <span>Showing the latest {items.length} matching events. Original observations are retained.</span>
+        <span>Latest {items.length}.</span>
         {hasMore && <button className="button text" disabled={limit >= 500 || loading}
           onClick={() => setLimit(value => Math.min(500, value + 100))}>{limit >= 500 ? 'Narrow the filters to find older activity' : 'Load more activity'}</button>}
       </div>
@@ -243,16 +257,16 @@ export default function Transactions({ config, healthy }: { config: Config; heal
           <div><b>{editor.stack.project_number} / {editor.stack.material_ref}</b><p>{editor.stack.test_code} · {editor.stack.preconditioning_code}</p></div>
           <span className="badge outline">{editor.ids.length} specimens</span>
         </div>
-        {editor.event.can_undo === false && <div className="notice warning">A specimen has later activity. Review or correct that later movement before changing this transaction.</div>}
+        {editor.event.can_undo === false && <div className="notice warning">A later scan includes these specimens. Change that one first.</div>}
         <div className="form-grid">
-          <label>Movement time (America/New_York)<input aria-label="Movement time" type="datetime-local" step="1"
+          <label>Movement time (Eastern)<input aria-label="Movement time" type="datetime-local" step="1"
             disabled={busy} value={editor.time} onChange={e => setEditor(previous => previous && { ...previous, time: e.target.value })} /></label>
           <label>Room<select aria-label="Movement room" value={editor.room} disabled={busy}
             onChange={e => setEditor(previous => previous && { ...previous, room: e.target.value })}>
             {config.rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
           </select></label>
         </div>
-        <div className="selection-heading"><h3>Affected numbered specimens</h3><span>{editor.ids.length} of {editor.stack.specimen_count}</span></div>
+        <div className="selection-heading"><h3>Specimens</h3><span>{editor.ids.length} of {editor.stack.specimen_count}</span></div>
         <div className="selection-tools">
           <button className="button text" disabled={busy} onClick={() => setEditor(previous => previous && {
             ...previous, ids: previous.stack.specimens.filter(specimen => idsFor(previous.event).includes(specimen.id) || eligible(specimen, previous.event.direction)).map(specimen => specimen.id),
@@ -284,7 +298,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         </section>
         <label>Notes (optional)<textarea aria-label="Transaction notes" rows={2} disabled={busy} value={editor.note}
           onChange={e => setEditor(previous => previous && { ...previous, note: e.target.value })} /></label>
-        <p className="input-help">Original scan recorded {formatTime(editor.event.recorded_at)} · Original count {editor.event.affected_count}. Every saved change gets its own recording time.</p>
+        <p className="input-help">Originally scanned {formatTime(editor.event.recorded_at)} with {editor.event.affected_count} specimens.</p>
         <ErrorNotice message={error} />
         {error && <button className="button secondary" disabled={busy} onClick={() => void openEvent(editor.event.id, editor.stack.id)}>Reload latest values</button>}
       </div>
@@ -296,7 +310,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       </div>
     </Modal>}
     {undo && <Modal title="Undo the entire transaction?" onClose={() => !busy && setUndo(null)}>
-      <div className="modal-body"><p className="modal-intro">Reverse {undo.event.direction} for all {idsFor(undo.event).length} specimens affected by this transaction. The original record remains visible.</p><ErrorNotice message={error} /></div>
+      <div className="modal-body"><p className="modal-intro">Reverses this {undo.event.direction} for all {idsFor(undo.event).length} specimens.</p><ErrorNotice message={error} /></div>
       <div className="modal-actions"><button className="button secondary" disabled={busy} onClick={() => setUndo(null)}>Keep transaction</button>
         <button className="button danger" disabled={!healthy || busy} onClick={() => void cancel()}>Undo transaction</button></div>
     </Modal>}
@@ -312,13 +326,13 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         </div>
         {viewing.event.payload?.event_id ? <a className="button secondary"
           href={'#transactions?stack=' + viewing.stack.id + '&event=' + String(viewing.event.payload.event_id)}>Open original transaction →</a> : null}
-        {viewing.event.undone && <div className="notice info">This movement was undone. Its original observation is retained.</div>}
+        {viewing.event.undone && <div className="notice info">This scan was undone.</div>}
       </div>
       <div className="modal-actions"><button className="button secondary" onClick={() => setViewing(null)}>Close</button></div>
     </Modal>}
     {missed && <Modal title="Record a missed scan" wide onClose={() => !busy && setMissed(null)}>
       <div className="modal-body">
-        <p className="modal-intro">Record when the movement actually happened. The time this correction is entered is retained separately.</p>
+        <p className="modal-intro">Enter when it actually happened.</p>
         <label>Stack<select aria-label="Missed stack" value={missed.stackId} disabled={busy}
           onChange={e => setMissed(previous => previous && { ...previous, stackId: Number(e.target.value), ids: [] })}>
           <option value="">Choose a stack</option>{stacks.map(stack => <option key={stack.id} value={stack.id}>{stack.project_number} / {stack.material_ref} / {stack.test_code} / {stack.preconditioning_code}</option>)}
@@ -326,7 +340,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
         <div className="form-grid three">
           <label>Direction<select aria-label="Missed direction" value={missed.direction} disabled={busy}
             onChange={e => setMissed(previous => previous && { ...previous, direction: e.target.value as 'IN' | 'OUT', ids: [] })}><option>IN</option><option>OUT</option></select></label>
-          <label>Actual movement time (Eastern)<input aria-label="Missed movement time" type="datetime-local" step="1" disabled={busy}
+          <label>When it happened (Eastern)<input aria-label="Missed movement time" type="datetime-local" step="1" disabled={busy}
             value={missed.time} onChange={e => setMissed(previous => previous && { ...previous, time: e.target.value })} /></label>
           <label>Room<select aria-label="Missed room" value={missed.room} disabled={busy}
             onChange={e => setMissed(previous => previous && { ...previous, room: e.target.value })}>
@@ -334,7 +348,7 @@ export default function Transactions({ config, healthy }: { config: Config; heal
           </select></label>
         </div>
         {missedStack && <>
-          <div className="selection-heading"><h3>Numbered specimens</h3>
+          <div className="selection-heading"><h3>Specimens</h3>
             <button className="button text" disabled={busy} onClick={() => setMissed(previous => previous && {
               ...previous, ids: missedStack.specimens.filter(specimen => eligible(specimen, previous.direction)).map(specimen => specimen.id),
             })}>Select all eligible</button></div>

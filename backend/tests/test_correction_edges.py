@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from helpers import prep_sheet, request_id
 
 
 def test_even_small_future_claim_is_rejected(client, stack_factory, supervisor):
@@ -22,7 +22,7 @@ def test_session_undone_after_loading_cannot_be_corrected(client, db, stack_fact
     from app.schemas import CorrectionBody
 
     stack = stack_factory(count=1)
-    movement = client.post("/api/movements", json={"request_id": str(uuid4()), "station_id": "shared-door",
+    movement = client.post("/api/movements", json={"request_id": request_id(client), "station_id": "shared-door",
         "code": stack["specimens"][0]["barcode_value"], "direction": "IN", "scope": "stack"}).json()
     detail = client.get(f'/api/stacks/{stack["id"]}').json()
     session_id = detail["specimens"][0]["sessions"][0]["id"]

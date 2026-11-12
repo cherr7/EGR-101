@@ -2,7 +2,6 @@
 import { chromium } from '../frontend/node_modules/playwright/index.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
 
 const origin = process.env.PREVIEW_URL || 'http://127.0.0.1:8121';
 if (!/^http:\/\/(?:127\.0\.0\.1|localhost):8121$/.test(origin)) {
@@ -17,19 +16,27 @@ async function json(response) {
   if (!response.ok()) throw new Error(await response.text());
   return response.json();
 }
-const project = 'DEMO-UI-' + randomUUID().slice(0, 7);
+const sheetBody = rows => ({  // the prep-sheet draft layout: one worksheet per project
+  headers: Object.fromEntries(rows.map(r => [r.project_number, { project_number: r.project_number }])),
+  rows: rows.map(r => ({ sheet: r.project_number, test: r.test_code, conditions: r.preconditioning_code, conditioning: String(r.specimen_count), sample: r.material_ref })),
+});
+async function requestId(request, client = 'shared-door') {  // '<station>-<n>', reserved like the kiosk does
+  const block = await (await request.post('/api/request-ids', { data: { client, count: 1 } })).json();
+  return `${client}-${block.first}`;
+}
+const project = 'DEMO-UI-' + Date.now().toString(36).slice(-7);
 const rows = [
   { project_number: project, material_ref: 'DEMO Outer shell A', test_code: 'Flame resistance', preconditioning_code: 'AR', specimen_count: 20 },
   { project_number: project, material_ref: 'DEMO Outer shell A', test_code: 'Flame resistance', preconditioning_code: '5L', specimen_count: 10 },
 ];
 const files = [];
 try {
-  const draft = await json(await request.post('/api/prep-drafts', { data: { rows } }));
+  const draft = await json(await request.post('/api/prep-drafts', { data: sheetBody(rows) }));
   const registered = await json(await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} }));
   const first = await json(await request.get('/api/stacks/' + registered.stack_ids[0]));
   const second = await json(await request.get('/api/stacks/' + registered.stack_ids[1]));
   const base = { station_id: 'shared-door', code: first.specimens[0].barcode_value, scope: 'stack' };
-  const entered = await json(await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'IN' } }));
+  const entered = await json(await request.post('/api/movements', { data: { ...base, request_id: await requestId(request), direction: 'IN' } }));
   await json(await request.patch('/api/transactions/' + entered.event_id, {
     data: { occurred_at: new Date(Date.now() - 25 * 3600000).toISOString(), expected_version: entered.version },
   }));
@@ -41,7 +48,7 @@ try {
     files.push(name);
   }
   await page.goto('/#overview');
-  await page.getByText('Database connected', { exact: true }).waitFor();
+  await page.getByText('Online', { exact: true }).waitFor();
   await page.getByLabel('Search stacks').fill(project);
   await page.locator('.overview-table tbody tr').first().waitFor();
   await capture('staff-overview.png');
@@ -56,7 +63,7 @@ try {
   await page.waitForTimeout(1000); // Allow Chrome's built-in PDF viewer to paint before a visual capture.
   await capture('staff-labels.png');
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
-  const removed = await json(await request.post('/api/movements', { data: { ...base, request_id: randomUUID(), direction: 'OUT' } }));
+  const removed = await json(await request.post('/api/movements', { data: { ...base, request_id: await requestId(request), direction: 'OUT' } }));
   await page.goto('/#transactions?stack=' + first.id + '&event=' + removed.event_id);
   const editor = page.getByRole('dialog', { name: 'Edit OUT transaction' });
   await editor.waitFor();
@@ -65,11 +72,12 @@ try {
   }
   await capture('staff-correction.png');
   await page.goto('/#prep');
-  for (const [field, value] of Object.entries(rows[0])) {
-    if (field === 'specimen_count') continue;
-    await page.getByLabel(field + ' row 1').fill(value);
-  }
-  await page.getByLabel('specimen_count row 1').fill('20');
+  await page.getByRole('button', { name: '＋ New prep sheet' }).click();
+  await page.getByLabel('Oracle project').fill(rows[0].project_number);
+  await page.getByLabel('Test, row 1').fill(rows[0].test_code);
+  await page.getByLabel('Conditions, row 1').fill(rows[0].preconditioning_code);
+  await page.getByLabel('Specimens per sample for Conditioning, row 1').fill('20');
+  await page.getByLabel('Sample Number, row 1').fill(rows[0].material_ref);
   await capture('staff-preparation.png');
 
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -87,7 +95,7 @@ try {
   await page.getByRole('button', { name: 'Individual' }).click();
   await page.keyboard.type(second.specimens[0].barcode_value);
   await page.keyboard.press('Enter');
-  await page.getByRole('dialog', { name: 'Choose the specimens moving' }).waitFor();
+  await page.getByRole('dialog', { name: 'Choose pieces' }).waitFor();
   await capture('scanner-partial.png');
   if (errors.length) throw new Error(errors.join('\n'));
   await writeFile(resolve(folder, 'manifest.json'), JSON.stringify({

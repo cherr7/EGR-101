@@ -18,6 +18,10 @@ page's keyboard listener still handles.
 Environment (EnvironmentFile /opt/fabric-scanner/input.env and scanner.env):
     SCANNER_DEVICE   evdev path, ideally /dev/input/by-id/...-event-kbd (default: auto-detect)
     SCANNER_MATCH    comma-separated device-name fragments for auto-detect
+
+Auto-detect uses a device whose name matches SCANNER_MATCH. Failing that, if exactly one
+keyboard-type USB device is plugged in, that is the scanner (the Eyoyo calls itself
+"USB HIDKeyboard"). With two or more USB keyboards and no name match it refuses to guess.
     ENABLE_NFC       true to also read a PN532 NFC hat through nfc_tags.py (legacy NFC=1 accepted)
 """
 import errno
@@ -32,7 +36,6 @@ import queue
 import subprocess
 import sys
 import threading
-import uuid
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -51,6 +54,28 @@ DEFAULT_MATCH = "barcode,scanner,eyoyo"
 REJECT_MESSAGE = "Unrecognized scanner input. Rescan the complete label."
 
 log = logging.getLogger("input-bridge")
+BUS_USB = 0x03
+# systemd sets STATE_DIRECTORY (~/.local/state/fabric-scanner for this user service).
+STATE_FILE = os.path.join(os.environ.get("STATE_DIRECTORY", os.path.expanduser("~/.local/state/fabric-scanner")), "bridge-sessions")
+
+
+def next_session_id(path=STATE_FILE):
+    """Each bridge start gets the next number ('bridge-7'), so the page can tell a restarted
+    bridge from a reconnect. Without a writable state file it falls back to the boot clock."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a+") as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            stream.seek(0)
+            text = stream.read().strip()
+            number = (int(text) if text.isdecimal() else 0) + 1
+            stream.seek(0)
+            stream.truncate()
+            stream.write(str(number))
+        return f"bridge-{number}"
+    except OSError as error:
+        log.warning("Bridge session counter unavailable (%s); using the clock", error)
+        return f"bridge-t{time.time_ns()}-{os.getpid()}"
 
 
 LOCAL_IPS_INTERVAL = 15.0  # seconds between station address refreshes (debug display only)
@@ -195,7 +220,7 @@ class Hub:
 
     def __init__(self, clock=time.monotonic):
         self.clock = clock
-        self.session_id = str(uuid.uuid4())
+        self.session_id = next_session_id()
         self.lock = threading.Lock()
         self.subscriber = None
         self.ids = itertools.count(1)
@@ -329,9 +354,16 @@ def serve(hub, port=PORT):
 
 # --- readers ----------------------------------------------------------------
 
+def _full_keyboard(keys, ecodes):
+    """Enter, every digit and every letter: a keyboard or keyboard-wedge scanner, not a media/power button node."""
+    needed = [getattr(ecodes, "KEY_ENTER", 28)]
+    needed += [getattr(ecodes, f"KEY_{c}", None) for c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
+    return all(code is not None and code in keys for code in needed)
+
+
 def find_scanner(evdev, match):
     """Find a scanner despite hot-unplug/permission races involving unrelated input devices."""
-    matches = []
+    matches, usb_keyboards = [], {}
     for path in evdev.list_devices():
         device = None
         try:
@@ -340,6 +372,11 @@ def find_scanner(evdev, match):
             keys = device.capabilities().get(evdev.ecodes.EV_KEY, [])
             if any(fragment in name for fragment in match) and evdev.ecodes.KEY_ENTER in keys:
                 matches.append(path)
+            info = getattr(device, "info", None)
+            if getattr(info, "bustype", None) == BUS_USB and _full_keyboard(set(keys), evdev.ecodes):
+                # One physical keyboard can expose several event nodes; group them by USB port.
+                physical = (getattr(device, "phys", "") or path).split("/input")[0]
+                usb_keyboards.setdefault(physical, []).append((path, device.name))
         except OSError as error:
             log.info("Skipping unavailable input device %s: %s", path, error)
         finally:
@@ -350,7 +387,17 @@ def find_scanner(evdev, match):
                     pass
     if len(matches) > 1:
         raise RuntimeError("Multiple scanner devices match; set SCANNER_DEVICE to one stable by-id path")
-    return matches[0] if matches else None
+    if matches:
+        return matches[0]
+    if len(usb_keyboards) == 1:
+        path, name = sorted(next(iter(usb_keyboards.values())))[0]
+        log.info("Using the only USB keyboard-type device as the scanner: %s (%s)", name, path)
+        return path
+    if len(usb_keyboards) > 1:
+        names = ", ".join(sorted(name for nodes in usb_keyboards.values() for _, name in nodes[:1]))
+        raise RuntimeError(f"Several USB keyboards are plugged in ({names}); unplug the extra keyboard "
+                           "or set SCANNER_DEVICE to the scanner's by-id path")
+    return None
 
 
 def configure_input_clock(device, ioctl=fcntl.ioctl):

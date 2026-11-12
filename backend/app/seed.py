@@ -2,8 +2,8 @@
 from sqlalchemy import select
 
 from .db import SessionLocal
-from .models import PrepDraft, Stack
-from .services import commit_draft, seed_config
+from .models import Stack
+from .services import register_stack, seed_config
 
 
 def main():
@@ -13,12 +13,10 @@ def main():
         if stack:
             print(f"Existing DEMO stack preserved: {stack.id}")
             return
-        draft = PrepDraft(rows=[{"project_number": "DEMO-2026-001", "material_ref": "DEMO-COTTON",
-                                "test_code": "ASTM-D5034", "preconditioning_code": "AR", "specimen_count": 20}])
-        db.add(draft)
-        db.flush()
-        ids = commit_draft(db, draft, is_demo=True)
-        print(f"Created clearly marked DEMO stack: {ids[0]}")
+        stack = register_stack(db, {"project_number": "DEMO-2026-001", "material_ref": "DEMO-COTTON",
+                                    "test_code": "ASTM-D5034", "preconditioning_code": "AR", "specimen_count": 20},
+                               is_demo=True, actor="demo-seed")
+        print(f"Created clearly marked DEMO stack: {stack.id}")
 
 
 if __name__ == "__main__":

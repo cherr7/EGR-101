@@ -17,9 +17,9 @@ import os
 import random
 import subprocess
 import sys
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from prep_sheet_body import sheet_body
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("host", ROOT / "deploy/macos/host.py")
@@ -96,7 +96,8 @@ def record(kind, value):
 
 def move(at, stack, direction, room, scope="stack", ids=None):
     clock["now"] = at
-    body = {"request_id": str(uuid.uuid4()), "station_id": ROOMS[room], "code": stack["specimens"][0]["barcode_value"],
+    first = api("POST", "/api/request-ids", {"client": ROOMS[room], "count": 1}, expect=None)["first"]
+    body = {"request_id": f"{ROOMS[room]}-{first}", "station_id": ROOMS[room], "code": stack["specimens"][0]["barcode_value"],
             "direction": direction, "scope": scope}
     if ids is not None:
         body.update(selected_specimen_ids=ids, expected_version=api("GET", f"/api/stacks/{stack['id']}", expect=None)["version"])
@@ -124,7 +125,7 @@ for day in range(DAYS):
                                       "Thermal Stability", "Water Absorption Resistance", "Thread Melting"]),
              "preconditioning_code": rng.choice(["AR", "5L", "25L", "50L", "100L", "AR → 5L"]),
              "specimen_count": rng.choice([1, 1, 2, 3, 5, 5, 8, 10, 10, 12, 15, 20])} for _ in range(PER_DAY)]
-    draft = api("POST", "/api/prep-drafts", {"rows": rows}, expect=None)
+    draft = api("POST", "/api/prep-drafts", sheet_body(rows), expect=None)
     stack_ids = api("POST", f"/api/prep-drafts/{draft['id']}/commit", {}, expect=None)["stack_ids"]
     counts["registration"] += len(stack_ids)
     next_in_room = []

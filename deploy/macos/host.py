@@ -16,6 +16,12 @@ import tempfile
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+# PostgreSQL on macOS refuses to start ("postmaster became multithreaded during startup")
+# when no locale is set, which is the default for Finder-launched apps, launchd daemons,
+# and fresh accounts. Child processes (initdb, pg_ctl, uvicorn) inherit this.
+if not (os.environ.get("LC_ALL") or os.environ.get("LANG")):
+    os.environ["LANG"] = os.environ["LC_ALL"] = "en_US.UTF-8"
+
 ROOT = Path(os.environ.get("FABRIC_APP_ROOT", Path(__file__).resolve().parents[2]))
 DEFAULT_STATE = Path.home() / "Library/Application Support/Fabric Conditioning"
 SYSTEM_STATE = Path("/Library/Application Support/Fabric Conditioning")
@@ -70,6 +76,14 @@ def environment(database=None):
                "@127.0.0.1:" + str(cfg["db_port"]) + "/" + name,
                FRONTEND_DIST=str(ROOT / "frontend/dist"),
                FABRIC_STATE_DIR=str(state_dir()), COOKIE_SECURE="false")
+    env.pop("FABRIC_BACKUP_DIR", None)
+    if database is None:
+        # Live-database archives go to a visible folder (outside TCC-protected Documents/Desktop).
+        # Test runs (database=..._test) never receive it, so they cannot write there.
+        backup_dir = cfg.get("backup_dir") or (str(Path.home() / "Fabric Conditioning Backups")
+                                               if state_dir() == DEFAULT_STATE else None)
+        if backup_dir:
+            env["FABRIC_BACKUP_DIR"] = backup_dir
     return env
 
 

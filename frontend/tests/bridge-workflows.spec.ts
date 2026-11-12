@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { tag, sheet } from './helpers'
 import type { APIRequestContext, Page } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
 
 async function createStack(request: APIRequestContext, count = 10) {
-  const project = '00-DEMO-BRIDGE-' + randomUUID().slice(0, 8)
-  const response = await request.post('/api/prep-drafts', { data: { rows: [{ project_number: project, material_ref: 'DEMO bridge fabric', test_code: 'D5034', preconditioning_code: 'AR → 5L', specimen_count: count }] } })
+  const project = '00-DEMO-BRIDGE-' + tag()
+  const response = await request.post('/api/prep-drafts', { data: sheet(project, 'DEMO bridge fabric', 'D5034', 'AR → 5L', count) })
   expect(response.ok(), await response.text()).toBeTruthy()
   const draft = await response.json(), committed = await request.post('/api/prep-drafts/' + draft.id + '/commit', { data: {} })
   expect(committed.ok(), await committed.text()).toBeTruthy()
@@ -82,17 +82,17 @@ test('direct stream preserves numbered partial checkout, early override and rema
   await expect(page.getByRole('heading', { name: 'IN confirmed', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'OUT', exact: true }).click(); await page.getByRole('button', { name: 'Individual' }).click()
   await frame(page, stack.specimens[0].barcode_value)
-  const selection = page.getByRole('dialog', { name: 'Choose the specimens moving' })
+  const selection = page.getByRole('dialog', { name: 'Choose pieces' })
   await expect(selection).toBeVisible(); await selection.getByRole('checkbox', { name: /^03/ }).check(); await selection.getByRole('checkbox', { name: /^05/ }).check()
   await frame(page, stack.specimens[9].barcode_value); expect((await current(request, stack.id)).inside_count).toBe(10)
   await selection.getByRole('button', { name: 'Record 3 OUT' }).click()
   const early = page.getByRole('dialog', { name: 'Early checkout' }); await expect(early).toBeVisible()
   await frame(page, stack.specimens[9].barcode_value); expect((await current(request, stack.id)).inside_count).toBe(10)
-  await early.getByRole('button', { name: 'Override & record OUT' }).click(); await expect(page.locator('.readiness-description')).toContainText('3 specimens')
+  await early.getByRole('button', { name: 'Take out anyway' }).click(); await expect(page.locator('.readiness-description')).toContainText('3 specimens')
   expect((await current(request, stack.id)).specimens.filter((s: any) => s.EXIT).map((s: any) => s.number)).toEqual([1, 3, 5])
   await expect(page.getByRole('button', { name: 'Individual', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: 'Stack', exact: true }).click()
-  await frame(page, stack.specimens[0].barcode_value); await expect(early).toBeVisible(); await early.getByRole('button', { name: 'Override & record OUT' }).click()
+  await frame(page, stack.specimens[0].barcode_value); await expect(early).toBeVisible(); await early.getByRole('button', { name: 'Take out anyway' }).click()
   await expect(page.locator('.readiness-description')).toContainText('7 specimens'); expect((await current(request, stack.id)).finished_count).toBe(10)
   await page.getByRole('button', { name: 'IN', exact: true }).click(); await frame(page, stack.specimens[0].barcode_value)
   await expect(page.getByRole('heading', { name: 'Already recorded', exact: true })).toBeVisible()

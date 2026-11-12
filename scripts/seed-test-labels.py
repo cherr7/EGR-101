@@ -13,6 +13,7 @@ import json
 import sys
 import urllib.request
 from pathlib import Path
+from prep_sheet_body import sheet_body
 
 ROOT = Path(__file__).resolve().parents[1]
 API = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8120").rstrip("/")
@@ -33,7 +34,7 @@ def call(method, path, body=None):
 rows = [{"project_number": f"4900{index:08d}", "material_ref": f"TEST-1 fabric {index:02d}",
          "test_code": TESTS[index % len(TESTS)], "preconditioning_code": CONDITIONING[index % len(CONDITIONING)],
          "specimen_count": count} for index, count in enumerate(SIZES, start=1)]
-draft = call("POST", "/api/prep-drafts", {"rows": rows})
+draft = call("POST", "/api/prep-drafts", sheet_body(rows))
 stack_ids = call("POST", f"/api/prep-drafts/{draft['id']}/commit", {})["stack_ids"]
 first = [call("GET", f"/api/stacks/{stack_id}")["specimens"][0] for stack_id in stack_ids]
 

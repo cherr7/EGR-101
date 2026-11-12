@@ -3,6 +3,8 @@ import importlib.util
 import json
 import queue
 from pathlib import Path
+import os
+import tempfile
 import types
 import threading
 import struct
@@ -19,6 +21,8 @@ def load(name, path):
     return module
 
 
+_STATE = tempfile.TemporaryDirectory()          # keep the session counter out of the developer's home
+os.environ["STATE_DIRECTORY"] = _STATE.name
 bridge = load("input_bridge", Path(__file__).with_name("input-bridge.py"))
 
 # Linux input-event-codes values, so tests run without python-evdev installed.
@@ -385,6 +389,39 @@ class ScannerWorkerTests(unittest.TestCase):
         evdev = types.SimpleNamespace(ecodes=ecodes, list_devices=lambda: ["/gone", "/scanner"],
                                       InputDevice=open_device)
         self.assertEqual(bridge.find_scanner(evdev, ["eyoyo"]), "/scanner")
+
+    def test_single_usb_keyboard_is_used_when_no_name_matches(self):
+        full = [ecodes.KEY_ENTER] + [getattr(ecodes, "KEY_" + c, None) or code for c, code in zip(
+            "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", [11, 2, 3, 4, 5, 6, 7, 8, 9, 10, 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38,
+                                                    50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44])]
+        codes = types.SimpleNamespace(**{**vars(ecodes), **{"KEY_" + c: code for c, code in zip(
+            "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", full[1:])}})
+        def device(path, name, bus, keys, phys):
+            value = FakeDevice(path, name)
+            value.capabilities = lambda: {codes.EV_KEY: keys}
+            value.info, value.phys = types.SimpleNamespace(bustype=bus), phys
+            return value
+        hdmi = device("/dev/input/event0", "vc4-hdmi-0", 0x19, full, "vc4-hdmi-0/input0")      # CEC remote, not USB
+        scanner = device("/dev/input/event4", "USB HIDKeyboard", 0x03, full, "usb-xhci-hcd.0-1/input0")
+        extra = device("/dev/input/event5", "USB HIDKeyboard Consumer Control", 0x03, [ecodes.KEY_ENTER], "usb-xhci-hcd.0-1/input1")
+        found = types.SimpleNamespace(ecodes=codes, list_devices=lambda: [d.path for d in (hdmi, scanner, extra)],
+                                      InputDevice=lambda path: {d.path: d for d in (hdmi, scanner, extra)}[path])
+        self.assertEqual(bridge.find_scanner(found, ["eyoyo"]), "/dev/input/event4")
+        keyboard = device("/dev/input/event6", "Dell Keyboard", 0x03, full, "usb-xhci-hcd.0-2/input0")
+        two = types.SimpleNamespace(ecodes=codes, list_devices=lambda: ["/dev/input/event4", "/dev/input/event6"],
+                                    InputDevice=lambda path: {d.path: d for d in (scanner, keyboard)}[path])
+        with self.assertRaisesRegex(RuntimeError, "Several USB keyboards"):
+            bridge.find_scanner(two, ["eyoyo"])
+        named = FakeDevice("/dev/input/event7", "Eyoyo Barcode Scanner")
+        both = types.SimpleNamespace(ecodes=codes, list_devices=lambda: ["/dev/input/event6", "/dev/input/event7"],
+                                     InputDevice=lambda path: {d.path: d for d in (keyboard, named)}[path])
+        self.assertEqual(bridge.find_scanner(both, ["eyoyo"]), "/dev/input/event7")   # a name match still wins
+
+    def test_session_ids_count_up_across_restarts(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "state", "bridge-sessions")
+            self.assertEqual([bridge.next_session_id(path) for _ in range(3)], ["bridge-1", "bridge-2", "bridge-3"])
 
     def test_multiple_matches_fail_without_grabbing_either(self):
         devices = {p: FakeDevice(p, "Eyoyo Barcode Scanner") for p in ("/one", "/two")}

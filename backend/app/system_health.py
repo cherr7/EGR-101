@@ -37,17 +37,11 @@ _MACH = {}
 # Thresholds for the issue list. Disk "free" excludes purgeable space macOS can reclaim.
 DISK_WARN_PERCENT, DISK_CRIT_PERCENT = 85, 95
 DISK_WARN_FREE, DISK_CRIT_FREE = 20 * 2**30, 5 * 2**30
-CPU_WARN_PERCENT = 85
 BATTERY_CRIT_PERCENT = 25
-LOG_WARN_BYTES = 1 * 2**30
 BACKUP_STALE = timedelta(hours=36)
-PI_TEMP_WARN, PI_TEMP_CRIT = 70, 80  # the Pi firmware starts throttling at 80-85 °C
+PI_TEMP_CRIT = 80  # the Pi firmware starts throttling at 80-85 °C
 PI_DISK_WARN_PERCENT, PI_DISK_CRIT_PERCENT = 90, 95
 PI_DISK_WARN_FREE, PI_DISK_CRIT_FREE = 1 * 2**30, 500 * 2**20
-PI_MEMORY_WARN = 90
-PI_WIFI_WEAK_DBM = -75
-PI_CLOCK_SKEW_SECONDS = 120
-PI_RECENT_BOOT_SECONDS = 600
 
 
 def run(args, timeout=3):
@@ -232,6 +226,9 @@ def power():
     settings = run(["/usr/bin/pmset", "-g"])
     sleep = re.search(r"^\s*sleep\s+(\d+)(.*)$", settings, re.MULTILINE)
     display = re.search(r"^\s*displaysleep\s+(\d+)", settings, re.MULTILINE)
+    # Something holding a sleep assertion (the boot service's caffeinate, Amphetamine) keeps the Mac awake.
+    assertions = run(["/usr/bin/pmset", "-g", "assertions"])
+    prevented = bool(re.search(r"^\s*(PreventUserIdleSystemSleep|PreventSystemSleep)\s+1\s*$", assertions, re.MULTILINE))
     thermal = run(["/usr/bin/pmset", "-g", "therm"])
     warning = None
     if thermal and "No thermal warning level has been recorded" not in thermal:
@@ -247,6 +244,7 @@ def power():
             "time_remaining": level.group(3) if level and ":" in level.group(3) else None,
             "sleep_minutes": int(sleep.group(1)) if sleep else None,
             "sleep_note": sleep.group(2).strip(" ()") if sleep and sleep.group(2).strip() else None,
+            "sleep_prevented": prevented,
             "display_sleep_minutes": int(display.group(1)) if display else None,
             "thermal_warning": warning}
 
@@ -276,6 +274,18 @@ def database_facts(db):
     except Exception:
         db.rollback()
         return {"connected": False}
+
+
+def label_printer_ready(inventory):
+    """Can a label print now, on the chosen printer or its USB/Wi-Fi partner? None when there's no label printer."""
+    labels = [item for item in inventory["printers"] if item.get("label_printer")]
+    if not labels:
+        return None
+    chosen = inventory.get("preferred_queue") or next((q["name"] for q in labels if q["is_default"]), labels[0]["name"])
+    uris = printer_network.devices()
+    by_name = {item["name"]: item for item in inventory["printers"]}
+    names = [chosen, printer_network.partner(chosen, uris)]
+    return any(printer_network.usable(by_name[name], uris.get(name)) for name in names if name in by_name)
 
 
 def printer_facts(db):
@@ -309,6 +319,7 @@ def printer_facts(db):
         db.rollback()
         counts, last = {}, None
     return {"cups_available": bool(lpstat), "configured_queue": inventory["configured_queue"], "message": inventory["message"],
+            "ready": label_printer_ready(inventory),
             "queues": sorted(queues.values(), key=lambda row: row["name"]),
             "jobs_last_24h": counts, "wifi": printer_network.last_status(),
             "last_job": {"status": last.status, "queue": last.printer_queue, "created_at": last.created_at.isoformat(),
@@ -344,27 +355,17 @@ def find_issues(report):
             add("critical", "Host Mac", f"{volume['label']} is almost full", f"{gib(free)} free.")
         elif free < DISK_WARN_FREE or percent >= DISK_WARN_PERCENT:
             add("warning", "Host Mac", f"{volume['label']} is getting full", f"{gib(free)} free.")
-    mem = report["memory"]
-    if mem and mem["pressure"] in {"warning", "critical"}:
-        add("critical" if mem["pressure"] == "critical" else "warning", "Host Mac", "Memory is low", "Quit other apps.")
-    recent = [row["cpu"] for row in list(HISTORY)[-20:] if row["cpu"] is not None]  # about 5 minutes
-    if len(recent) >= 8 and sum(recent) / len(recent) >= CPU_WARN_PERCENT:
-        add("warning", "Host Mac", "CPU busy", f"{sum(recent) / len(recent):.0f}% for 5 minutes.")
     power_info = report["power"]
     if power_info:
         if power_info["on_battery"]:
             low = (power_info["battery_percent"] or 100) <= BATTERY_CRIT_PERCENT
             add("critical" if low else "warning", "Host Mac", "Mac is on battery",
                 f"{power_info['battery_percent']}% left. Plug in the charger.")
-        if power_info["sleep_minutes"]:
+        if power_info["sleep_minutes"] and not power_info.get("sleep_prevented"):
             add("warning", "Host Mac", f"Mac sleeps after {power_info['sleep_minutes']} min",
-                "Stations can't scan while it sleeps. Set sleep to Never.")
-        if power_info["thermal_warning"]:
-            add("warning", "Host Mac", "Mac is overheating", power_info["thermal_warning"])
+                "Stations can't scan while it sleeps. Start the app, or set sleep to Never.")
     if not report["database"]["connected"]:
         add("critical", "App", "Database not reachable", "Restart the app.")
-    if (report["application"]["logs_bytes"] or 0) > LOG_WARN_BYTES:
-        add("warning", "App", "Log files are large", f"{gib(report['application']['logs_bytes'])}.")
     for station in report["stations"]:
         name = station["name"]
         device = station.get("device")
@@ -373,8 +374,6 @@ def find_issues(report):
             add("warning", "Scan stations", f"{name}: page not running", "Restart the Pi.")
         elif station["status"] == "offline":
             add("warning", "Scan stations", f"{name} is offline", "Check power and Wi-Fi.")
-        elif station["status"] == "never_seen":
-            add("info", "Scan stations", f"{name} not connected")
         if station["status"] == "no_scanner":
             add("warning", "Scan stations", f"{name}: no scanner", "Check the USB cable.")
         if station["status"] in {"ready", "no_scanner"} and device is not None and device["stale"]:
@@ -382,20 +381,19 @@ def find_issues(report):
         if fresh:
             pi_issues(add, name, device)
     printer = report["printer"]
-    if not printer["queues"]:
-        add("warning", "Label printer", "No printer", "Connect the Brother printer by USB.")
-    for queue in printer["queues"]:
+    labels = [queue for queue in printer["queues"] if queue.get("label_printer", True)]
+    if not labels:
+        add("warning", "Label printer", "No label printer", "Connect the Brother printer by USB.")
+    elif printer.get("ready") is False:
+        add("warning", "Label printer", "Label printer not connected", "Check the USB cable and that it's on.")
+    for queue in labels:
         if queue["state"] == "disabled":
             add("warning", "Label printer", f"{queue['name']} is paused", "Resume it in Printers & Scanners.")
-        if queue["alerts"]:
-            add("warning", "Label printer", f"{queue['name']}: {queue['alerts']}", "Check power, cable and labels.")
         if queue["jobs_waiting"] >= 3:
             add("warning", "Label printer", f"{queue['jobs_waiting']} jobs waiting on {queue['name']}", "Check power and labels.")
     wifi = printer.get("wifi") or {}
     if wifi.get("result") == "found":
         add("warning", "Label printer", f"Wi-Fi printer is now at {wifi.get('ip')}", "Update its address in Printers & Scanners.")
-    elif wifi.get("result") == "not found":
-        add("info", "Label printer", "Wi-Fi printer not found on the network")
     failed = sum(count for status, count in printer["jobs_last_24h"].items() if status in {"failed", "unknown"})
     if failed:
         add("warning", "Label printer", f"{failed} label {'job' if failed == 1 else 'jobs'} failed today", "See Printing in Transactions.")
@@ -405,12 +403,8 @@ def find_issues(report):
             add("critical", "Backups", "Last backup failed", backup["last_error"])
         if backup.get("enabled") is False:
             add("warning", "Backups", "Daily backups are off")
-        elif backup.get("overdue"):
-            add("warning", "Backups", "Backup overdue")
         latest = backup.get("latest_at")
-        if not latest:
-            add("warning", "Backups", "No backups yet")
-        elif utcnow() - datetime.fromisoformat(latest) > BACKUP_STALE:
+        if not latest or utcnow() - datetime.fromisoformat(latest) > BACKUP_STALE:
             add("warning", "Backups", "No backup in the last day")
     order = {"critical": 0, "warning": 1, "info": 2}
     issues.sort(key=lambda row: order[row["level"]])
@@ -418,19 +412,13 @@ def find_issues(report):
 
 
 def pi_issues(add, name, device):
+    """Only what stops a station working or needs someone to go to it."""
     area = "Scan stations"
     temperature = device.get("temperature_c")
     if temperature is not None and temperature >= PI_TEMP_CRIT:
-        add("critical", area, f"{name} is overheating ({temperature:.0f} °C)")
-    elif temperature is not None and temperature >= PI_TEMP_WARN:
-        add("warning", area, f"{name} is hot ({temperature:.0f} °C)")
-    flags = set((device.get("throttled") or {}).get("flags") or [])
-    if "under_voltage" in flags:
+        add("critical", area, f"{name} is overheating ({temperature:.0f} °C)", "Check its vents and fan.")
+    if "under_voltage" in set((device.get("throttled") or {}).get("flags") or []):
         add("critical", area, f"{name}: low power", "Use the official Pi power supply.")
-    elif "under_voltage_occurred" in flags:
-        add("warning", area, f"{name}: low power since boot", "Check the power supply.")
-    if flags & {"throttled", "frequency_capped"} and "under_voltage" not in flags:
-        add("warning", area, f"{name} is throttled")
     disk_info = device.get("disk") or {}
     free, percent = disk_info.get("free_bytes"), disk_info.get("percent")
     if disk_info.get("read_only"):
@@ -439,28 +427,16 @@ def pi_issues(add, name, device):
         add("critical", area, f"{name}: SD card almost full", f"{gib(free or 0)} free.")
     elif (free is not None and free < PI_DISK_WARN_FREE) or (percent or 0) >= PI_DISK_WARN_PERCENT:
         add("warning", area, f"{name}: SD card getting full", f"{gib(free or 0)} free.")
-    memory_percent = (device.get("memory") or {}).get("percent")
-    if memory_percent is not None and memory_percent >= PI_MEMORY_WARN:
-        add("warning", area, f"{name}: memory {memory_percent:.0f}% used")
     for service, info in (device.get("services") or {}).items():
         if info.get("state") not in {"active", "activating", "reloading"}:
             add("warning", area, f"{name}: {service} is {info.get('state')}", "Restart the Pi.")
-    skew = device.get("clock_skew_seconds")
-    if skew is not None and abs(skew) > PI_CLOCK_SKEW_SECONDS:
-        add("warning", area, f"{name}: clock off by {abs(skew) / 60:.0f} min")
-    signal = (device.get("network") or {}).get("wifi_signal_dbm")
-    if signal is not None and signal < PI_WIFI_WEAK_DBM:
-        add("warning", area, f"{name}: weak Wi-Fi ({signal} dBm)")
     running, expected = device.get("package_version"), app_version.current()["version"]
     update = device.get("update") or {}
     if update.get("state") in {"rolled back", "failed"}:
         add("warning", area, f"{name}: update to {update.get('version')} failed", update.get("error") or "")
-    elif running and expected != "unknown" and running != expected:
-        detail = "Updates when the station is idle." if update.get("state") == "waiting" else f"The Mac runs {expected}."
-        add("info" if update.get("state") == "waiting" else "warning", area, f"{name}: old version ({running})", detail)
-    uptime = device.get("uptime_seconds")
-    if uptime is not None and uptime < PI_RECENT_BOOT_SECONDS:
-        add("info", area, f"{name} restarted {uptime // 60} min ago")
+    elif running and expected != "unknown" and running != expected and not update:
+        # A Pi that reports no update state was installed before self-update.
+        add("warning", area, f"{name}: old version ({running})", "Run deploy-pi.sh for it once.")
 
 
 def last_update(state):

@@ -29,8 +29,8 @@ def test_health_report_covers_host_devices_and_backups(client):
     assert {row["id"] for row in report["stations"]} == {"shared-door", "ppe-door", "footwear-door"}
     assert isinstance(report["printer"]["queues"], list)
     assert report["backups"]["available"] is True
-    # Stations that never sent a heartbeat are informational, not warnings.
-    assert set(levels(report["issues"], "Scan stations").values()) == {"info"}
+    # Stations that never connected raise no issue: the station table already says so.
+    assert levels(report["issues"], "Scan stations") == {}
 
 
 def test_station_problems_become_warnings(client):
@@ -62,16 +62,26 @@ def test_thresholds_flag_full_disk_battery_sleep_and_printer():
         memory={"pressure": "warning"},
         power={"on_battery": True, "battery_percent": 15, "sleep_minutes": 10, "thermal_warning": None},
         printer={"queues": [{"name": "QL", "state": "disabled", "alerts": "offline-report", "jobs_waiting": 4}],
-                 "jobs_last_24h": {"failed": 1, "submitted": 3}},
+                 "jobs_last_24h": {"failed": 1, "submitted": 3}, "ready": False},
         database={"connected": False}))
     titles = {issue["title"]: issue["level"] for issue in issues}
     assert titles["Mac storage is almost full"] == "critical"
     assert titles["Mac is on battery"] == "critical"
     assert titles["Database not reachable"] == "critical"
-    assert titles["Memory is low"] == "warning"
+    assert "Memory is low" not in titles             # passing load is not an issue
     assert titles["Mac sleeps after 10 min"] == "warning"
     assert titles["QL is paused"] == "warning"
+    assert titles["Label printer not connected"] == "warning"
+    assert not any("offline-report" in title for title in titles)
     assert any(title.startswith("1 label job") for title in titles)
+    # Amphetamine or the boot service keeping the Mac awake: no sleep warning.
+    awake = {"on_battery": False, "battery_percent": 100, "sleep_minutes": 1, "sleep_prevented": True, "thermal_warning": None}
+    assert find_issues(report_with(power=awake)) == []
+    # Office printers that aren't label printers raise nothing.
+    office = {"queues": [{"name": "QL", "state": "idle", "alerts": None, "jobs_waiting": 0},
+                         {"name": "Office", "label_printer": False, "state": "disabled", "alerts": "offline", "jobs_waiting": 9}],
+              "jobs_last_24h": {}}
+    assert find_issues(report_with(printer=office)) == []
     assert [issue["level"] for issue in issues] == sorted((issue["level"] for issue in issues),
                                                           key=["critical", "warning", "info"].index)
 
@@ -120,24 +130,20 @@ def pi_titles(device, status="ready"):
     return {issue["title"]: issue["level"] for issue in find_issues(report_with(stations=[station]))}
 
 
-def test_pi_rules_flag_heat_power_sd_card_services_clock_and_wifi():
+def test_pi_rules_flag_only_what_needs_someone():
     assert pi_titles(PI_REPORT) == {}
     titles = pi_titles({**PI_REPORT, "temperature_c": 83.0,
                         "throttled": {"value": 0x50005, "flags": ["under_voltage", "throttled", "under_voltage_occurred"]},
                         "disk": {"free_bytes": 10 * 2**30, "percent": 60.0, "read_only": True},
                         "memory": {"percent": 95.0}, "services": {"input": {"state": "failed", "restarts": 12}},
                         "clock_skew_seconds": -600, "network": {"wifi_signal_dbm": -82}, "uptime_seconds": 120})
-    assert titles["PPE is overheating (83 °C)"] == "critical"
-    assert titles["PPE: low power"] == "critical"
-    assert titles["PPE: SD card is read-only"] == "critical"
-    assert titles["PPE: memory 95% used"] == "warning"
-    assert titles["PPE: input is failed"] == "warning"
-    assert titles["PPE: clock off by 10 min"] == "warning"
-    assert titles["PPE: weak Wi-Fi (-82 dBm)"] == "warning"
-    assert titles["PPE restarted 2 min ago"] == "info"
-    assert "PPE is throttled" not in titles  # explained by the under-voltage issue
-    assert pi_titles({**PI_REPORT, "temperature_c": 72.0})["PPE is hot (72 °C)"] == "warning"
+    assert titles == {"PPE is overheating (83 °C)": "critical", "PPE: low power": "critical",
+                      "PPE: SD card is read-only": "critical", "PPE: input is failed": "warning"}
+    assert pi_titles({**PI_REPORT, "temperature_c": 72.0}) == {}
     assert pi_titles({**PI_REPORT, "disk": {"free_bytes": 300 * 2**20, "percent": 99.0}})["PPE: SD card almost full"] == "critical"
+    # Waiting to update when idle is normal; only a failed update is an issue.
+    assert pi_titles({**PI_REPORT, "package_version": "v0", "update": {"state": "waiting", "version": "v1"}}) == {}
+    assert "PPE: update to v1 failed" in pi_titles({**PI_REPORT, "update": {"state": "rolled back", "version": "v1"}})
 
 
 def test_pi_reporting_states():

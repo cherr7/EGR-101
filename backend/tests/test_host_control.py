@@ -89,3 +89,13 @@ def test_menu_summary(client, state):
     assert summary["version"]
     assert {s["name"] for s in summary["stations"]} >= {"Shared"}
     assert summary["update"]["in_progress"] is False
+
+
+def test_new_link_restarts_the_tunnel_from_the_lab_only(client, state):
+    assert client.post("/api/outside/new-link").status_code == 409            # off
+    client.put("/api/outside", json={"passcode": "lab-secret", "enabled": True})
+    (state / "tunnel.json").write_text(json.dumps({"url": "https://old-link.trycloudflare.com"}))
+    (state / "tunnel.pid").write_text("999999")                               # not a running cloudflared
+    assert client.post("/api/outside/new-link", headers=CF).status_code in {401, 403}
+    assert client.post("/api/outside/new-link").json()["url"] is None
+    assert not (state / "tunnel.json").exists()

@@ -7,7 +7,7 @@ type Level = 'critical' | 'warning' | 'info'
 type Issue = { level: Level; area: string; title: string; detail: string }
 type Volume = { label: string; path: string; total_bytes: number; used_bytes: number; free_bytes: number; percent: number | null }
 type Memory = { total_bytes: number; used_bytes: number; cached_bytes: number | null; percent: number; pressure: string; available_percent: number | null; swap_used_bytes: number | null }
-type Power = { source: string | null; on_battery: boolean; has_battery: boolean; battery_percent: number | null; battery_state: string | null; time_remaining: string | null; sleep_minutes: number | null; sleep_note: string | null; display_sleep_minutes: number | null; thermal_warning: string | null }
+type Power = { source: string | null; on_battery: boolean; has_battery: boolean; battery_percent: number | null; battery_state: string | null; time_remaining: string | null; sleep_minutes: number | null; sleep_note: string | null; sleep_prevented?: boolean; display_sleep_minutes: number | null; thermal_warning: string | null }
 type Device = {
   received_at: string; age_seconds: number; stale: boolean; ip: string; clock_skew_seconds: number | null
   hostname: string | null; model: string | null; os: string | null; kernel: string | null; uptime_seconds: number | null
@@ -157,7 +157,7 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
         <Facts rows={[
           ['Address', host.ip ?? '—'],
           ['Power', power ? power.on_battery ? `Battery ${power.battery_percent}%` : 'Charger' : '—'],
-          ['Sleep', power?.sleep_minutes == null ? '—' : power.sleep_minutes === 0 ? 'Never' : `After ${power.sleep_minutes} min`],
+          ['Sleep', power?.sleep_prevented ? 'Kept awake' : power?.sleep_minutes == null ? '—' : power.sleep_minutes === 0 ? 'Never' : `After ${power.sleep_minutes} min`],
           ['Up for', since(host.booted_at, now)],
         ]} />
       </div>

@@ -238,6 +238,7 @@ def update(ref, check_only):
         record(host, result="updated", version=target_version, previous=previous_version, backup=str(backup))
         say(f"Updated to {target_version}. Backup: {backup}")
         prune(releases, keep={release.name, previous.name if previous else ""})
+        prune_backups(backup.parent)
         return 0
 
     say("The new release did not come up healthy. Rolling back.")
@@ -256,6 +257,13 @@ def prune(releases, keep, count=3):
     for folder in folders[count:]:
         if folder.name not in keep:
             shutil.rmtree(folder, ignore_errors=True)
+
+
+def prune_backups(folder, keep=5):
+    """Keep the newest few pre-update backups; the daily backups in the app are kept separately."""
+    files = sorted(Path(folder).glob("before-*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[keep:]:
+        old.unlink(missing_ok=True)
 
 
 def status():

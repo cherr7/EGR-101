@@ -304,6 +304,14 @@ def tunnel_tick():
                                                             "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
 
 
+def keep_awake():
+    """Hold a sleep assertion for as long as this service runs, also before anyone logs in, when
+    Amphetamine isn't running yet. Same as Amphetamine: no system setting changes. A closed lid still sleeps."""
+    if Path("/usr/bin/caffeinate").exists():
+        subprocess.Popen(["/usr/bin/caffeinate", "-i", "-s", "-w", str(os.getpid())],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def serve():
     """Run by launchd. Keeps the database, the app and the tunnel up; exits when the update switches
     releases, so launchd starts the new one."""
@@ -322,6 +330,7 @@ def serve():
     if stopping:
         return
     (folder / "serve.pid").write_text(str(os.getpid()))
+    keep_awake()
     started_from = current_release()
     while held() and not stopping:
         time.sleep(1)

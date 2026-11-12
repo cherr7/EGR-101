@@ -14,8 +14,8 @@
 
 ## Left to do on site
 
-- **Approve the boot service** on the Neo: System Settings → General → Login Items → allow Fabric Conditioning. Then restart the Neo without logging in and check the app from another computer.
-- **Reinstall each Pi once** with `scripts/deploy-pi.sh` so it uses release folders; after that it updates itself.
+- **Boot service:** approved on the Neo Nov 12, 2026 and running. Still to try: restart the Neo without logging in and open the app from another computer.
+- **Reinstall each Pi once (A, B, C)** with `bash scripts/deploy-pi.sh PI-USER@name-a ROOM` from the Mac (asks for the Pi password). After that it updates itself.
 - **Outside link:** set a passcode and turn it on in System health (needs `brew install cloudflared` on the Neo).
 - **Printer:** check a print falls back to Wi-Fi with the USB cable unplugged.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Simulate months of lab traffic in a throwaway database and measure size and API latency as it grows.
 
-Uses the app's own registration (commit_draft) and movement (process_movement) code on a simulated clock,
+Uses the app's own registration (register_stack) and movement (process_movement) code on a simulated clock,
 against <db_name>_scale on the local host's PostgreSQL. The live database is never touched.
 
 Usage (from the repo root, with the local host running):
@@ -19,7 +19,6 @@ import statistics
 import subprocess
 import sys
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -62,7 +61,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import main, movements, services  # noqa: E402
 from app.barcodes import label_code  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
-from app.models import AuditEvent, ConditioningSession, PrepDraft, Stack  # noqa: E402
+from app.models import AuditEvent, ConditioningSession, Stack  # noqa: E402
 from app.schemas import MovementBody  # noqa: E402
 from sqlalchemy import event  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
@@ -122,8 +121,7 @@ def simulate_day(day):
                          "preconditioning_code": rng.choice(["AR", "5L", "25L", "50L"]), "specimen_count": size})
             rooms.append(station)
     with SessionLocal() as db, db.begin():
-        draft = PrepDraft(rows=rows); db.add(draft); db.flush()
-        stack_ids = services.commit_draft(db, draft)
+        stack_ids = [services.register_stack(db, row).id for row in rows]
         first.update(db.execute(services.select(services.Specimen.stack_id, services.Specimen.id)
                                 .where(services.Specimen.stack_id.in_(stack_ids), services.Specimen.number == 1)).all())
     total_specimens += sum(r["specimen_count"] for r in rows)
@@ -135,7 +133,9 @@ def simulate_day(day):
     waiting = []
     for at, direction, sid, station in sorted(actions, key=lambda item: item[0]):
         clock["now"] = at
-        body = MovementBody(request_id=uuid.uuid4(), station_id=station, code=label_code(first[sid]), direction=direction)
+        with SessionLocal() as db, db.begin():
+            number = services.reserve_request_numbers(db, station, 1)["first"]
+        body = MovementBody(request_id=f"{station}-{number}", station_id=station, code=label_code(first[sid]), direction=direction)
         t = time.perf_counter()
         with SessionLocal() as db, db.begin():
             result = movements.process_movement(db, body)
@@ -182,34 +182,33 @@ def checkpoint(day, moves):
 def extend(total_days):
     """Copy the simulated days forward until total_days: the same rows with shifted IDs and timestamps."""
     stacks, specimens = int(psql("SELECT max(id) FROM stacks")), int(psql("SELECT max(id) FROM specimens"))
+    requests = int(psql("SELECT coalesce(max(number), 0) FROM movement_requests"))
     psql("CREATE TABLE base_projects AS SELECT id FROM projects")
     for k in range(1, -(-total_days // DAYS)):
         shift = f"interval '{k * DAYS} days'"
         psql(f"""
-            INSERT INTO projects (id, project_number) SELECT gen_random_uuid()::text, project_number || '-{k}'
+            INSERT INTO projects (project_number) SELECT project_number || '-{k}'
               FROM projects WHERE id IN (SELECT id FROM base_projects);
-            INSERT INTO prep_drafts (id, rows, committed, stack_ids, source, warnings, sheets, review_data, created_at)
-              SELECT gen_random_uuid()::text, rows, committed, stack_ids, source, warnings, sheets, review_data, created_at + {shift}
-              FROM prep_drafts WHERE created_at <= '{start + timedelta(days=DAYS)}';
             INSERT INTO stacks (id, project_id, material_id, test_code, preconditioning_code, source_metadata, version, is_demo, created_at)
               SELECT id + {k * stacks}, project_id, material_id, test_code, preconditioning_code, source_metadata, version, is_demo, created_at + {shift}
               FROM stacks WHERE id <= {stacks};
-            INSERT INTO specimens (id, stack_id, number, revision, last_event_id)
-              SELECT id + {k * specimens}, stack_id + {k * stacks}, number, revision, last_event_id FROM specimens WHERE id <= {specimens};
-            INSERT INTO conditioning_sessions (id, specimen_id, room_id, entered_at, exited_at, recorded_at, source, corrected,
+            INSERT INTO specimens (id, stack_id, number, revision)
+              SELECT id + {k * specimens}, stack_id + {k * stacks}, number, revision FROM specimens WHERE id <= {specimens};
+            INSERT INTO conditioning_sessions (specimen_id, room_id, entered_at, exited_at, recorded_at, source, corrected,
                                                incomplete, early_exit_acknowledged, voided)
-              SELECT gen_random_uuid()::text, specimen_id + {k * specimens}, room_id, entered_at + {shift}, exited_at + {shift},
+              SELECT specimen_id + {k * specimens}, room_id, entered_at + {shift}, exited_at + {shift},
                      recorded_at + {shift}, source, corrected, incomplete, early_exit_acknowledged, voided
               FROM conditioning_sessions WHERE specimen_id <= {specimens};
-            INSERT INTO audit_events (id, stack_id, kind, direction, actor, reason, specimen_ids, room_id, payload, recorded_at)
-              SELECT gen_random_uuid()::text, stack_id + {k * stacks}, kind, direction, actor, reason, specimen_ids, room_id,
+            INSERT INTO audit_events (stack_id, kind, direction, actor, reason, specimen_ids, room_id, payload, recorded_at)
+              SELECT stack_id + {k * stacks}, kind, direction, actor, reason, specimen_ids, room_id,
                      payload, recorded_at + {shift}
               FROM audit_events WHERE stack_id <= {stacks};
-            INSERT INTO movement_requests (id, fingerprint, result, recorded_at)
-              SELECT gen_random_uuid()::text, fingerprint, result, recorded_at + {shift}
+            INSERT INTO movement_requests (station_id, number, fingerprint, result, recorded_at)
+              SELECT station_id, number + {k * requests}, fingerprint, result, recorded_at + {shift}
               FROM movement_requests WHERE recorded_at <= '{start + timedelta(days=DAYS)}';""")
         print(f"copied through day {(k + 1) * DAYS}", flush=True)
     psql("DROP TABLE base_projects")
+    psql(f"UPDATE request_counters SET last_issued = (SELECT max(number) FROM movement_requests m WHERE m.station_id = client)")
     for table in ("stacks", "specimens"):
         psql(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), (SELECT max(id) FROM {table}) + 1, false)")
     return -(-total_days // DAYS) * DAYS

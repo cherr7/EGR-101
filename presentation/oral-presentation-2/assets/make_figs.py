@@ -216,7 +216,7 @@ stagesdb = [
      ["Identity: sequential number +\nDamm check digit, 16×16 DM",
       "conditioning_sessions: DB-enforced\none period per specimen",
       "audit_events: trigger refuses\nUPDATE / DELETE (append-only)",
-      "movement_requests: request UUID\nmakes retries safe (idempotent)"]),
+      "movement_requests: station + counter ID\nmakes retries safe (idempotent)"]),
 ]
 cw = 4.6
 for i, (t, c, items) in enumerate(stagesdb):
@@ -256,7 +256,7 @@ tae = table(10.0, 5.0, "audit_events  (append-only)", ["kind · direction · act
                                                        "recorded_at", "trigger blocks UPDATE/DELETE"], w=4.6)
 tr = table(15.0, 8.9, "rooms", ["temp ± tol, RH ± tol", "required_hours = 24"], c=BLUE, w=2.8)
 tst = table(15.0, 7.2, "stations", ["room_id → rooms", "(3 Pi door stations)"], c=BLUE, w=2.8)
-tmr = table(15.0, 5.0, "movement_requests", ["request UUID", "saved result", "(safe retry)"], c=BLUE, w=2.8)
+tmr = table(15.0, 5.0, "movement_requests", ["station-counter ID", "saved result", "(safe retry)"], c=BLUE, w=2.8)
 tpj = table(0.3, 4.3, "print_jobs · prep_drafts", ["label printing + Excel import", "review state"], c=MUTED)
 def link(a, b, ya=None, yb=None):
     ax.add_patch(FancyArrowPatch(a, b, arrowstyle="-|>", mutation_scale=13, color=INK2, lw=1.4, connectionstyle="arc3,rad=0"))

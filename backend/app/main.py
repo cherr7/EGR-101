@@ -49,7 +49,7 @@ async def lifespan(app):
                 pass
 
 
-app = FastAPI(title="Fabric Conditioning Tracker", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Fabric Conditioning Tracker", version="3.0.0", lifespan=lifespan)
 app.add_middleware(SessionMiddleware,
                    secret_key=os.getenv("SESSION_SECRET", "classroom-demo-change-this-session-secret"),
                    same_site="strict", https_only=os.getenv("COOKIE_SECURE", "false").lower() == "true",

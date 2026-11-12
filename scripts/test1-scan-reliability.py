@@ -15,7 +15,7 @@ import json
 import statistics
 import sys
 import urllib.request
-import uuid
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,7 +59,7 @@ if command == "baseline":
 
 elif command == "reset":
     archive = call("GET", f"/backups/{state()['baseline']}/download", raw=True)
-    boundary = uuid.uuid4().hex
+    boundary = "fabric-" + secrets.token_hex(12)
     body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"baseline.zip\"\r\n"
             "Content-Type: application/zip\r\n\r\n").encode() + archive + f"\r\n--{boundary}--\r\n".encode()
     staged = call("POST", "/backups/import", body, {"Content-Type": "multipart/form-data; boundary=" + boundary})

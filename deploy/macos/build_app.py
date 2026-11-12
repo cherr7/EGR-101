@@ -29,8 +29,8 @@ def build(output):
     (contents / "MacOS").mkdir(parents=True, exist_ok=True)
     copy_code(ROOT, contents / "Resources/app")
     info = {"CFBundleName": "Fabric Conditioning", "CFBundleDisplayName": "Fabric Conditioning",
-            "CFBundleIdentifier": "org.egr.fabric-conditioning", "CFBundleVersion": "2",
-            "CFBundleShortVersionString": "2.0", "CFBundlePackageType": "APPL",
+            "CFBundleIdentifier": "org.egr.fabric-conditioning", "CFBundleVersion": "3",
+            "CFBundleShortVersionString": "3.0", "CFBundlePackageType": "APPL",
             "CFBundleExecutable": "Fabric Conditioning", "LSUIElement": True,
             "LSMinimumSystemVersion": "13.0", "NSHighResolutionCapable": True}
     with (contents / "Info.plist").open("wb") as stream:

@@ -25,18 +25,19 @@ See [Mac installation and startup](deploy/macos/README.md) for the prepared Laun
 
 ## Staff workflow
 
-1. **Specimens → Prepare / import:** upload an Excel .xlsx or .xlsm workbook, inspect the detected worksheets and source warnings, and review the proposed rows. CSV and manual entry are also available.
-2. **Review physical groups:** each registration row represents one material/sample, test, and exact treatment text. Include every physical piece sent to conditioning, including extras. Split combined groups before registration. The importer retains source metadata and leaves ambiguous fields unresolved rather than inventing counts or material identities.
-3. **Register:** complete project, material, test, treatment, and specimen count. Registration creates the stack and its individually numbered specimens with permanent IDs. Repeating the same draft commit returns the existing registration. A repeated workbook upload with the same worksheet selection reuses its draft unless explicitly imported as a new batch.
+1. **Specimens → Prepare / import:** upload the prep sheet (.xlsx or .xlsm), or a five-column CSV, or type one. The screen is laid out like the prep sheet: LabWare #, Oracle project, Standard and Regime once at the top of each worksheet. Below that is one row per sheet row with the sheet's columns in its order: Test, Total Number of Specimens to be Tested, Conditions, Specimens per sample for Conditioning, Sample Number, Sample Type. A blank Test continues the test above it, as on the sheet. Nothing is typed once per specimen or once per treatment.
+2. **Check against the paper sheet:** highlighted cells still need a value. "5 Warp, 5 Fill" counts as 10 pieces. Each sample number makes one stack, and a row with several sample numbers (comma-separated) makes one stack per sample. Excel formulas and macros are never run; an uncached formula is left blank for you to fill in.
+3. **Register:** registration creates one stack per sample, with individually numbered specimens and permanent label IDs. Registering again returns the same stacks. Uploading the same file with the same worksheets reuses its draft unless you choose "Register this file again as a new batch".
 4. **Preview & print:** review the labels, then select an installed Mac printer queue. Labels are Brother DK-1209 die-cut labels, 62 mm wide × 29 mm high. Reprints preserve IDs. PDF/CSV exports remain available when the printer is unavailable.
-5. **Stacks:** see ready specimens first, sort stacks by longest current time inside, and filter by room, status, project, material, test, or treatment. A partially ready stack shows exact ready/inside/finished counts.
-6. **Specimens → Registered specimens:** inspect the single ENTRY/EXIT pair and history for each numbered specimen. Download session CSV, audit CSV, or a printable conditioning report.
-7. **Transactions:** amend a scan's selected specimen numbers, time, room, or optional notes; record a missed movement; or undo an eligible transaction. No supervisor login or mandatory reason is required. Original observations remain in the append-only audit history.
-8. **Backups:** create/download a checkpoint, configure daily snapshots and an additional copy destination, or validate a backup before explicitly restoring it.
+5. **Edit a printed stack:** open the stack and choose **Edit stack**. You can fix project, material, test and treatment, add specimens, or remove specimens. Existing labels keep working. Added specimens take the next numbers, and the label dialog opens with only their new labels. Removed specimens keep their history; their labels scan as removed.
+6. **Stacks:** see ready specimens first, sort stacks by longest current time inside, and filter by room, status, project, material, test, or treatment. A partially ready stack shows exact ready/inside/finished counts.
+7. **Specimens → Registered specimens:** inspect the single ENTRY/EXIT pair and history for each numbered specimen. Download session CSV, audit CSV, or a printable conditioning report.
+8. **Transactions:** amend a scan's selected specimen numbers, time, room, or optional notes; record a missed movement; or undo an eligible transaction. No supervisor login or mandatory reason is required. Original observations remain in the append-only audit history.
+9. **Backups:** create/download a checkpoint, configure daily snapshots and an additional copy destination, or validate a backup before explicitly restoring it.
 
 Project numbers remain strings, preserving letters and leading zeroes. They are separate from generated specimen/stack IDs. Treatment wording is copied from the prep sheet; AR, 5L, UV, CH, or other wording describes separate groups of physical pieces, not repeated conditioning cycles for the same specimen.
 
-Registration allows 1–500 specimens per stack; 20 is typical rather than a hard maximum. Workbook rows are proposals that require review, not proof of how a physical pile has been divided. Additional specimens are registered as a new group rather than appended to an existing stack.
+Registration allows 1–500 specimens per stack; 20 is typical rather than a hard maximum. Workbook rows are proposals that require review, not proof of how a physical pile has been divided. Extra pieces for an existing stack are added to it with **Edit stack**.
 
 ## Room scanner
 
@@ -66,12 +67,15 @@ The Pi opens a self-contained **Starting station…** page before its local web 
 
 The app tracks the designated 24-hour room visit. It does not track a later four-hour post-oven step, laundry equipment, or other prep stages. Timestamps are stored in UTC and displayed in America/New_York. Readiness means recorded continuous residence reached 24 hours; laboratory environmental measurements remain in the existing system.
 
-Movement requests lock the affected stack/specimens and commit all or none. A request UUID makes an identical retry return its existing result. Stale selections and checkout from the wrong room are rejected. PostgreSQL enforces one effective conditioning period per specimen. Corrections preserve originals, and undo is rejected when affected specimens have intervening activity.
+Movement requests lock the affected stack/specimens and commit all or none. Each scan carries a retry ID made of its station and a counter (`shared-door-118`). Retrying with that ID returns the stored result, and reusing it for a different scan is refused. Stale selections and checkout from the wrong room are rejected. PostgreSQL enforces one effective conditioning period per specimen. Corrections preserve originals, and undo is rejected when affected specimens have intervening activity.
 
-The SQL model stores projects, materials, treatments, stacks, specimens, conditioning periods, movement requests, print jobs, prep drafts, and append-only audit events. Specimen detail exposes ENTRY, EXIT, and a derived raw_json_time history; the staff UI presents a readable transaction log rather than requiring JSON editing.
+The SQL model stores projects, materials, treatments, stacks, specimens, conditioning periods, movement requests, print jobs, prep drafts, and append-only audit events. Every generated key is a sequential number. [docs/DATABASE.md](docs/DATABASE.md) is the schema's definition: tables, keys, what is append-only, and what backups keep. Specimen detail exposes ENTRY, EXIT, and a derived raw_json_time history; the staff UI presents a readable transaction log rather than requiring JSON editing.
 
 ## Labels, backups, and deployment
 
+- [Database](docs/DATABASE.md): tables, keys, append-only history, and what backups preserve.
+- [Printing workflow review](docs/PRINTING_REVIEW.md): where register → preview → print → reprint can go wrong, and what guards each case.
+- [Device discovery and remote access](docs/DEVICE_DISCOVERY.md): Pis find the Mac by name over Tailscale; staff browsers through Cloudflare Tunnel with a login.
 - [Code audit and interface update](docs/CODE_AUDIT.md): verified fixes, upstream integration findings, and current UI organization.
 - [Real Excel pipeline verification](docs/EXCEL_PIPELINE_VERIFICATION.md): source-file coverage, reviewed missing fields, and decoded labels.
 - [Current state and possible improvements](docs/PROJECT_STATUS.md): implemented features, deployment checks, known gaps, and proposed interface priorities.
@@ -81,7 +85,7 @@ The SQL model stores projects, materials, treatments, stacks, specimens, conditi
 - [Local input protocol](docs/SCANNER_INPUT_PROTOCOL.md): ownership, monotonic freshness, reconnects, reader health, and fallback.
 - [Scanner implementation guide](docs/SCANNER_IMPLEMENTATION_GUIDE.md): direct USB input, keyboard fallback, local startup UI, station setup, upgrades, and recovery.
 
-No public tunnel or Microsoft 365 integration is installed. An optional destination is a folder visible to the Mac service account; copying there does not confirm a SharePoint/cloud upload. Source Excel workbooks, emails, training matrices, and Word examples are not bundled with the app. Their contents are source data, not executable instructions; imported macros are not run.
+No public tunnel or Microsoft 365 integration is installed yet; [device discovery](docs/DEVICE_DISCOVERY.md) has the Tailscale and Cloudflare Tunnel plan. An optional destination is a folder visible to the Mac service account; copying there does not confirm a SharePoint/cloud upload. Source Excel workbooks, emails, training matrices, and Word examples are not bundled with the app. Their contents are source data, not executable instructions; imported macros are not run.
 
 Completing an uploaded Word datasheet is a possible later add-on. Staff scheduling/training management, destructive-test results, environmental instrumentation, physical regrouping, RFID, and offline synchronization are outside this implementation.
 
@@ -91,7 +95,9 @@ After setup, run backend integration tests against the separate database whose n
 
     python3 deploy/macos/host.py test
 
-These tests can reset that isolated test database. They must never target the application database. For frontend development, run npm run dev from frontend with API_URL pointing to a suitable test backend. Browser workflow tests create records; use a disposable backend/database rather than the lab dataset.
+These tests can reset that isolated test database. They must never target the application database. For frontend development, run npm run dev from frontend with API_URL pointing to a suitable test backend. Browser workflow tests create records; use a disposable backend/database rather than the lab dataset. `python3 scripts/e2e-backend.py` serves one on port 8001 from the emptied `_test` database.
+
+`frontend/tests/kiosk-buttons.spec.ts` drives the kiosk at 1280 × 720 with touch input and taps every button. Each one must have a name, be at least 44 × 44 px, be on screen and not covered, and look dimmed when disabled. It also covers Undo / remove with several scans of one stack.
 
     cd frontend
     npm ci
@@ -114,7 +120,7 @@ Build the Mac app again after final source/frontend changes:
 
 Automated checks cover identity preservation, one-period movement, partial checkout, stale/concurrent requests, lost-response reconciliation, amendments/undo, audit history, label decoding, imports, exports, and backup validation. Software checks do not establish physical scan accuracy, stock adhesion, print readability, network behavior, or actual Pi/Mac cold-start recovery. Measure confirmed scan latency from the scanner's final Enter to visible confirmation against the outline's one-second target during hardware acceptance.
 
-Verified on October 23, 2026: **62 PostgreSQL integration tests, 44 browser checks, 8 Mac packaging checks, and 59 Pi package/NFC/watchdog checks passed**. Browser checks include real-API movements through simulated Pi transport and native EventSource recovery from unavailable/occupied HTTP responses. The compiled Pi package also passed a headless offline-start workflow. A 20-specimen scan took **118 ms from final Enter to visible green confirmation** on this development laptop. The native launcher and portable command-line checkpoint export were checked against the running host. Physical Eyoyo testing additionally verified eight exact Data Matrix payloads and a 12-piece IN → numbered partial OUT → remaining-stack OUT → Undo workflow. Printer qualification, USB reconnect, and actual Mac/Pi cold-start behavior remain hardware acceptance checks.
+Verified on November 12, 2026: **76 PostgreSQL integration tests, 51 browser checks (6 of them the kiosk button suite), 8 Mac packaging checks, and 63 Pi package/NFC/watchdog/input-bridge checks passed**. The 3-day audit simulation (Test 3) and a short scale simulation also ran clean on the sequential-ID schema. The rebuilt Mac app (3.0) was started with no locale set and served the new API. A 20-specimen scan took 144 ms from final Enter to visible green confirmation on this development laptop. Not yet checked on hardware: a Brother DK-1209 test print and scan (no QL queue on the development Mac; see [the printing review](docs/PRINTING_REVIEW.md)), the guest Wi-Fi test, Tailscale, and Pi cold-start with the new scanner auto-detect.
 
 The older Docker Compose files and scripts remain for legacy development. They are not the primary Mac deployment documented here, and old prototype payloads or supervisor workflows should not be used as the current specification.
 

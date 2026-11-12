@@ -13,13 +13,13 @@ The Pi input service is hardware transport, not another database/backend. Its lo
 
 The first active stream wins. The service does not broadcast physical scans. A closed client is detected through stream writes/one-second keepalives; its connection releases ownership. A stalled socket has a finite write timeout. An overflowing bounded stream receives a terminal error and closes, discarding queued frames. The browser retries closed HTTP error responses explicitly as well as handling ordinary EventSource reconnects. A second page cannot use keyboard fallback to bypass known ownership.
 
-This is a simple connection guard, not an account system, distributed lease, or persistent transaction queue. Movement UUIDs remain the authoritative backend retry identities; local stream IDs are not SQL specimen IDs or movement request UUIDs.
+This is a simple connection guard, not an account system, distributed lease, or persistent transaction queue. Movement retry IDs (`<station>-<n>`, reserved from the Mac) remain the authoritative backend retry identities; local stream IDs are not SQL specimen IDs or movement retry IDs.
 
 ## Status and events
 
 GET status includes:
 
-- session_id: random process UUID; changes after service restart.
+- session_id: `bridge-<n>`, counted up in the service's state directory; changes after every service restart.
 - now_ms: service CLOCK_MONOTONIC time in milliseconds.
 - scanner: starting, ok, missing, or error; scanner_name and scanner_error explain device state.
 - nfc: off, starting, ok, or error; nfc_error explains optional reader failure.
@@ -66,6 +66,6 @@ The adapter explicitly recreates an EventSource permanently closed by an HTTP 40
 
 Discovery failures retry; ambiguous device matches require a pinned SCANNER_DEVICE instead of grabbing a generic keyboard. The process supervises reader and HTTP threads so unexpected death causes systemd restart. Persistent NFC failures reconnect with GPIO/SPI cleanup. ENABLE_NFC is the installer's canonical setting; legacy NFC is accepted only when the canonical setting is absent.
 
-The browser saves a submitted movement's UUID/payload and reconciles that exact request after a lost response. Undo recovery asks GET /api/transactions/{event_id}, independent of log pagination. These durable browser identities survive Chromium restarts in its dedicated profile; the local transport queue does not.
+The browser saves a submitted movement's retry ID and payload and reconciles that exact request after a lost response. Undo recovery asks GET /api/transactions/{event_id}, independent of log pagination. These durable browser identities survive Chromium restarts in its dedicated profile; the local transport queue does not.
 
 Python tests cover ownership, overflow/EOF, discovery, kernel buffering/timestamps, frame assembly, the captured Eyoyo sequence, NFC bounds/reconnect, and watchdog/package behavior. Browser tests simulate USB/NFC transport while using the real SQL-backed HTTP API for movements; an additional native EventSource test exercises HTTP unavailable/occupied recovery. Package smoke checks use real compiled assets and mock central API data. Physical input results are recorded above; full movement acceptance, repeated cold-start timing, and printed-label qualification remain separate checks. See [the implementation guide](SCANNER_IMPLEMENTATION_GUIDE.md) and [deployment README](../deploy/scanner-kiosk/README.md).

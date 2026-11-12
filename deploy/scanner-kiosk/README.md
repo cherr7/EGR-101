@@ -2,9 +2,19 @@
 
 This is the supported Pi deployment for the React scanner and shared Mac-hosted API. Use Raspberry Pi OS Desktop (64-bit, labwc/Wayland), a Pi 5, and a Touch Display 2 in landscape at 1280 × 720. Chromium still runs in kiosk mode. Changing to Raspberry Pi OS Lite is unnecessary for this deployment; Lite would need a graphical session installed and configured separately.
 
-Each Pi keeps the actual React assets locally and proxies same-origin `/api` calls to the Mac, normally port 8120. If the Mac is unavailable, the scanner screen remains visible with **Offline**. There is no offline transaction queue. Only an already submitted request is retained for reconciliation with its original UUID.
+Each Pi keeps the actual React assets locally and proxies same-origin `/api` calls to the Mac, normally port 8120. If the Mac is unavailable, the scanner screen remains visible with **Offline**. There is no offline transaction queue. Only an already submitted request is retained for reconciliation with its original retry ID (`<station>-<n>`).
 
 USB input normally follows **Eyoyo → Linux evdev → local input service → Chromium → Mac API → PostgreSQL confirmation**. The input service grabs the scanner device, so focus elsewhere does not divert ordinary scans or type them into another application. It also handles the optional PN532 reader. A focused keyboard-wedge fallback is available only if the local input service is unreachable, not while a different page owns the service. The app visibly distinguishes database availability, reader readiness, and keyboard fallback.
+
+## One-command deploy
+
+From the Mac, with the app running and Tailscale up on the Mac and the Pi (see [device discovery](../../docs/DEVICE_DISCOVERY.md)):
+
+```sh
+scripts/deploy-pi.sh pi-user@name-a shared-door
+```
+
+It builds the package and installs it. The Pi reaches the Mac by its Tailscale name, never a baked-in IP. The script reboots the Pi and exits 0 only once the Pi is back, serving the kiosk, and reaching the Mac API. SSH host keys are checked. After re-imaging a Pi, remove its old key yourself with `ssh-keygen -R name-a`.
 
 ## Build and preflight on the Mac
 
@@ -45,7 +55,13 @@ The legacy `conditioning-tracker` nginx site from the removed `deploy/pi` packag
 
 ## USB device selection and operator settings
 
-The bridge discovers keyboard-capable USB devices whose names contain `barcode`, `scanner`, or `eyoyo`. It refuses ambiguous matches instead of choosing an arbitrary keyboard. If the Eyoyo reports only a generic name such as `HIDKeyboard`, or more than one candidate exists, pin its stable device path:
+The bridge picks the scanner in this order:
+
+1. `SCANNER_DEVICE`, if set.
+2. A device whose name contains `barcode`, `scanner` or `eyoyo` (`SCANNER_MATCH`). Two matches is an error.
+3. Otherwise, **the only keyboard-type USB device** plugged in. The Eyoyo calls itself `USB HIDKeyboard`, so a Pi with just the scanner plugged in needs no setting. "Keyboard-type" means it has Enter, every digit and every letter. That leaves out the touch screen, HDMI-CEC remotes and a keyboard's separate media-key node.
+
+With two or more USB keyboards plugged in and no name match, the bridge refuses to guess. It shows "Several USB keyboards are plugged in (...)" as reader status. Unplug the extra keyboard, or pin the scanner's stable device path:
 
 ```sh
 ls -l /dev/input/by-id/
@@ -72,7 +88,7 @@ The installer preserves an existing `/opt/fabric-scanner/scanner.env` on updates
 
 USB unplug/replug, discovery errors, permissions failures, and grab failures are retried and shown as reader status. The Linux reader requests monotonic kernel event timestamps and rejects old buffered frames; an unsupported timestamp configuration stays visibly unavailable rather than accepting unverified input. Device discovery failures do not silently kill the reader thread. A gap or oversized frame is rejected; neither a rejected fragment nor a queued late scan becomes an automatic movement. Configure the physical scanner's Enter suffix; the Data Matrix itself contains only the specimen's label code (its number plus a check digit). The service reads those keystrokes directly and does not depend on a visible text box.
 
-Physical Eyoyo testing on ULScanner1 confirmed that it reports as `USB HIDKeyboard`; pin its by-id path rather than broadening discovery to every keyboard. This unit also sends Num Lock (Linux key 69) around the scan. The decoder ignores that non-character toggle. With `SCANNER_DEBUG=true`, `USB frame` logs preserve the assembled text, its length, and rejection causes even for a rejected frame. A physical scan was verified through a single 12-specimen IN transaction in the shared room; reboot, printer output, and the rest of the physical movement workflow still need acceptance testing.
+Physical Eyoyo testing on ULScanner1 confirmed that it reports as `USB HIDKeyboard`. Rule 3 above picks it up when it is the only USB keyboard, so a `SCANNER_DEVICE` pinned by hand on a Pi can now be removed from `scanner.env`. This unit also sends Num Lock (Linux key 69) around the scan. The decoder ignores that non-character toggle. With `SCANNER_DEBUG=true`, `USB frame` logs preserve the assembled text, its length, and rejection causes even for a rejected frame. A physical scan was verified through a single 12-specimen IN transaction in the shared room; reboot, printer output, and the rest of the physical movement workflow still need acceptance testing.
 
 The same unit emits Down Arrow after the terminating Enter. The decoder consumes this observed trailer only while no payload is active and within 350 ms after Enter. Down Arrow inside a payload, unrelated controls, partial frames, stale data, and lost kernel events still reject the scan. All eight physical diagnostic Data Matrix scans matched their expected payloads, including leading zeros, case, punctuation, URL, and repeat identity. Their 528-key-event capture is a regression fixture. Use this observed keyboard configuration as the station baseline; reprogramming the scanner is not a setup requirement. `SCANNER_TRACE_KEYS=true` adds bounded ordered payload-key/timing diagnostics; normally leave it off. Full hardware movement acceptance remains necessary. Virtual-COM and HID-POS are not implemented transports.
 

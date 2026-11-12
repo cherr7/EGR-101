@@ -78,7 +78,7 @@ tar -C deploy -cf - scanner-kiosk | "${SSH[@]}" "$PI" 'tar -C ~ -xf -'
 
 echo "==> Installing on the Pi"
 "${SSH[@]}" -t "$PI" "set -eu
-sudo apt-get update
+sudo apt-get update || echo 'Some package lists did not download (a Debian mirror may be mid-sync); installing from the lists this Pi already has.' >&2
 sudo apt-get install -y nginx chromium python3 python3-venv python3-evdev ca-certificates
 if [ '$DNS' = 100.100.100.100 ] && ! tailscale status >/dev/null 2>&1; then
     echo 'This Pi is not on the tailnet. Install and log in to Tailscale first (docs/DEVICE_DISCOVERY.md).' >&2

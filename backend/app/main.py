@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy import or_, select, text
 from starlette.middleware.sessions import SessionMiddleware
 
-from .auth import current_user, require_supervisor, valid_credentials
+from .auth import current_user, valid_credentials
 from .corrections import edit_transaction, process_correction, record_missed_movement, undo_transaction
 from .db import SessionLocal, get_db, engine
 from .backups import TrafficGate, daily_scheduler, router as backups_router

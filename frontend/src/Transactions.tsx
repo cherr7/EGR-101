@@ -68,16 +68,21 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       if (roomFilter) query.set('room_id', roomFilter)
       if (context.stackId) query.set('stack_id', context.stackId)
       if (context.batchId) query.set('batch_id', context.batchId)
-      void Promise.all([
-        api<{ items: AuditEvent[]; has_more?: boolean }>('/transactions?' + query),
-        api<{ items: Stack[] }>('/stacks'),
-      ]).then(([events, rows]) => {
-        if (current) { setItems(events.items); setHasMore(!!events.has_more); setStacks(rows.items) }
+      void api<{ items: AuditEvent[]; has_more?: boolean }>('/transactions?' + query).then(events => {
+        if (current) { setItems(events.items); setHasMore(!!events.has_more) }
       }).catch(err => { if (current) setError((err as Error).message) })
         .finally(() => { if (current) setLoading(false) })
     }, 160)
     return () => { current = false; clearTimeout(timer) }
   }, [healthy, search, kind, roomFilter, context.stackId, context.batchId, limit, refresh])
+  // The stack list only feeds the missed-scan dialog and the context strip, so typing in search never reloads it.
+  useEffect(() => {
+    if (!healthy) return
+    let current = true
+    void api<{ items: Stack[] }>('/stacks').then(rows => { if (current) setStacks(rows.items) })
+      .catch(err => { if (current) setError((err as Error).message) })
+    return () => { current = false }
+  }, [healthy, refresh])
 
   async function openEvent(eventId: number | string, stackId: number | string) {
     if (mutation.current || !healthy) return
@@ -229,12 +234,11 @@ export default function Transactions({ config, healthy }: { config: Config; heal
       <div className="table-wrap"><table>
         <thead><tr><th>Entered</th><th>Activity</th><th>Project / Material</th><th>Specimens</th><th>Movement time</th><th>Room</th><th /></tr></thead>
         <tbody>{visible.map(event => {
-          const stack = stacks.find(row => row.id === event.stack_id)
           return <tr key={event.id} className={event.undone ? 'undone-row' : ''}>
             <td>{formatTime(event.recorded_at)}<small className="id-hint">#{event.id}</small></td>
             <td><span className={'badge ' + (event.kind === 'movement' ? event.direction === 'IN' ? 'good' : 'blue' : 'muted')}>{labelFor(event)}</span>
               {event.modified && <small>Modified</small>}{event.undone && <small>Undone</small>}</td>
-            <td><b>{stack?.project_number || '—'}</b><small>{stack?.material_ref || 'Stack ' + event.stack_id}</small></td>
+            <td><b>{event.project_number || '—'}</b><small>{event.material_ref || 'Stack ' + event.stack_id}</small></td>
             <td><b>{event.effective_count ?? event.affected_count}</b>{event.modified && <small>Originally {event.affected_count}</small>}</td>
             <td>{formatTime(timeFor(event))}</td><td>{roomName(event.effective_room_id || event.room_id)}</td>
             <td><button className="button text" disabled={!healthy || busy}

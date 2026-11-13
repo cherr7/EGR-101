@@ -1,18 +1,11 @@
 import os
 import secrets
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 
 def current_user(request: Request):
     return request.session.get("username")
-
-
-def require_supervisor(request: Request):
-    username = current_user(request)
-    if not username:
-        raise HTTPException(401, "Supervisor login required.")
-    return username
 
 
 def valid_credentials(username, password):

@@ -270,3 +270,127 @@ def test_correction_after_an_undone_scan_still_blocks_undo(client, stack_factory
     row = next(e for e in client.get("/api/events", params={"stack_id": stack["id"]}).json()["items"] if e["id"] == entered["event_id"])
     assert row["can_undo"] is False
     assert client.post("/api/transactions/" + str(entered["event_id"]) + "/undo", json={"expected_version": version()}).status_code == 409
+
+
+def test_specimen_removed_concurrently_during_scan_is_rejected(client, stack_factory, monkeypatch):
+    from app import movements
+    from app.services import resolve_code as real_resolve_code
+    from app.db import SessionLocal
+    from app.models import utcnow, Specimen, Stack
+
+    stack = stack_factory(count=3)
+    target_specimen_id = stack["specimens"][1]["id"]
+    code = stack["specimens"][1]["barcode_value"]
+
+    def racing_resolve_code(db, code_value):
+        stack_obj, specimen_obj = real_resolve_code(db, code_value)
+        # Concurrent removal occurs right between barcode resolution and stack lock:
+        with SessionLocal.begin() as other_db:
+            sp = other_db.get(Specimen, target_specimen_id)
+            sp.removed_at = utcnow()
+            st = other_db.get(Stack, stack["id"])
+            st.version += 1
+        return stack_obj, specimen_obj
+
+    monkeypatch.setattr(movements, "resolve_code", racing_resolve_code)
+
+    req_id = request_id(client)
+    res = client.post("/api/movements", json={
+        "request_id": req_id,
+        "station_id": "shared-door",
+        "code": code,
+        "direction": "IN",
+        "scope": "specimen",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "rejected"
+    assert data["message"] == "This specimen was just removed from the stack. Set it aside."
+
+    # Also verify direction="OUT" when a specimen is removed concurrently during checkout:
+    target_specimen_id_2 = stack["specimens"][2]["id"]
+    code_2 = stack["specimens"][2]["barcode_value"]
+    # Move specimen 2 IN first without race:
+    monkeypatch.setattr(movements, "resolve_code", real_resolve_code)
+    move(client, stack, "IN")
+
+    def racing_resolve_code_out(db, code_value):
+        stack_obj, specimen_obj = real_resolve_code(db, code_value)
+        if specimen_obj.id == target_specimen_id_2:
+            with SessionLocal.begin() as other_db:
+                sp = other_db.get(Specimen, target_specimen_id_2)
+                sp.removed_at = utcnow()
+                st = other_db.get(Stack, stack["id"])
+                st.version += 1
+        return stack_obj, specimen_obj
+
+    monkeypatch.setattr(movements, "resolve_code", racing_resolve_code_out)
+    req_id_out = request_id(client)
+    res_out = client.post("/api/movements", json={
+        "request_id": req_id_out,
+        "station_id": "shared-door",
+        "code": code_2,
+        "direction": "OUT",
+        "scope": "specimen",
+    })
+    assert res_out.status_code == 200
+    data_out = res_out.json()
+    assert data_out["status"] == "rejected"
+    assert data_out["message"] == "This specimen was just removed from the stack. Set it aside."
+
+    # And verify subsequent scan after removal is rejected directly by resolve_code:
+    req_id_subsequent = request_id(client)
+    res_subsequent = client.post("/api/movements", json={
+        "request_id": req_id_subsequent,
+        "station_id": "shared-door",
+        "code": code_2,
+        "direction": "OUT",
+        "scope": "specimen",
+    })
+    assert res_subsequent.status_code == 200
+    data_subsequent = res_subsequent.json()
+    assert data_subsequent["status"] == "rejected"
+    assert f"Specimen {stack['specimens'][2]['number']:02d} was removed from stack {stack['id']}. Set it aside." in data_subsequent["message"]
+
+
+def test_early_checkout_dynamic_room_hours(client, stack_factory, db):
+    from app.models import Room
+    shared_room = db.get(Room, "shared")
+    original_hours = shared_room.required_hours
+    try:
+        shared_room.required_hours = 16.0
+        db.commit()
+
+        stack = stack_factory(count=2)
+        move(client, stack, "IN")
+
+        warning_16, _ = move(client, stack, "OUT")
+        assert warning_16["status"] == "acknowledgment_required"
+        assert "These specimens have not completed 16 hours. Acknowledge their early removal." in warning_16["message"]
+
+        shared_room.required_hours = 48.0
+        db.commit()
+
+        warning_48, _ = move(client, stack, "OUT")
+        assert warning_48["status"] == "acknowledgment_required"
+        assert "These specimens have not completed 48 hours. Acknowledge their early removal." in warning_48["message"]
+
+        # Non-integer float duration (e.g. 2.5 hours) formats with :g cleanly without trailing zeros
+        shared_room.required_hours = 2.5
+        db.commit()
+
+        warning_2_5, _ = move(client, stack, "OUT")
+        assert warning_2_5["status"] == "acknowledgment_required"
+        assert "These specimens have not completed 2.5 hours. Acknowledge their early removal." in warning_2_5["message"]
+
+        # Reset back to 24 hours
+        shared_room.required_hours = 24.0
+        db.commit()
+
+        warning_24, _ = move(client, stack, "OUT")
+        assert warning_24["status"] == "acknowledgment_required"
+        assert "These specimens have not completed 24 hours. Acknowledge their early removal." in warning_24["message"]
+    finally:
+        shared_room.required_hours = original_hours
+        db.commit()
+

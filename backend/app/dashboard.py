@@ -59,10 +59,11 @@ def stack_states(db, stack_ids):
         Specimen.stack_id.in_(stack_ids), Specimen.removed_at.is_(None))))   # removed pieces are not in the pipeline
     piece_ids = [row.id for row in pieces]
     sessions = defaultdict(list)
-    for session in db.scalars(select(ConditioningSession).where(
-            ConditioningSession.specimen_id.in_(piece_ids), ConditioningSession.voided.is_(False))
-            .order_by(ConditioningSession.entered_at, ConditioningSession.id)):
-        sessions[session.specimen_id].append(session)
+    if piece_ids:
+        for session in db.scalars(select(ConditioningSession).where(
+                ConditioningSession.specimen_id.in_(piece_ids), ConditioningSession.voided.is_(False))
+                .order_by(ConditioningSession.entered_at, ConditioningSession.id)):
+            sessions[session.specimen_id].append(session)
     # Print jobs can only follow registration, so the oldest stack bounds the scan.
     oldest = min((stack.created_at for stack in stacks.values()), default=now)
     labeled_at, attempt = {}, {}
@@ -208,7 +209,7 @@ def dashboard(room_id: str | None = None, project_number: str | None = None, tes
             open_batches.append(draft)
         elif len(closed) < 5:
             closed.append(draft)
-    extra = {i for draft in open_batches + closed for i in draft.stack_ids or []} - set(rows)
+    extra = {int(i) for draft in open_batches + closed for i in draft.stack_ids or []} - set(rows)
     every = {**rows, **stack_states(db, extra)} if extra else rows
     batches = []
     for draft, is_open in [(d, True) for d in open_batches] + [(d, False) for d in closed]:

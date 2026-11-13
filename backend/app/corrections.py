@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from .models import AuditEvent, ConditioningSession, Room, Specimen, Stack, utcnow
+from .schemas import TransactionUndoBody
 from .services import (TARGET_EVENT, conditioning_due, conditioning_period, current_session, iso, sessions_for, snapshot,
                        transaction_effective, transaction_is_latest_for)
 
@@ -25,7 +26,6 @@ def validate_timeline(db, specimen, now):
 
 def process_correction(db, body, username):
     if body.kind == "undo":
-        from .schemas import TransactionUndoBody
         return undo_transaction(db, body.event_id, TransactionUndoBody(note=body.reason), username)
     session = None
     if body.kind == "edit_session":
@@ -222,9 +222,8 @@ def edit_transaction(db, event_id, body, username="project-staff"):
     db.flush()
     for specimen in specimens:
         validate_timeline(db, specimen, now)
-    updated = {"specimen_ids": ids, "occurred_at": iso(occurred_at), "room_id": room_id, "note": body.note}
     note = body.note if "note" in body.model_fields_set else effective["note"]
-    updated["note"] = note
+    updated = {"specimen_ids": ids, "occurred_at": iso(occurred_at), "room_id": room_id, "note": note}
     event = AuditEvent(stack_id=stack.id, kind="modification", direction=target.direction,
                        actor=username, reason=note or None, recorded_at=now, room_id=room_id,
                        specimen_ids=[p.id for p in specimens],

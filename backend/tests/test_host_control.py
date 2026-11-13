@@ -99,3 +99,39 @@ def test_new_link_restarts_the_tunnel_from_the_lab_only(client, state):
     assert client.post("/api/outside/new-link", headers=CF).status_code in {401, 403}
     assert client.post("/api/outside/new-link").json()["url"] is None
     assert not (state / "tunnel.json").exists()
+
+
+def test_rate_limiter_pruning_removes_stale_scanner_entries(state):
+    import time
+    from app import host_control
+    now = time.time()
+    try:
+        # Populate > 200 keys where some are stale (>= 600s ago), some are empty lists, and some are recent (< 600s ago)
+        for i in range(250):
+            # 205 stale keys (>600s ago), 5 empty lists, 40 active keys (100s ago)
+            if i < 205:
+                host_control._ATTEMPTS[f"scanner-{i}"] = [now - 700]
+            elif i < 210:
+                host_control._ATTEMPTS[f"scanner-{i}"] = []
+            else:
+                host_control._ATTEMPTS[f"scanner-{i}"] = [now - 100]
+        assert len(host_control._ATTEMPTS) == 250
+        # Calling too_many should trigger the pruning branch (>200 keys) without IndexError on empty lists
+        host_control.too_many("new-visitor")
+        # All 205 stale + 5 empty entries were removed; 40 active entries + "new-visitor" remain = 41
+        assert len(host_control._ATTEMPTS) == 41
+        assert "new-visitor" in host_control._ATTEMPTS
+        assert "scanner-0" not in host_control._ATTEMPTS
+        assert "scanner-208" not in host_control._ATTEMPTS
+        assert "scanner-249" in host_control._ATTEMPTS
+
+        # When keys <= 200, pruning loop does not run even with stale keys
+        host_control._ATTEMPTS.clear()
+        for i in range(50):
+            host_control._ATTEMPTS[f"stale-{i}"] = [now - 1000]
+        host_control.too_many("visitor")
+        assert len(host_control._ATTEMPTS) == 51
+    finally:
+        host_control._ATTEMPTS.clear()
+
+

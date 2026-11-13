@@ -202,6 +202,9 @@ _ATTEMPTS_LOCK = threading.Lock()
 def too_many(client: str) -> bool:
     now = time.time()
     with _ATTEMPTS_LOCK:
+        if len(_ATTEMPTS) > 200:  # Internet scanners each leave a key behind; drop the expired ones.
+            for stale in [key for key, times in _ATTEMPTS.items() if not times or now - times[-1] >= 600]:
+                del _ATTEMPTS[stale]
         recent = [at for at in _ATTEMPTS.get(client, []) if now - at < 600]
         recent.append(now)
         _ATTEMPTS[client] = recent

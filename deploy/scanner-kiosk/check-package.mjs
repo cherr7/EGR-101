@@ -114,7 +114,7 @@ try {
   await page.getByRole('button', { name: 'PPE', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'PPE', exact: true }).getAttribute('aria-pressed'), 'true');
   // Exit kiosk mode takes three confirmations and a countdown, then asks the local watchdog.
-  await page.getByRole('button', { name: 'Exit kiosk mode…' }).click();
+  await page.getByRole('button', { name: 'Exit kiosk mode', exact: true }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Yes, I’m sure', exact: true }).click();
   assert.equal(exits.length, 0);
@@ -131,7 +131,7 @@ try {
   assert.equal(apiCalls.filter(call => call.method === 'POST' && call.path === '/api/movements').length, 0);
   await page.waitForTimeout(2200);
   assert.ok(heartbeats.some(value => value.capture_ready === true && value.focused === true && value.visible === true));
-  assert.ok(heartbeats.every(value => Object.keys(value).sort().join(',') === 'capture_ready,focused,input_bridge,visible'));
+  assert.ok(heartbeats.every(value => Object.keys(value).sort().join(',') === 'capture_ready,focused,idle_seconds,input_bridge,visible'));
   assert.ok(heartbeats.every(value => value.input_bridge === false));
   assert.equal(streams.size, 0);
   await page.evaluate(() => { location.hash = 'records'; });

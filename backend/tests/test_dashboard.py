@@ -209,3 +209,40 @@ def test_a_removed_piece_does_not_keep_its_stack_open(client, stack_factory, db)
     age_sessions(db, stack, 25)
     move(client, stack, "OUT", station="shared-door")
     assert stack["id"] not in open_stack_ids(db)
+
+
+def test_dashboard_batch_string_stack_ids_handles_string_and_int_comparison(client, stack_factory, db):
+    from app.models import PrepDraft
+    stack = stack_factory(count=2)
+    draft = db.get(PrepDraft, stack["draft_id"])
+    # Force stack_ids to contain strings in the JSONB column
+    draft.stack_ids = [str(stack["id"])]
+    db.commit()
+
+    data = dash(client)
+    assert len(data["batches"]) >= 1
+    batch = next(b for b in data["batches"] if b["id"] == draft.id)
+    assert batch["stacks"] == 1
+    assert batch["stages"]["total"] == 2
+    assert batch["open"] is True
+
+    # Complete the stack so the batch becomes closed
+    move(client, stack, "IN")
+    age_sessions(db, stack, 25)
+    move(client, stack, "OUT", station="shared-door")
+
+    # The closed batch with string stack_ids must still resolve correctly without extra query failures
+    data_closed = dash(client)
+    closed_batch = next(b for b in data_closed["batches"] if b["id"] == draft.id)
+    assert closed_batch["stacks"] == 1
+    assert closed_batch["stages"]["total"] == 2
+    assert closed_batch["stages"]["finished"] == 2
+    assert closed_batch["open"] is False
+
+
+def test_stack_states_empty_inputs_returns_early(db):
+    from app.dashboard import stack_states
+    assert stack_states(db, []) == {}
+    assert stack_states(db, set()) == {}
+
+

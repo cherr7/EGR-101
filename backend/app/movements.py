@@ -48,8 +48,12 @@ def process_movement(db, body):
     specimens = list(db.scalars(select(Specimen).where(Specimen.stack_id == stack.id, Specimen.removed_at.is_(None)).order_by(Specimen.id).with_for_update().execution_options(populate_existing=True)))
     now = utcnow()
     by_id = {p.id: p for p in specimens}
-    active = {p.id: current_session(db, p.id) for p in specimens}
-    periods = {p.id: conditioning_period(db, p.id) for p in specimens}
+    sessions = list(db.scalars(select(ConditioningSession).where(
+        ConditioningSession.specimen_id.in_(by_id), ConditioningSession.voided.is_(False)
+    ).execution_options(populate_existing=True))) if by_id else []
+    session_map = {s.specimen_id: s for s in sessions}
+    active = {p.id: session_map[p.id] if (p.id in session_map and session_map[p.id].exited_at is None) else None for p in specimens}
+    periods = {p.id: session_map.get(p.id) for p in specimens}
     if body.expected_version is not None and body.expected_version != stack.version:
         return finish("rejected", "The stack changed. Scan again and review the current selection.", stack)
     if body.scope == "selection":
@@ -62,6 +66,8 @@ def process_movement(db, body):
     elif body.scope == "specimen":
         if scanned is None:
             return finish("rejected", "Scan a specimen label for individual mode.", stack)
+        if scanned.id not in by_id:  # Removed between reading the label and locking the stack.
+            return finish("rejected", "This specimen was just removed from the stack. Set it aside.", stack)
         selected = [by_id[scanned.id]]
     else:
         selected = specimens
@@ -77,7 +83,7 @@ def process_movement(db, body):
     early = [p for p in changed if body.direction == "OUT" and
              now < active[p.id].entered_at + timedelta(hours=station.room.required_hours)]
     if early and not body.acknowledge_early:
-        return finish("acknowledgment_required", "These specimens have not completed 24 hours. Acknowledge their early removal.", stack,
+        return finish("acknowledgment_required", f"These specimens have not completed {station.room.required_hours:g} hours. Acknowledge their early removal.", stack,
                       specimens=[{"id": p.id, "number": p.number, "entered_at": iso(active[p.id].entered_at),
                                   "due_at": iso(active[p.id].entered_at + timedelta(hours=station.room.required_hours))} for p in sorted(early, key=lambda p: p.number)])
     if body.acknowledge_early and body.expected_version is None:

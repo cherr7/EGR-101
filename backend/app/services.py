@@ -151,10 +151,11 @@ def stack_detail(db, stack, scanned_specimen_id=None, include_events=True):
     removed = [{"id": specimen.id, "number": specimen.number, "barcode_value": label_code(specimen.id),
                 "removed_at": iso(specimen.removed_at)} for specimen in members if specimen.removed_at is not None]
     by_specimen = {specimen.id: [] for specimen in rows}
-    for session in db.scalars(select(ConditioningSession).options(selectinload(ConditioningSession.room)).where(
-            ConditioningSession.specimen_id.in_(by_specimen), ConditioningSession.voided.is_(False))
-            .order_by(ConditioningSession.entered_at, ConditioningSession.id).execution_options(populate_existing=True)):
-        by_specimen[session.specimen_id].append(session)
+    if by_specimen:
+        for session in db.scalars(select(ConditioningSession).options(selectinload(ConditioningSession.room)).where(
+                ConditioningSession.specimen_id.in_(by_specimen), ConditioningSession.voided.is_(False))
+                .order_by(ConditioningSession.entered_at, ConditioningSession.id).execution_options(populate_existing=True)):
+            by_specimen[session.specimen_id].append(session)
     for specimen in rows:
         sessions = by_specimen[specimen.id]
         active = next((s for s in sessions if s.exited_at is None), None)
@@ -210,7 +211,7 @@ def query_stacks(db, q=None, project_number=None, material_ref=None, test_code=N
             ConditioningSession.room_id == room_id, ConditioningSession.exited_at.is_(None),
             ConditioningSession.voided.is_(False))))
     items = []
-    for stack in db.scalars(query.order_by(Stack.created_at.desc(), Stack.id)):
+    for stack in db.scalars(query.options(selectinload(Stack.project), selectinload(Stack.material)).order_by(Stack.created_at.desc(), Stack.id)):
         detail = stack_detail(db, stack, include_events=False)
         if room_id and not any(p["room_id"] == room_id for p in detail["specimens"]):
             continue

@@ -7,7 +7,7 @@ from sqlalchemy import select, text
 
 from .models import AuditEvent, ConditioningSession, MovementRequest, Specimen, Stack, Station, utcnow
 from .schemas import split_request_id
-from .services import check_request_number, current_session, conditioning_period, iso, resolve_code, snapshot
+from .services import check_request_number, iso, resolve_code, snapshot
 
 
 def process_movement(db, body):

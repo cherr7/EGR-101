@@ -20,3 +20,6 @@ backups/
 # Generated locally: app bundle, Pi package, QA reports, screenshots, test prints.
 /output/
 /tmp/
+
+# Local credentials, never committed
+CREDENTIALS.md

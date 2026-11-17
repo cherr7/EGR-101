@@ -102,19 +102,6 @@ export function KioskInventory({ roomId, healthy, notice, onClose }: { roomId?: 
   </Modal>
 }
 
-export function KioskScannerSetup({ onClose }: { onClose: () => void }) {
-  return <section className="scanner-setup-strip" role="dialog" aria-label="Scanner setup">
-    <ol>
-      {SCANNER_SETUP_CODES.map(code => <li key={code.payload}>
-        <svg viewBox={`0 0 ${code.size} ${code.size}`} role="img" aria-label={code.label + ' setup code'} shapeRendering="crispEdges"><rect width={code.size} height={code.size} fill="#fff" /><path d={code.path} fill="#000" /></svg>
-        <b>{code.label}</b>
-      </li>)}
-    </ol>
-    <div className="scanner-setup-side"><p>Scan in order. Scans are not recorded while this is open.</p>
-      <button type="button" className="button secondary" onClick={onClose}>Done</button></div>
-  </section>
-}
-
 export type RoomChoice = { stationId: string; roomId: string; label: string; name: string }
 export type StationInfo = {
   stationId: string; roomName: string; stationIps: string[]; server: string; reportedServer: string | null; online: boolean
@@ -123,8 +110,8 @@ export type StationInfo = {
 export const IDLE_CHOICES = [0, 2, 5, 10]
 
 /** Station settings: room, scanner setup, idle reset, station info, and (on a Pi) exit kiosk mode. */
-export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScannerSetup, idleMinutes, onIdleMinutes, info, onClose }: {
-  rooms: RoomChoice[]; station: string; roomLocked: boolean; onChooseRoom: (stationId: string) => void; onScannerSetup: () => void
+export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, idleMinutes, onIdleMinutes, info, onClose }: {
+  rooms: RoomChoice[]; station: string; roomLocked: boolean; onChooseRoom: (stationId: string) => void
   idleMinutes: number; onIdleMinutes: (minutes: number) => void; info: StationInfo; onClose: () => void
 }) {
   const [packageBuilt, setPackageBuilt] = useState<string | null>(null)
@@ -197,7 +184,13 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, onScan
       </section>
       <section aria-label="Scanner setup">
         <h3>Scanner setup</h3>
-        <button type="button" className="button secondary" onClick={onScannerSetup}>Setup codes</button>
+        <ol className="kiosk-setup-codes">
+          {SCANNER_SETUP_CODES.map(code => <li key={code.payload}>
+            <svg viewBox={`0 0 ${code.size} ${code.size}`} role="img" aria-label={code.label + ' setup code'} shapeRendering="crispEdges"><rect width={code.size} height={code.size} fill="#fff" /><path d={code.path} fill="#000" /></svg>
+            <b>{code.label}</b>
+          </li>)}
+        </ol>
+        <p className="kiosk-settings-help">Scan in order.</p>
       </section>
       <section aria-label="Station info" className="kiosk-settings-info">
         <h3>Station info</h3>

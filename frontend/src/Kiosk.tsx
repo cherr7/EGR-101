@@ -6,7 +6,7 @@ import { attachScanner } from './scannerCapture'
 import { attachInputBridge, INITIAL_INPUT_STATUS } from './inputBridge'
 import type { InputBridgeStatus } from './inputBridge'
 import './kiosk.css'
-import { IDLE_CHOICES, KioskActivity, KioskInventory, KioskScannerSetup, KioskSettings } from './KioskPanels'
+import { IDLE_CHOICES, KioskActivity, KioskInventory, KioskSettings } from './KioskPanels'
 import type { ActivityItem } from './KioskPanels'
 
 const SERVER_KEY = 'fabric-tracker.server-address', IDLE_KEY = 'fabric-tracker.idle-reset-minutes'
@@ -41,7 +41,7 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => stored<PendingUndo>(UNDO_KEY)), [undoMessage, setUndoMessage] = useState(''), [noticeVersion, setNoticeVersion] = useState(0), [errorKind, setErrorKind] = useState<ErrorKind>('scan')
   const [selection, setSelection] = useState<Selection | null>(null), [acknowledge, setAcknowledge] = useState<Acknowledgment | null>(null)
   const [detail, setDetail] = useState<Stack | null>(null), [events, setEvents] = useState<ActivityItem[]>([])
-  const [panel, setPanel] = useState<'activity' | 'inventory' | 'setup' | 'settings' | null>(null)
+  const [panel, setPanel] = useState<'activity' | 'inventory' | 'settings' | null>(null)
   const [idleMinutes, setIdleMinutes] = useState(savedIdleMinutes)
   // The server this station talks to: the installer's configured origin works offline; the Mac's own
   // report (cached) covers stations installed before apiOrigin existed and staff browsers.
@@ -381,9 +381,8 @@ export default function Kiosk({ config, healthy }: { config: Config; healthy: bo
 
       {panel === 'activity' && <KioskActivity events={events} disabled={!healthy || transactionBlocked} error={error} onClose={() => setPanel(null)}
         onUndo={event => void undo(toUndoTarget(event))} />}
-      {panel === 'setup' && <KioskScannerSetup onClose={() => setPanel(null)} />}
       {panel === 'settings' && <KioskSettings rooms={ROOM_CHOICES} station={station} roomLocked={transactionBlocked} onChooseRoom={chooseRoom}
-        onScannerSetup={() => setPanel('setup')} idleMinutes={idleMinutes} onIdleMinutes={setIdleMinutes} onClose={() => setPanel(null)}
+        idleMinutes={idleMinutes} onIdleMinutes={setIdleMinutes} onClose={() => setPanel(null)}
         info={{ stationId: station, roomName: roomChoice?.name ?? stationConfig?.roomName ?? station, stationIps: inputStatus.localIps,
           server: serverAddress, reportedServer, online: healthy, onPi: !!stationConfig,
           scanner: bridgeConfigured ? inputStatus.scannerName || inputStatus.scanner : 'Keyboard capture (this browser)' }} />}

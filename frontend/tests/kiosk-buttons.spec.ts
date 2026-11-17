@@ -67,7 +67,7 @@ async function pickRoom(page: Page, room: 'Shared' | 'PPE' | 'Footwear', audit =
   await expect(settings).toBeVisible()
   if (audit) {
     const found = await auditButtons(page, settings)
-    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Setup codes', 'Reload page', 'Done', 'Close dialog']))
+    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Reload page', 'Done', 'Close dialog']))
   }
   const button = settings.getByRole('group', { name: 'Conditioning room' }).getByRole('button', { name: room, exact: true })
   await button.tap()
@@ -131,13 +131,11 @@ test('panels: setup, inventory and activity buttons work by touch and block scan
   await openKiosk(page)
 
   await page.getByRole('button', { name: 'Station settings', exact: true }).tap()
-  await page.getByRole('dialog', { name: 'Station settings' }).getByRole('button', { name: 'Setup codes', exact: true }).tap()
-  const setup = page.getByRole('dialog', { name: 'Scanner setup' })
-  await expect(setup).toBeVisible()
+  const setup = page.getByRole('dialog', { name: 'Station settings' })
+  await expect(setup.getByRole('img', { name: /setup code$/ }).first()).toBeVisible()   // codes are shown in settings itself
   await auditButtons(page, setup)
-  // While a panel is open the header and dock are disabled, and they look it.
-  const behind = await auditButtons(page, page.locator('.kiosk-dock'))
-  expect(names(behind, true)).toEqual(expect.arrayContaining(['IN', 'OUT', 'Undo']))
+  // Settings covers the dock, and the dock is disabled behind it, so nothing scans while it's open.
+  for (const name of ['IN', 'OUT', 'Undo']) await expect(page.locator('.kiosk-dock').getByRole('button', { name, exact: true })).toBeDisabled()
   await setup.getByRole('button', { name: 'Done', exact: true }).tap()
   await expect(setup).toBeHidden()
 

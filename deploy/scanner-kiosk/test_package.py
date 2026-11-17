@@ -47,6 +47,15 @@ class StationPackageTests(unittest.TestCase):
         self.assertFalse(manifest["offline_transactions"])
         self.assertEqual(validator.validate(self.output, "http://macbook-neo.local:8120", "192.168.1.1"), "ppe-door")
 
+    def test_update_package_keeps_browser_script_executable(self):
+        import tarfile
+        archive = self.folder / "station.tar.gz"
+        builder.package(self.source, archive)
+        with tarfile.open(archive) as tar:
+            modes = {member.name: member.mode for member in tar.getmembers() if member.name.startswith("bin/")}
+        self.assertEqual(modes["bin/browser.sh"] & 0o111, 0o111)   # the self-updated kiosk could not start without it
+        self.assertEqual(modes["bin/watchdog.py"] & 0o111, 0)
+
     def test_read_only_installer_check_accepts_fixed_station_override(self):
         builder.build(self.source, self.output)
         before = {str(path): path.read_bytes() for path in self.output.rglob("*") if path.is_file()}

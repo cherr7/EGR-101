@@ -136,7 +136,10 @@ def package(source: Path, destination: Path) -> dict:
         with tarfile.open(partial, "w:gz") as tar:
             tar.add(ui, arcname="ui")
             for name in BIN_FILES:
-                tar.add(ROOT / "deploy/scanner-kiosk" / name, arcname="bin/" + name)
+                # systemd runs browser.sh directly, so it must be executable whatever git checked it out as.
+                mode = 0o755 if name.endswith(".sh") else 0o644
+                tar.add(ROOT / "deploy/scanner-kiosk" / name, arcname="bin/" + name,
+                        filter=lambda info, mode=mode: (setattr(info, "mode", mode), info)[1])
         partial.replace(destination)
     return manifest
 

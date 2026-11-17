@@ -186,8 +186,8 @@ AUTOSTART
 fi
 # The Touch Display 2 panel is 720 x 1280 portrait; the kiosk is laid out for 1280 x 720.
 # Rotate every DSI output at login, before the kiosk starts. labwc rotates touch with it.
-# DISPLAY_ROTATION=270 if the picture comes out upside down; DISPLAY_ROTATION=none to leave it.
-rotation="${DISPLAY_ROTATION:-90}"
+# Default 270 (the lab panels are mounted so 90 is upside down). DISPLAY_ROTATION=90 to flip back; none to leave it.
+rotation="${DISPLAY_ROTATION:-270}"
 tmp_autostart="$(mktemp)"
 awk '/^# fabric-scanner landscape/ {skip = 1} !skip {print} /^# end fabric-scanner landscape/ {skip = 0}' "$autostart" > "$tmp_autostart"
 cat "$tmp_autostart" > "$autostart" && rm -f "$tmp_autostart"

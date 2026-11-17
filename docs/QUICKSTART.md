@@ -104,7 +104,7 @@ Repeat for each room: `ppe-door`, `shared-door`, `footwear-door`.
    If the picture comes out **upside down**, run it again with the other rotation:
 
    ```bash
-   DISPLAY_ROTATION=270 bash scripts/deploy-pi.sh PI-USER@name-a shared-door
+   DISPLAY_ROTATION=90 bash scripts/deploy-pi.sh PI-USER@name-a shared-door
    ```
 
 6. After the reboot the Pi opens straight into the full-screen scanner. The header should show **Online** in green.
@@ -155,6 +155,6 @@ The app makes a backup every day at 2 a.m. and keeps 30 days on the Mac. Once a 
 | Pi scans do nothing | Pin the scanner (section 4, step 8). Check the scanner is plugged into the **Pi**, not the Mac. |
 | Printer missing in the app | `lpstat -p` on the Mac. If it's empty, add the printer again (section 3). Check Editor Lite is off. |
 | Printer light blinking red, nothing prints | No usable roll: reseat the roll, close the cover, or load a new roll. The waiting label prints once it's fixed. |
-| Pi screen is sideways or upside down | Rerun the deploy script; add `DISPLAY_ROTATION=270` if it's upside down. |
+| Pi screen is sideways or upside down | Rerun the deploy script; add `DISPLAY_ROTATION=90` if it's upside down. |
 | Labels wrong size or not cut | Use a 62 mm roll. If it still happens, install Brother's QL-810W driver and re-add the printer with it ([PRINTER_AND_LABELS.md](PRINTER_AND_LABELS.md#can-i-just-use-airprint-if-theyre-on-the-same-wi-fi)). |
 | App won't start | Check `~/Library/Application Support/Fabric Conditioning/logs/service.log`, then the menu-bar dot's menu (Login Items approval). |

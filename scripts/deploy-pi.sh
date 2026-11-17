@@ -7,7 +7,7 @@
 #   MAC_HOST  the Mac's name for the Pi (default: this Mac's Tailscale name)
 #   DNS       resolver for MAC_HOST (default for *.ts.net: 100.100.100.100)
 #   MAC_LAN   the Mac's local IP, used while MAC_HOST is unreachable (default: detected; none = off)
-#   DISPLAY_ROTATION  90 (default), 270, or none
+#   DISPLAY_ROTATION  270 (default), 90, 180, or none
 #
 # A re-imaged Pi has a new host key: run ssh-keygen -R PI-HOST first.
 # Exits 0 only if the Pi comes back after reboot and reaches the Mac.
@@ -75,7 +75,7 @@ if [ '$DNS' = 100.100.100.100 ] && ! tailscale status >/dev/null 2>&1; then
     echo 'This Pi is not on the tailnet. Install and log in to Tailscale first (docs/DEVICE_DISCOVERY.md).' >&2
     exit 3
 fi
-sudo DISPLAY_ROTATION='${DISPLAY_ROTATION:-90}' API_FALLBACK='$FALLBACK' sh ~/scanner-kiosk/install.sh --nfc ~/station-ui '$API' \"\$(whoami)\" '$DNS' '$STATION'
+sudo DISPLAY_ROTATION='${DISPLAY_ROTATION:-270}' API_FALLBACK='$FALLBACK' sh ~/scanner-kiosk/install.sh --nfc ~/station-ui '$API' \"\$(whoami)\" '$DNS' '$STATION'
 grep -qx KIOSK_DIRECT_START=true /opt/fabric-scanner/station.env || echo KIOSK_DIRECT_START=true | sudo tee -a /opt/fabric-scanner/station.env >/dev/null
 curl -fsS -m 5 '$API/api/health' >/dev/null || { echo 'The Pi cannot reach $API. Is the app running and the Mac on the tailnet?' >&2; exit 4; }
 " || die "Install on $PI failed (status $?). The Pi was not rebooted."

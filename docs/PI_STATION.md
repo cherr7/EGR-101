@@ -175,7 +175,7 @@ The normal operator flow remains persistent **IN / OUT → scan → automatic da
 
 ## Display rotation
 
-The Touch Display 2 (5" and 7") is a 720 × 1280 portrait panel; the station page is laid out for 1280 × 720 landscape. The installer adds a block to the kiosk user's `~/.config/labwc/autostart` that runs `wlr-randr --output <DSI output> --transform 90` for every `DSI-*` output at login, before the kiosk starts. labwc rotates touch input with the output. Set `DISPLAY_ROTATION=270` when running `install.sh` or `scripts/deploy-pi.sh` if the picture is upside down (it depends on how the panel is mounted), `180` for a flipped portrait mount, or `none` to leave rotation to Control Centre → Screens. Rerunning the installer replaces the block rather than adding another.
+The Touch Display 2 (5" and 7") is a 720 × 1280 portrait panel; the station page is laid out for 1280 × 720 landscape. The installer adds a block to the kiosk user's `~/.config/labwc/autostart` that runs `wlr-randr --output <DSI output> --transform 270` for every `DSI-*` output at login, before the kiosk starts. labwc rotates touch input with the output. Set `DISPLAY_ROTATION=90` when running `install.sh` or `scripts/deploy-pi.sh` if the picture is upside down (it depends on how the panel is mounted), `180` for a flipped portrait mount, or `none` to leave rotation to Control Centre → Screens. Rerunning the installer replaces the block rather than adding another.
 
 ## Maintenance and updates
 

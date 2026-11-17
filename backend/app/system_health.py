@@ -346,7 +346,8 @@ def find_issues(report):
         name = station["name"]
         device = station.get("device")
         fresh = device is not None and not device["stale"]
-        if station["status"] in {"offline", "never_seen"} and fresh:
+        page_down = station["status"] in {"offline", "never_seen"} and fresh
+        if page_down:
             add("warning", "Scan stations", f"{name}: page not running", "Restart the Pi.")
         elif station["status"] == "offline":
             add("warning", "Scan stations", f"{name} is offline", "Check power and Wi-Fi.")
@@ -355,7 +356,7 @@ def find_issues(report):
         if station["status"] in {"ready", "no_scanner"} and device is not None and device["stale"]:
             add("warning", "Scan stations", f"{name}: no report for {device['age_seconds'] // 60} min", "Restart the Pi.")
         if fresh:
-            pi_issues(add, name, device)
+            pi_issues(add, name, device, page_down)
     printer = report["printer"]
     labels = [queue for queue in printer["queues"] if queue["label_printer"]]
     if not labels:
@@ -387,7 +388,7 @@ def find_issues(report):
     return issues
 
 
-def pi_issues(add, name, device):
+def pi_issues(add, name, device, page_down=False):
     """Only what stops a station working or needs someone to go to it."""
     area = "Scan stations"
     temperature = device.get("temperature_c")
@@ -403,9 +404,10 @@ def pi_issues(add, name, device):
         add("critical", area, f"{name}: SD card almost full", f"{gib(free or 0)} free.")
     elif (free is not None and free < PI_DISK_WARN_FREE) or (percent or 0) >= PI_DISK_WARN_PERCENT:
         add("warning", area, f"{name}: SD card getting full", f"{gib(free or 0)} free.")
-    for service, info in (device.get("services") or {}).items():
-        if info.get("state") not in {"active", "activating", "reloading"}:
-            add("warning", area, f"{name}: {service} is {info.get('state')}", "Restart the Pi.")
+    stopped = [service for service, info in (device.get("services") or {}).items()
+               if info.get("state") not in {"active", "activating", "reloading"}]
+    if stopped and not page_down:   # "page not running" already says to restart it
+        add("warning", area, f"{name}: {', '.join(stopped)} stopped", "Restart the Pi.")
     running, expected = device.get("package_version"), app_version.current()["version"]
     update = device.get("update") or {}
     if update.get("state") in {"rolled back", "failed"}:

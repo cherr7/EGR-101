@@ -138,7 +138,11 @@ def test_pi_rules_flag_only_what_needs_someone():
                         "memory": {"percent": 95.0}, "services": {"input": {"state": "failed", "restarts": 12}},
                         "clock_skew_seconds": -600, "network": {"wifi_signal_dbm": -82}, "uptime_seconds": 120})
     assert titles == {"PPE is overheating (83 °C)": "critical", "PPE: low power": "critical",
-                      "PPE: SD card is read-only": "critical", "PPE: input is failed": "warning"}
+                      "PPE: SD card is read-only": "critical", "PPE: input stopped": "warning"}
+    # A stopped kiosk is one issue, not one per service.
+    stopped = {name: {"state": "inactive", "restarts": 0} for name in ("browser", "input", "watchdog")}
+    assert pi_titles({**PI_REPORT, "services": stopped}, status="never_seen") == {"PPE: page not running": "warning"}
+    assert pi_titles({**PI_REPORT, "services": stopped}) == {"PPE: browser, input, watchdog stopped": "warning"}
     assert pi_titles({**PI_REPORT, "temperature_c": 72.0}) == {}
     assert pi_titles({**PI_REPORT, "disk": {"free_bytes": 300 * 2**20, "percent": 99.0}})["PPE: SD card almost full"] == "critical"
     # Waiting to update when idle is normal; only a failed update is an issue.

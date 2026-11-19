@@ -43,6 +43,6 @@ export async function scan(page: Page, code: string) { await page.keyboard.type(
 export async function chooseRoom(page: Page, label: 'Shared' | 'PPE' | 'Footwear') {
   await page.getByRole('button', { name: 'Station settings' }).click()
   await page.getByRole('group', { name: 'Conditioning room' }).getByRole('button', { name: label, exact: true }).click()
-  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
   await expect(page.getByTestId('current-room')).toContainText(label)
 }

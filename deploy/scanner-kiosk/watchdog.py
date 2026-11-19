@@ -24,6 +24,10 @@ class Health:
         bridged = payload.get("input_bridge", False)
         if type(bridged) is not bool:
             raise ValueError("Expected a boolean input bridge state.")
+        # A page whose scripts run but whose screen stopped updating still scans unseen.
+        painting = payload.get("painting", True)
+        if type(painting) is not bool:
+            raise ValueError("Expected a boolean painting state.")
         idle = payload.get("idle_seconds")
         if idle is not None and (type(idle) is not int or idle < 0):
             raise ValueError("Expected whole idle seconds.")
@@ -32,7 +36,7 @@ class Health:
                 self.idle_seconds, self.idle_seen = idle, now
             # Only the owning, calibrated stream with a usable reader may bypass focus.
             # A connected SSE socket, missing scanner, or another page's stream cannot.
-            if payload["visible"] and payload["capture_ready"] and (payload["focused"] or bridged):
+            if painting and payload["visible"] and payload["capture_ready"] and (payload["focused"] or bridged):
                 self.last_healthy = now
 
     def restart_reason(self, now):
@@ -44,7 +48,7 @@ class Health:
             if self.last_healthy is None:
                 return "no healthy page after startup"
             if now - self.last_healthy > 15:
-                return "page unresponsive, unfocused, hidden, or capture missing"
+                return "page unresponsive, frozen on screen, unfocused, hidden, or capture missing"
             return None
 
     def status(self, now):

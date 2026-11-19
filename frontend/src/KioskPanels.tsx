@@ -123,7 +123,7 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, idleMi
     return () => { alive = false }
   }, [])
   useEffect(() => {
-    if (exitStep !== 3) return
+    if (exitStep !== 1) return
     const timer = setInterval(() => setCountdown(value => Math.max(0, value - 1)), 1000)
     return () => clearInterval(timer)
   }, [exitStep])
@@ -135,27 +135,14 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, idleMi
     } catch { setExitState('failed') }
   }
   if (exitStep > 0) {
-    const steps = [
-      null,
-      { title: 'Exit kiosk mode?', text: 'The Pi desktop appears. For maintenance only.', action: 'Continue' },
-      { title: 'Are you sure?', text: `${info.roomName} can’t scan until the Pi restarts.`, action: 'Yes, I’m sure' },
-      { title: 'Last step', text: 'Restart the Pi to bring the scanner back.', action: 'Exit kiosk mode' },
-    ]
-    const step = steps[exitStep]!
+    const sent = exitState === 'sent'
     return <Modal title="Exit kiosk mode" onClose={onClose}>
-      <div className="modal-body kiosk-exit" data-testid="exit-step" data-step={exitStep}>
-        <p className="kiosk-exit-step">Step {exitStep} of 3</p>
-        <h3>{exitState === 'sent' ? 'Exiting kiosk mode…' : step.title}</h3>
-        <p>{exitState === 'sent' ? 'Restart the Pi to return.' : step.text}</p>
+      <div className="modal-body kiosk-exit">
+        <p>{sent ? 'Restart the Pi to bring the scanner back.' : `${info.roomName} can’t scan until the Pi restarts.`}</p>
         {exitState === 'failed' && <div className="notice error" role="alert">No response. Try again or restart the Pi.</div>}
+        {!sent && <button type="button" className="button danger" disabled={countdown > 0 || exitState === 'sending'} onClick={() => void exitKiosk()}>
+          {countdown > 0 ? `Exit (${countdown})` : exitState === 'sending' ? 'Exiting…' : 'Exit'}</button>}
       </div>
-      {exitState !== 'sent' && <div className="modal-actions">
-        <button type="button" className="button secondary" disabled={exitState === 'sending'} onClick={() => { setExitStep(0); setExitState('') }}>Cancel</button>
-        {exitStep < 3
-          ? <button type="button" className="button danger" onClick={() => { if (exitStep === 2) setCountdown(3); setExitStep(exitStep + 1) }}>{step.action}</button>
-          : <button type="button" className="button danger" disabled={countdown > 0 || exitState === 'sending'} onClick={() => void exitKiosk()}>
-              {countdown > 0 ? `${step.action} (${countdown})` : exitState === 'sending' ? 'Exiting…' : step.action}</button>}
-      </div>}
     </Modal>
   }
   const rows: [string, React.ReactNode][] = [
@@ -169,7 +156,6 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, idleMi
   return <Modal title="Station settings" onClose={onClose} wide>
     <div className="modal-body kiosk-settings">
       <section aria-label="Conditioning room">
-        <h3>Room</h3>
         <div className="kiosk-settings-rooms" role="group" aria-label="Conditioning room">
           {rooms.map(choice => <button key={choice.stationId} type="button" className={station === choice.stationId ? 'selected' : ''}
             aria-pressed={station === choice.stationId} disabled={roomLocked} onClick={() => onChooseRoom(choice.stationId)}>{choice.label}</button>)}
@@ -177,31 +163,26 @@ export function KioskSettings({ rooms, station, roomLocked, onChooseRoom, idleMi
         {roomLocked && <p className="kiosk-settings-help">Finish the current scan first.</p>}
       </section>
       <section aria-label="After idle">
-        <h3>Reset to IN + Stack after</h3>
         <div className="kiosk-settings-choices" role="group" aria-label="Idle reset">
+          <span>Idle reset</span>
           {IDLE_CHOICES.map(minutes => <button key={minutes} type="button" aria-pressed={idleMinutes === minutes} onClick={() => onIdleMinutes(minutes)}>{minutes ? `${minutes} min` : 'Off'}</button>)}
         </div>
       </section>
       <section aria-label="Scanner setup">
-        <h3>Scanner setup</h3>
         <ol className="kiosk-setup-codes">
-          {SCANNER_SETUP_CODES.map(code => <li key={code.payload}>
+          {SCANNER_SETUP_CODES.map((code, index) => <li key={code.payload}>
             <svg viewBox={`0 0 ${code.size} ${code.size}`} role="img" aria-label={code.label + ' setup code'} shapeRendering="crispEdges"><rect width={code.size} height={code.size} fill="#fff" /><path d={code.path} fill="#000" /></svg>
-            <b>{code.label}</b>
+            <b>{index < 2 ? `${index + 1}. ${code.label}` : code.label}</b>
           </li>)}
         </ol>
-        <p className="kiosk-settings-help">Scan in order.</p>
       </section>
       <section aria-label="Station info" className="kiosk-settings-info">
-        <h3>Station info</h3>
         <dl>{rows.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>
         <button type="button" className="button secondary" disabled={roomLocked} onClick={() => location.reload()}>Reload page</button>
       </section>
       {info.onPi && <section aria-label="Exit kiosk mode" className="kiosk-settings-exit">
-        <h3>Exit kiosk mode</h3>
-        <button type="button" className="button danger-quiet" disabled={roomLocked} onClick={() => setExitStep(1)}>Exit kiosk mode</button>
+        <button type="button" className="button danger-quiet" disabled={roomLocked} onClick={() => { setCountdown(3); setExitStep(1) }}>Exit kiosk mode</button>
       </section>}
     </div>
-    <div className="modal-actions"><button type="button" className="button primary" onClick={onClose}>Done</button></div>
   </Modal>
 }

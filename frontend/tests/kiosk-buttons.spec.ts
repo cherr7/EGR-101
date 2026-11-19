@@ -67,12 +67,12 @@ async function pickRoom(page: Page, room: 'Shared' | 'PPE' | 'Footwear', audit =
   await expect(settings).toBeVisible()
   if (audit) {
     const found = await auditButtons(page, settings)
-    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Reload page', 'Done', 'Close dialog']))
+    expect(names(found)).toEqual(expect.arrayContaining(['Shared', 'PPE', 'Footwear', 'Off', 'Reload page', 'Close dialog']))
   }
   const button = settings.getByRole('group', { name: 'Conditioning room' }).getByRole('button', { name: room, exact: true })
   await button.tap()
   await expect(button).toHaveAttribute('aria-pressed', 'true')
-  await settings.getByRole('button', { name: 'Done', exact: true }).tap()
+  await settings.getByRole('button', { name: 'Close dialog', exact: true }).tap()
   await expect(settings).toBeHidden()
   await expect(page.getByTestId('current-room')).toContainText(room)
 }
@@ -136,7 +136,7 @@ test('panels: setup, inventory and activity buttons work by touch and block scan
   await auditButtons(page, setup)
   // Settings covers the dock, and the dock is disabled behind it, so nothing scans while it's open.
   for (const name of ['IN', 'OUT', 'Undo']) await expect(page.locator('.kiosk-dock').getByRole('button', { name, exact: true })).toBeDisabled()
-  await setup.getByRole('button', { name: 'Done', exact: true }).tap()
+  await setup.getByRole('button', { name: 'Close dialog', exact: true }).tap()
   await expect(setup).toBeHidden()
 
   await page.getByRole('button', { name: 'Inventory', exact: true }).tap()

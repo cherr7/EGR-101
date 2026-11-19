@@ -54,6 +54,16 @@ class WatchdogTests(unittest.TestCase):
         runtime = Path(__file__).with_name("runtime.js").read_text()
         self.assertIn("input_bridge:window.fabricInputBridgeReady===true", runtime)
 
+    def test_frozen_screen_expires_even_with_working_input(self):
+        state = module.Health(0)
+        state.observe(dict(focused=True, visible=True, capture_ready=True, input_bridge=True, painting=True), 60)
+        state.observe(dict(focused=True, visible=True, capture_ready=True, input_bridge=True, painting=False), 70)
+        self.assertIsNotNone(state.restart_reason(76))
+        with self.assertRaises(ValueError):
+            state.observe(dict(focused=True, visible=True, capture_ready=True, painting="no"), 80)
+        runtime = Path(__file__).with_name("runtime.js").read_text()
+        self.assertIn("painting:performance.now()-lastFrame<5000", runtime)
+
     def test_restart_gets_new_startup_grace(self):
         state = module.Health(0)
         state.restarted(100)

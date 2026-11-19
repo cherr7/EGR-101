@@ -343,7 +343,8 @@ def _board_header(reader):
 
 
 def _grouped(name, project, headers, labware=""):
-    sheet = name + " · " + (project or labware or "no project")
+    # One Oracle project can span several LabWare #s (D1, D2, ...); each keeps its own group.
+    sheet = name + " · " + (" · ".join(part for part in (project, labware) if part) or "no project")
     headers.setdefault(sheet, {"project_number": project, "labware_number": labware, "standard": "", "regime": ""})
     return sheet
 

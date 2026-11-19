@@ -352,7 +352,11 @@ def find_issues(report):
         elif station["status"] == "offline":
             add("warning", "Scan stations", f"{name} is offline", "Check power and Wi-Fi.")
         if station["status"] == "no_scanner":
-            add("warning", "Scan stations", f"{name}: no scanner", "Check the USB cable.")
+            # The page's own report says not ready; the Pi's hardware report says whether a scanner is plugged in.
+            if fresh and (device.get("input") or {}).get("scanner") == "ok":
+                add("warning", "Scan stations", f"{name}: page not using the scanner", "Reload the page in Station settings, or restart the Pi.")
+            else:
+                add("warning", "Scan stations", f"{name}: no scanner", "Check the USB cable.")
         if station["status"] in {"ready", "no_scanner"} and device is not None and device["stale"]:
             add("warning", "Scan stations", f"{name}: no report for {device['age_seconds'] // 60} min", "Restart the Pi.")
         if fresh:

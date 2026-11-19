@@ -123,7 +123,7 @@ test('server readiness and elapsed time remain correct when a staff computer clo
 
 test('a locally packaged Pi names its default room even when the Mac is unreachable after cold start', async ({ page }) => {
   await page.addInitScript(() => { (window as unknown as { fabricStationConfig: unknown }).fabricStationConfig = { stationId: 'shared-door', stationName: 'Shared conditioning room door', roomName: 'Shared conditioning room', fixed: true } })
-  await page.route('**/api/health', route => route.abort('failed')); await page.goto('/#kiosk'); await expect(page.getByRole('heading', { name: 'Offline', exact: true })).toBeVisible(); await expect(page.getByTestId('current-room')).toContainText('Shared'); await page.getByRole('button', { name: 'Station settings' }).click(); await expect(page.getByRole('group', { name: 'Conditioning room' }).getByRole('button')).toHaveCount(3); await expect(page.getByRole('button', { name: 'Shared', exact: true })).toHaveAttribute('aria-pressed', 'true'); await page.getByRole('button', { name: 'Done', exact: true }).click(); expect(await page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true)
+  await page.route('**/api/health', route => route.abort('failed')); await page.goto('/#kiosk'); await expect(page.getByRole('heading', { name: 'Offline', exact: true })).toBeVisible(); await expect(page.getByTestId('current-room')).toContainText('Shared'); await page.getByRole('button', { name: 'Station settings' }).click(); await expect(page.getByRole('group', { name: 'Conditioning room' }).getByRole('button')).toHaveCount(3); await expect(page.getByRole('button', { name: 'Shared', exact: true })).toHaveAttribute('aria-pressed', 'true'); await page.getByRole('button', { name: 'Close dialog', exact: true }).click(); expect(await page.evaluate(() => (window as unknown as { fabricScannerCaptureReady: boolean }).fabricScannerCaptureReady)).toBe(true)
 })
 
 test('portable backup is created, downloaded and validated before restore becomes available', async ({ page, request }) => {
@@ -138,7 +138,7 @@ test('room chosen in Station settings persists configuration and recent activity
   await page.getByRole('button', { name: 'Station settings' }).click()
   await page.getByRole('button', { name: 'PPE', exact: true }).click()
   await expect(page.getByRole('button', { name: 'PPE', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
   await expect(page.getByTestId('current-room')).toContainText('PPE')
   await expect(page.locator('.recent-scroll')).not.toContainText(shared.project_number)
   await scan(page, ppe.specimens[1].barcode_value)

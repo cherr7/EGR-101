@@ -224,6 +224,16 @@ def test_board_counts_are_not_treated_as_physical_stack_or_scan_history():
     assert {row["conditions"] for row in result["rows"]} == {"AR", "5"}
 
 
+def test_board_keeps_each_labware_number_within_one_project():
+    cells = {"C1": "Labware", "D1": "Project", "G1": "Standard", "H1": "NW/AR", "I1": "Test",
+             "J1": "# Spec", "K1": "AR", "M1": "L",
+             "C2": "LW-1D1", "D2": "00009", "I2": "Flame", "J2": (6, 0), "K2": "x",
+             "C3": "LW-1D2", "D3": "00009", "I3": "Heat", "J3": (3, 0), "K3": "x"}
+    result = inspect_workbook(workbook_bytes(cells), "board.xlsm")
+    by_test = {row["test"]: result["headers"][row["sheet"]]["labware_number"] for row in result["rows"]}
+    assert by_test == {"Flame": "LW-1D1", "Heat": "LW-1D2"}
+
+
 def test_reference_and_invalid_workbooks_fail_clearly():
     result = inspect_workbook(workbook_bytes({"A1": "Training matrix", "B1": "Qualified"}), "training.xlsx")
     assert result["rows"] == []

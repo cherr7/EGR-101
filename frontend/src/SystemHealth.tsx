@@ -195,7 +195,7 @@ export default function SystemHealth({ healthy }: { healthy: boolean }) {
           const temp = d?.temperature_c
           return [<tr key={s.id} data-testid={`health-station-${s.id}`}><td><b>{s.name}</b></td>
             <td><span className={'badge ' + STATION[s.status].badge}>{STATION[s.status].label}</span></td>
-            <td>{s.status === 'never_seen' ? '—' : s.scanner_ready ? 'Ready' : 'Not ready'}</td>
+            <td>{s.status === 'never_seen' ? '—' : s.scanner_ready ? 'Ready' : d?.input?.scanner === 'ok' ? 'Plugged in, page not ready' : 'Not ready'}</td>
             <td>{s.ip ?? s.device?.ip ?? '—'}</td>
             {d ? <>
               <td className={'pi-cell ' + tone(d.cpu_percent, 70, 90)}>{d.cpu_percent == null ? '—' : `${d.cpu_percent.toFixed(0)}%`}</td>

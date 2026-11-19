@@ -66,7 +66,7 @@ test('room inventory prioritizes ready pieces, filters project and due-soon, and
   await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click()
   await page.getByRole('button', { name: 'Station settings' }).click()
   await page.getByRole('button', { name: 'PPE', exact: true }).click()
-  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
   await page.getByRole('button', { name: 'Inventory', exact: true }).click()
   await dialog.getByLabel('Inventory project').selectOption(project)
   await expect(dialog.locator('[data-stack-id="' + otherRoom.id + '"]')).toBeVisible()

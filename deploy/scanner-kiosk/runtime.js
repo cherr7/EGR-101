@@ -4,6 +4,11 @@
   window.fabricLastActivity = Date.now();
   const touch = () => { window.fabricLastActivity = Date.now(); };
   for (const name of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(name, touch, true);
+  // Animation frames stop when the screen stops updating, even while scripts and
+  // network calls keep running. The watchdog restarts the browser when they stop.
+  let lastFrame = performance.now();
+  const frame = () => { lastFrame = performance.now(); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
   function send() {
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),1500);
     fetch('/station/heartbeat',{
@@ -14,6 +19,7 @@
         capture_ready:window.location.hash==='#kiosk'&&window.fabricScannerCaptureReady===true,
         // A live socket alone does not prove that this page owns a usable reader.
         input_bridge:window.fabricInputBridgeReady===true,
+        painting:performance.now()-lastFrame<5000,
         idle_seconds:Math.max(0,Math.floor((Date.now()-(window.fabricLastActivity||0))/1000))
       }),signal:controller.signal
     }).catch(()=>{}).finally(()=>clearTimeout(timer));

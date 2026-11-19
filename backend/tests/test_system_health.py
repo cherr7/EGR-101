@@ -198,3 +198,18 @@ def test_label_readiness_ignores_a_non_label_preferred_printer(monkeypatch):
         {"name": "Brother_QL_810W", "is_default": False, "label_printer": True}]}
     assert system_health.label_printer_ready(inventory, {}) is True
     assert asked == ["Brother_QL_810W"]
+
+
+def test_plugged_in_scanner_with_unready_page_is_not_reported_as_missing(client):
+    from app import stations
+    from collections import deque
+    from app.models import utcnow
+    client.post("/api/stations/shared-door/heartbeat", json={"scanner_ready": False})
+    stations.DEVICES["shared-door"] = {"received_at": utcnow(), "ip": "testclient", "clock_skew_seconds": 0, "history": deque(),
+                                       "report": {"input": {"scanner": "ok", "scanner_name": "USB HIDKeyboard"}}}
+    try:
+        found = levels(client.get("/api/system/health").json()["issues"], "Scan stations")
+    finally:
+        stations.DEVICES.pop("shared-door", None)
+    assert any("page not using the scanner" in title for title in found)
+    assert not any("no scanner" in title for title in found)

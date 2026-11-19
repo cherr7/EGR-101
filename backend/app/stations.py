@@ -82,6 +82,11 @@ class DeviceUpdate(_Loose):
     error: str | None = Field(default=None, max_length=300)
 
 
+class DeviceExtra(_Loose):
+    item: str = Field(max_length=80)
+    fix: str = Field(default="restart", max_length=16)
+
+
 class DeviceReport(_Loose):
     """What deploy/scanner-kiosk/station-agent.py posts every 30 s; every reading is optional."""
     agent_version: int = Field(default=1, ge=1, le=1000)
@@ -105,6 +110,7 @@ class DeviceReport(_Loose):
     package_built_at: str | None = Field(default=None, max_length=64)
     package_version: str | None = Field(default=None, max_length=64)
     update: DeviceUpdate | None = None
+    extras: list[DeviceExtra] | None = Field(default=None, max_length=16)   # what a station shouldn't run
 
 
 def client_ip(request: Request):

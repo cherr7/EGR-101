@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import station_setup  # noqa: E402
 import updater  # noqa: E402
 
 INTERVAL = 30
@@ -234,6 +235,12 @@ def main(argv=sys.argv[1:]):
         return 0
     url = base.rstrip("/") + "/api/stations/" + station_id() + "/device"
     ticks, failures = cpu_ticks(root), 0
+    home = os.environ.get("HOME", "")
+    if root == Path("/") and home:
+        try:   # each update and each reboot restarts this agent, so drift is put back then
+            station_setup.enforce(home, os.environ)
+        except Exception as error:
+            logging.warning("Station setup check failed: %s", error)
     if not once:
         time.sleep(2)  # a first CPU interval, so the first report has a CPU value
     while True:
@@ -244,6 +251,10 @@ def main(argv=sys.argv[1:]):
             except Exception as error:   # an update problem must never stop health reports
                 logging.warning("Update check failed: %s", error)
             payload["update"] = update.report()
+            try:
+                payload["extras"] = station_setup.extras(home, os.environ) if home else None
+            except Exception as error:
+                logging.warning("Station setup check failed: %s", error)
         try:
             send(url, payload)
             if failures:

@@ -357,6 +357,15 @@ def find_issues(report):
                 add("warning", "Scan stations", f"{name}: page not using the scanner", "Reload the page in Station settings, or restart the Pi.")
             else:
                 add("warning", "Scan stations", f"{name}: no scanner", "Check the USB cable.")
+        others = [ip for ip in station.get("live_clients") or [] if ip != station["ip"]]
+        if others:
+            add("warning", "Scan stations", f"{name}: scan page also open on {', '.join(others)}",
+                "Close it there.")
+        extras = (device.get("extras") or []) if fresh else []
+        if extras:
+            reinstall = any(extra.get("fix") == "reinstall" for extra in extras)
+            add("warning", "Scan stations", f"{name}: also running " + ", ".join(extra["item"] for extra in extras),
+                "Reinstall it with scripts/deploy-pi.sh." if reinstall else "Restart the Pi.")
         if station["status"] in {"ready", "no_scanner"} and device is not None and device["stale"]:
             add("warning", "Scan stations", f"{name}: no report for {device['age_seconds'] // 60} min", "Restart the Pi.")
         if fresh:

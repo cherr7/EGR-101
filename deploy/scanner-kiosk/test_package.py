@@ -91,18 +91,6 @@ class StationPackageTests(unittest.TestCase):
         self.assertIn('target.username||target.password', startup)
         self.assertIn('target.origin+\'/station/ready\'', startup)
 
-    def test_browser_start_retires_the_old_second_kiosk(self):
-        import os, subprocess, tempfile
-        with tempfile.TemporaryDirectory() as home:
-            autostart = Path(home, ".config/labwc/autostart")
-            autostart.parent.mkdir(parents=True)
-            autostart.write_text('/usr/bin/kanshi &\n# fabric-scanner dedicated kiosk\n'
-                                 'systemctl --user restart fabric-scanner.target &\n"/home/admin/kiosk/kiosk.sh" &\n')
-            env = {**os.environ, "HOME": home, "XDG_STATE_HOME": home + "/state", "CHROMIUM": "/usr/bin/true"}
-            subprocess.run(["sh", str(Path(__file__).with_name("browser.sh"))], env=env, check=True, timeout=20)
-            self.assertEqual(autostart.read_text(), '/usr/bin/kanshi &\n# fabric-scanner dedicated kiosk\n'
-                                                    'systemctl --user restart fabric-scanner.target &\n')
-
     def test_changed_or_missing_assets_fail_before_installation(self):
         builder.build(self.source, self.output)
         (self.output / "assets/app.js").write_text("changed")

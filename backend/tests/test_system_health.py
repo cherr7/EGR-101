@@ -213,3 +213,27 @@ def test_plugged_in_scanner_with_unready_page_is_not_reported_as_missing(client)
         stations.DEVICES.pop("shared-door", None)
     assert any("page not using the scanner" in title for title in found)
     assert not any("no scanner" in title for title in found)
+
+
+def test_pi_extras_and_a_second_page_are_reported(client):
+    from app import stations
+    from collections import deque
+    from datetime import timedelta
+    from app.models import utcnow
+    now = utcnow()
+    stations.PRESENCE["shared-door"] = {
+        "100.85.113.72": {"ip": "100.85.113.72", "last_seen": now, "scanner_ready": True, "input": "usb-bridge"},
+        "10.194.79.238": {"ip": "10.194.79.238", "last_seen": now - timedelta(seconds=3), "scanner_ready": False, "input": "keyboard"},
+    }
+    stations.DEVICES["shared-door"] = {"received_at": now, "ip": "100.85.113.72", "clock_skew_seconds": 0, "history": deque(),
+                                       "report": {"extras": [{"item": "Raspberry Pi Connect", "fix": "restart"},
+                                                             {"item": "rpcbind", "fix": "reinstall"}]}}
+    try:
+        issues = [issue for issue in client.get("/api/system/health").json()["issues"] if issue["area"] == "Scan stations"]
+    finally:
+        stations.DEVICES.pop("shared-door", None)
+        stations.PRESENCE.pop("shared-door", None)
+    titles = {issue["title"]: issue for issue in issues}
+    assert any("scan page also open on 10.194.79.238" in title for title in titles)
+    extra = next(issue for title, issue in titles.items() if "also running Raspberry Pi Connect, rpcbind" in title)
+    assert "deploy-pi.sh" in extra["detail"]

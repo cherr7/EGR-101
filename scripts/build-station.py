@@ -123,7 +123,7 @@ def build(source: Path, output: Path, station: str = "shared-door") -> dict:
             shutil.rmtree(temporary)
 
 
-BIN_FILES = ("browser.sh", "watchdog.py", "input-bridge.py", "nfc_tags.py", "station-agent.py", "updater.py", "startup.html")
+BIN_FILES = ("browser.sh", "watchdog.py", "input-bridge.py", "nfc_tags.py", "station-agent.py", "updater.py", "station_setup.py", "startup.html")
 
 
 def package(source: Path, destination: Path) -> dict:

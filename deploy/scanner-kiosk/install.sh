@@ -23,7 +23,7 @@ dns_resolver=$4
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 station_id=$(python3 "$source_dir/validate-package.py" "$ui_source" "$api_origin" "$dns_resolver" "${5:-}")
 for name in input-bridge.py nfc_tags.py fabric-scanner-input.service startup.html station-agent.py updater.py \
-    fabric-scanner-agent.service render-nginx.py nginx.conf.template; do
+    station_setup.py fabric-scanner-agent.service render-nginx.py nginx.conf.template; do
     [ -f "$source_dir/$name" ] || { echo "Missing station file: $source_dir/$name" >&2; exit 1; }
 done
 if [ "$with_nfc" = true ]; then
@@ -35,13 +35,15 @@ if [ -n "${API_FALLBACK:-}" ]; then
     python3 "$source_dir/render-nginx.py" --check-fallback "${API_FALLBACK}" || exit 2
 fi
 python3 - "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" "$source_dir/watchdog.py" "$source_dir/station-agent.py" \
-    "$source_dir/updater.py" "$source_dir/render-nginx.py" <<'PY'
+    "$source_dir/updater.py" "$source_dir/station_setup.py" "$source_dir/render-nginx.py" <<'PY'
 import ast
 from pathlib import Path
 import sys
 for name in sys.argv[1:]:
     ast.parse(Path(name).read_text())
 PY
+rotation="${DISPLAY_ROTATION:-270}"
+[ "$rotation" = none ] || python3 "$source_dir/station_setup.py" autostart "$rotation" >/dev/null || exit 2
 if [ "$check_only" = true ]; then
     echo "Live React station package validated for $station_id. No system changes made."
     exit 0
@@ -104,7 +106,7 @@ install -d "$releases/$release/ui" "$releases/$release/bin"
 cp -R "$ui_source/." "$releases/$release/ui/"
 rm -f "$releases/$release/ui/station-config.js"
 install -m 0755 "$source_dir/browser.sh" "$source_dir/watchdog.py" "$source_dir/input-bridge.py" "$source_dir/nfc_tags.py" \
-    "$source_dir/station-agent.py" "$source_dir/updater.py" "$releases/$release/bin/"
+    "$source_dir/station-agent.py" "$source_dir/updater.py" "$source_dir/station_setup.py" "$releases/$release/bin/"
 install -m 0644 "$source_dir/startup.html" "$releases/$release/bin/startup.html"
 chown -R "$kiosk_user:$kiosk_group" "$releases/$release"
 chmod -R a+rX "$releases/$release"
@@ -140,6 +142,8 @@ python3 "$source_dir/render-nginx.py" "$source_dir/nginx.conf.template" "$api_or
     > /etc/nginx/sites-available/fabric-scanner.new
 mv /etc/nginx/sites-available/fabric-scanner.new /etc/nginx/sites-available/fabric-scanner
 ln -sf /etc/nginx/sites-available/fabric-scanner /etc/nginx/sites-enabled/fabric-scanner
+# The station serves only its own page, on 127.0.0.1:8080. Debian's welcome page would answer on port 80.
+rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable nginx
 systemctl restart nginx
@@ -171,41 +175,21 @@ if [ "$with_nfc" = true ]; then
         if getent group "$group" >/dev/null; then usermod -aG "$group" "$kiosk_user"; fi
     done
 fi
+# The kiosk user's startup list holds only the screen rotation and the kiosk, written whole each install.
+# The Pi's own list (/etc/xdg/labwc/autostart) still starts the desktop and taskbar, so Exit kiosk mode
+# lands on a working desktop. Copying that list here would start each of them twice.
+# The Touch Display 2 panel is 720 x 1280 portrait; the kiosk is laid out for 1280 x 720. Default 270
+# (the lab panels are mounted so 90 is upside down). DISPLAY_ROTATION=90 to flip; none to leave it.
 autostart="$kiosk_home/.config/labwc/autostart"
-if [ ! -e "$autostart" ]; then
-    if [ -f /etc/xdg/labwc/autostart ]; then cp /etc/xdg/labwc/autostart "$autostart"; else touch "$autostart"; fi
-fi
-if ! grep -Fq '# fabric-scanner dedicated kiosk' "$autostart"; then
-    cat >> "$autostart" <<'AUTOSTART'
-
-# fabric-scanner dedicated kiosk
-systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
-systemctl --user daemon-reload
-systemctl --user restart fabric-scanner.target &
-AUTOSTART
-fi
-# The Touch Display 2 panel is 720 x 1280 portrait; the kiosk is laid out for 1280 x 720.
-# Rotate every DSI output at login, before the kiosk starts. labwc rotates touch with it.
-# Default 270 (the lab panels are mounted so 90 is upside down). DISPLAY_ROTATION=90 to flip back; none to leave it.
-rotation="${DISPLAY_ROTATION:-270}"
-tmp_autostart="$(mktemp)"
-awk '/^# fabric-scanner landscape/ {skip = 1} !skip {print} /^# end fabric-scanner landscape/ {skip = 0}' "$autostart" > "$tmp_autostart"
-cat "$tmp_autostart" > "$autostart" && rm -f "$tmp_autostart"
-case "$rotation" in
-    90|180|270)
-        tmp_autostart="$(mktemp)"
-        cat > "$tmp_autostart" <<ROTATE
-# fabric-scanner landscape
-for output in \$(wlr-randr 2>/dev/null | awk '/^DSI-/ {print \$1}'); do wlr-randr --output "\$output" --transform $rotation; done
-# end fabric-scanner landscape
-ROTATE
-        cat "$autostart" >> "$tmp_autostart" && cat "$tmp_autostart" > "$autostart" && rm -f "$tmp_autostart" ;;
-    none) ;;
-    *) echo "DISPLAY_ROTATION must be 90, 180, 270 or none" >&2; exit 2 ;;
-esac
-grep -q '^# fabric-scanner landscape' "$autostart" || [ "$rotation" = none ] || { echo "Display rotation was not written" >&2; exit 1; }
+python3 "$source_dir/station_setup.py" autostart "$rotation" > "$autostart.new"
+mv "$autostart.new" "$autostart"
 chown "$kiosk_user:$kiosk_group" "$autostart"
 chmod 0755 "$autostart"
+# Nothing else listens on the network: no remote screen or shell through a Raspberry Pi account
+# (reach a station over Tailscale instead), and no rpcbind (NFS), which the station doesn't use.
+systemctl --global mask rpi-connect.service rpi-connect-wayvnc.service rpi-connect-signin.path >/dev/null 2>&1 || true
+if [ -S "$user_bus" ]; then user_systemctl stop rpi-connect.service rpi-connect-wayvnc.service rpi-connect-signin.path 2>/dev/null || true; fi
+systemctl disable --now rpcbind.service rpcbind.socket >/dev/null 2>&1 || true
 # raspi-config reads the account to autologin from SUDO_USER, so point it at the kiosk user
 # rather than whoever ran sudo. For do_blanking and do_spi, nonint 1 means off and 0 means on.
 if command -v raspi-config >/dev/null; then

@@ -12,6 +12,7 @@
 # A re-imaged Pi has a new host key: run ssh-keygen -R PI-HOST first.
 # Exits 0 only if the Pi comes back after reboot and reaches the Mac.
 set -euo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"   # npm and node, also over SSH
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 PI="${1:-}"

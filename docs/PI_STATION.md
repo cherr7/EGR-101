@@ -15,7 +15,7 @@ scripts/deploy-pi.sh PI-USER@name-a shared-door
 It builds the frontend and station package, then copies `output/station-ui/` and `deploy/scanner-kiosk/` to the Pi over one SSH connection. On the Pi it:
 
 - installs the apt prerequisites,
-- runs `install.sh --nfc` with the Mac's **Tailscale name** as the API (`http://fabric-mac.<tailnet>.ts.net:8120`) and MagicDNS as nginx's resolver, never an IP baked in at deploy time,
+- runs `install.sh` (with `--nfc` only when `NFC=1`; the lab stations have no NFC reader) with the Mac's **Tailscale name** as the API (`http://fabric-mac.<tailnet>.ts.net:8120`) and MagicDNS as nginx's resolver, never an IP baked in at deploy time,
 - turns the display to landscape (`DISPLAY_ROTATION`, below),
 - adds `KIOSK_DIRECT_START=true` (see "Startup, focus, and recovery").
 

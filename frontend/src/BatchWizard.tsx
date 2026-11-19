@@ -19,7 +19,7 @@ const COLUMNS = [
 ] as const
 type Column = typeof COLUMNS[number][0]
 const HEADER_FIELDS = [
-  ['labware_number', 'LabWare #'], ['project_number', 'Oracle project'], ['standard', 'Standard'], ['regime', 'Regime'],
+  ['labware_number', 'LabWare #'], ['project_number', 'Oracle project'], ['standard', 'Standard'], ['regime', 'NW/AR'],
 ] as const
 const blankHeader = (): PrepHeader => ({ project_number: '', labware_number: '', standard: '', regime: '' })
 const blankRow = (sheet = 'Preparation'): PrepRow => ({ sheet, test: '', tested_count: '', conditions: '', conditioning: '', sample: '', sample_type: '' })

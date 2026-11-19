@@ -52,3 +52,17 @@ def test_stale_heartbeat_reports_offline_with_last_known_ip(client):
 def test_unknown_station_heartbeat_is_rejected(client):
     assert client.post("/api/stations/not-a-door/heartbeat", json={"scanner_ready": True}).status_code == 404
     assert "not-a-door" not in by_id(client.get("/api/network/status").json())
+
+
+def test_scanner_page_speaks_for_station_over_a_stray_page(client):
+    """Shared, 2026-11-19: an old second browser on the Pi posted 'not ready' without a scanner."""
+    from app import stations
+    from app.models import utcnow
+    now = utcnow()
+    stations.PRESENCE["shared-door"] = {
+        "100.85.113.72": {"ip": "100.85.113.72", "last_seen": now - timedelta(seconds=4), "scanner_ready": True, "input": "usb-bridge"},
+        "10.194.136.34": {"ip": "10.194.136.34", "last_seen": now, "scanner_ready": False, "input": "keyboard"},
+    }
+    row = by_id(client.get("/api/network/status").json())["shared-door"]
+    assert row["status"] == "ready" and row["ip"] == "100.85.113.72"
+    assert set(row["live_clients"]) == {"100.85.113.72", "10.194.136.34"}

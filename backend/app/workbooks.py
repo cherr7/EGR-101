@@ -165,7 +165,7 @@ SHARED_SAMPLES = re.compile(r"shares samples|additional prep not needed", re.I)
 def _prep_rows(reader, filename, header):
     """Return ({sheet: header values}, one draft row per sheet row, sheet notes) for one prep worksheet.
 
-    The values above the table (LabWare #, Oracle project, Standard, Regime) are stated once per sheet.
+    The values above the table (LabWare #, Oracle project, Standard, NW/AR) are stated once per sheet.
     Each kept row is one sheet row; the sample names the Comments cell gives go into its Sample
     Number cell, comma-separated, so registration makes one stack per sample.
     """

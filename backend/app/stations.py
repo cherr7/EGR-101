@@ -235,6 +235,9 @@ def station_status(station, now):
     with LOCK:
         clients = sorted(PRESENCE.get(station.id, {}).values(), key=lambda row: row["last_seen"], reverse=True)
     live = [row for row in clients if now - row["last_seen"] <= ONLINE_FOR]
+    # The Pi's own page (wired to the scanner) speaks for the station. Another browser left on this
+    # station's scan view has no scanner and must not turn it into "No scanner".
+    live.sort(key=lambda row: (row["input"] == "usb-bridge", row["last_seen"]), reverse=True)
     latest = (live or clients or [None])[0]
     if live:
         status = "ready" if latest["scanner_ready"] else "no_scanner"
